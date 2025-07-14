@@ -1,0 +1,21 @@
+{
+  "name": "PreciX - Consulta de Preços",
+  "short_name": "PreciX",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#fff3e0",
+  "theme_color": "#FF6600",
+  "description": "Sistema profissional de consulta de preços para supermercados.",
+  "icons": [
+    {
+      "src": "/logo-sonda.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo-sonda.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

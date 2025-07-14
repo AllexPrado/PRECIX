@@ -1,0 +1,5 @@
+7891234567890;Arroz Sonda 5kg;22.99;Leve 2 pague 1
+7899876543210;Feijão Preto 1kg;8.49;
+7891112223334;Óleo de Soja 900ml;6.99;Desconto 10%
+7895556667778;Açúcar Refinado 1kg;4.59;
+7894443332221;Café Tradicional 500g;13.99;Brinde Caneca
