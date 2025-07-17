@@ -1,9 +1,7 @@
-
-
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
-from .database import get_product_by_barcode, init_db, populate_example_data, get_db_connection, authenticate_admin, get_system_status
-from .static_middleware import mount_frontend
+from database import get_product_by_barcode, init_db, populate_example_data, get_db_connection, authenticate_admin, get_system_status, export_products_to_txt, get_all_stores, add_store, update_store, delete_store, get_all_devices, add_device, update_device, delete_device, set_device_online, set_device_offline, add_audit_log, get_audit_logs, get_device_audit_logs
+from static_middleware import mount_frontend
 from fastapi.responses import FileResponse
 import shutil
 import os
@@ -86,8 +84,8 @@ def get_all_products():
     return [dict(row) for row in rows]
 
 
+
 # Endpoint de login admin
-from fastapi import Request
 from fastapi.responses import JSONResponse
 @app.post('/admin/login')
 async def admin_login(request: Request):
@@ -120,3 +118,88 @@ def mount_frontend_if_exists():
         logging.warning(f"Pasta {FRONTEND_PATH} não encontrada. Certifique-se de que o build do frontend foi gerado corretamente.")
 
 mount_frontend_if_exists()
+
+
+
+# Endpoints de lojas
+@app.get('/admin/stores')
+def api_get_stores():
+    return get_all_stores()
+
+@app.post('/admin/stores')
+async def api_add_store(request: Request):
+    data = await request.json()
+    name = data.get('name')
+    if not name:
+        return {"success": False, "message": "Nome da loja obrigatório."}
+    add_store(name)
+    return {"success": True}
+
+@app.put('/admin/stores/{store_id}')
+def api_update_store(store_id: int, name: str, status: str):
+    update_store(store_id, name, status)
+    return {"success": True}
+
+@app.delete('/admin/stores/{store_id}')
+def api_delete_store(store_id: int):
+    delete_store(store_id)
+    return {"success": True}
+
+# Endpoints de equipamentos
+@app.get('/admin/devices')
+def api_get_devices():
+    return get_all_devices()
+
+
+@app.post('/admin/devices')
+async def api_add_device(request: Request):
+    data = await request.json()
+    store_id = data.get('store_id')
+    name = data.get('name')
+    identifier = data.get('identifier')
+    if not store_id or not name or not identifier:
+        return {"success": False, "message": "Todos os campos são obrigatórios."}
+    # Adiciona dispositivo com identificador único
+    add_device(store_id, name)
+    # Atualiza identificador
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('UPDATE devices SET identifier = ? WHERE store_id = ? AND name = ?', (identifier, store_id, name))
+    conn.commit()
+    conn.close()
+    return {"success": True}
+
+@app.put('/admin/devices/{device_id}')
+def api_update_device(device_id: int, name: str, status: str, last_sync: str = None, online: int = None):
+    update_device(device_id, name, status, last_sync, online)
+    return {"success": True}
+
+@app.delete('/admin/devices/{device_id}')
+def api_delete_device(device_id: int):
+    delete_device(device_id)
+    return {"success": True}
+
+# Endpoint heartbeat: equipamento envia ping para marcar online
+@app.post('/device/heartbeat/{device_id}')
+def device_heartbeat(device_id: int):
+    set_device_online(device_id)
+    return {"success": True}
+
+
+# Endpoint para exportar produtos para .txt
+@app.get('/admin/export-txt')
+def export_txt():
+    txt_path = export_products_to_txt()
+    return FileResponse(txt_path, media_type='text/plain', filename='produtos.txt')
+
+
+# Endpoints de auditoria
+@app.get('/admin/audit-logs')
+def api_get_audit_logs(limit: int = 50):
+    """Retorna logs de auditoria gerais do sistema"""
+    return get_audit_logs(limit)
+
+@app.get('/admin/devices/{device_id}/audit-logs')
+def api_get_device_audit_logs(device_id: int, limit: int = 20):
+    """Retorna logs de auditoria específicos de um dispositivo"""
+    return get_device_audit_logs(device_id, limit)

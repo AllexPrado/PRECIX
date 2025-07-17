@@ -17,7 +17,9 @@
         <section class="admin-nav">
           <h3>Ações Administrativas</h3>
           <button @click="goToBannerManager" class="admin-btn">Gerenciar Banners do Carrossel</button>
-          <!-- Adicione outros botões de navegação aqui, ex: Gerenciar Produtos -->
+          <button @click="goToStoreManager" class="admin-btn">Gerenciar Lojas</button>
+          <button @click="goToDeviceManager" class="admin-btn">Gerenciar Equipamentos</button>
+          <button @click="goToAuditLog" class="admin-btn">Logs de Auditoria</button>
         </section>
       </main>
     </div>
@@ -47,12 +49,20 @@ async function fetchStatus() {
 }
 
 fetchStatus()
-function logout() {
-  router.push('/')
-}
-
 function goToBannerManager() {
   router.push('/banners')
+}
+function goToStoreManager() {
+  router.push('/stores')
+}
+function goToDeviceManager() {
+  router.push('/devices')
+}
+function goToAuditLog() {
+  router.push('/audit')
+}
+function logout() {
+  router.push('/')
 }
 </script>
 

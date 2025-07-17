@@ -29,7 +29,8 @@ export function clearProducts() {
 
 const DB_NAME = 'precix_db';
 const STORE_NAME = 'products';
-const DB_VERSION = 1;
+const DEVICE_STORE = 'device_info';
+const DB_VERSION = 2;
 
 export function openDB() {
   return new Promise((resolve, reject) => {
@@ -38,6 +39,9 @@ export function openDB() {
       const db = event.target.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: 'barcode' });
+      }
+      if (!db.objectStoreNames.contains(DEVICE_STORE)) {
+        db.createObjectStore(DEVICE_STORE, { keyPath: 'key' });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -64,6 +68,34 @@ export function saveProduct(product) {
       const store = tx.objectStore(STORE_NAME);
       const req = store.put(product);
       req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  });
+}
+
+export function saveDeviceUUID(uuid) {
+  return openDB().then(db => {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DEVICE_STORE, 'readwrite');
+      const store = tx.objectStore(DEVICE_STORE);
+      store.put({ key: 'uuid', value: uuid });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  });
+}
+
+export function getDeviceUUID() {
+  return openDB().then(db => {
+    return new Promise((resolve, reject) => {
+      if (!db.objectStoreNames.contains(DEVICE_STORE)) {
+        resolve(null);
+        return;
+      }
+      const tx = db.transaction(DEVICE_STORE, 'readonly');
+      const store = tx.objectStore(DEVICE_STORE);
+      const req = store.get('uuid');
+      req.onsuccess = () => resolve(req.result ? req.result.value : null);
       req.onerror = () => reject(req.error);
     });
   });

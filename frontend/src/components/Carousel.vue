@@ -1,4 +1,3 @@
-
 <template>
   <transition name="fade-carousel">
     <div v-if="visible" class="carousel-fullscreen" @click="nextSlide">
@@ -14,34 +13,59 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
+import axios from 'axios'
 
-// Banners apenas com imagem
-const banners = ref([
-  { img: '/Promocao-aniversario-Sonda.jpeg', alt: 'Promoção Aniversário' },
-  { img: '/sonda-frutas.jpeg', alt: 'Frutas Sonda' },
-  { img: '/logo-sonda.png', alt: 'Logo Sonda' }
-])
+const banners = ref([])
 const current = ref(0)
 let interval = null
 let idleTimer = null
-const visible = ref(false) // Inicialmente invisível
+const visible = ref(false)
+const API_BASE = import.meta.env.VITE_API_URL || ''
+
+async function fetchBanners() {
+  try {
+    const response = await axios.get(`${API_BASE}/admin/banners`)
+    if (Array.isArray(response.data)) {
+      banners.value = response.data.map(b => ({
+        img: `${API_BASE}${b.url}`,
+        alt: b.filename
+      }))
+    }
+    // fallback: se não houver banners, mostra um default
+    if (banners.value.length === 0) {
+      banners.value = [
+        { img: '/Promocao-aniversario-Sonda.jpeg', alt: 'Promoção Aniversário' },
+        { img: '/sonda-frutas.jpeg', alt: 'Frutas Sonda' },
+        { img: '/logo-sonda.png', alt: 'Logo Sonda' }
+      ]
+    }
+  } catch (e) {
+    // fallback em caso de erro
+    banners.value = [
+      { img: '/Promocao-aniversario-Sonda.jpeg', alt: 'Promoção Aniversário' },
+      { img: '/sonda-frutas.jpeg', alt: 'Frutas Sonda' },
+      { img: '/logo-sonda.png', alt: 'Logo Sonda' }
+    ]
+  }
+}
 
 function nextSlide() {
   current.value = (current.value + 1) % banners.value.length
 }
 
 function resetIdleTimer() {
-  visible.value = false // Resetar visibilidade
+  visible.value = false
   if (idleTimer) clearTimeout(idleTimer)
   idleTimer = setTimeout(() => {
     current.value = 0
-    visible.value = true // Tornar visível após 15s
+    visible.value = true
     if (interval) clearInterval(interval)
     interval = setInterval(nextSlide, 5000)
   }, 15000)
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await fetchBanners()
   resetIdleTimer()
   window.addEventListener('mousemove', resetIdleTimer, { passive: true })
   window.addEventListener('keydown', resetIdleTimer, { passive: true })

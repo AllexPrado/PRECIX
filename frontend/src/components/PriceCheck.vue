@@ -1,5 +1,10 @@
 <template>
   <div class="price-check">
+    <!-- Status de conexão discreto no topo direito -->
+    <div class="connection-status-top" :class="{ online: isOnline, offline: !isOnline }">
+      <span v-if="isOnline">● Online</span>
+      <span v-else>● Offline</span>
+    </div>
     <div class="glass-card">
       <div class="logo-mascot-row">
         <img src="/logo-sonda.png" alt="Sonda Supermercados" class="main-logo" />
@@ -8,12 +13,19 @@
       <div class="input-row">
         <input 
           type="text" 
-          placeholder="Escaneie ou digite o código de barras" 
+          inputmode="numeric"
+          pattern="[0-9]*"
+          placeholder="Escaneie ou digite o código" 
           v-model="barcode"
-          @keyup.enter="checkPrice"
-          autofocus
+          @keyup.enter="handleConsult"
+          @focus="onInputFocus"
+          @blur="onInputBlur"
+          autocomplete="off"
+          autocorrect="off"
+          spellcheck="false"
+          ref="barcodeInput"
         />
-        <button @click="checkPrice">
+        <button @click="handleConsult">
           <span>Consultar</span>
         </button>
       </div>
@@ -31,17 +43,37 @@
   </div>
 </template>
 
-
-
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import axios from 'axios'
 import { getProduct, saveProduct, saveProducts, clearProducts } from '../indexeddb.js'
 
 const barcode = ref('')
 const product = ref(null)
-const API_BASE = import.meta.env.VITE_API_URL || '' // permite configuração via .env
+const API_BASE = import.meta.env.VITE_API_URL || ''
+const isOnline = ref(navigator.onLine)
+const barcodeInput = ref(null)
+window.addEventListener('online', () => isOnline.value = true)
+window.addEventListener('offline', () => isOnline.value = false)
 
+function onInputFocus() {
+  // Força teclado numérico em iOS/Safari
+  if (barcodeInput.value) {
+    barcodeInput.value.setAttribute('inputmode', 'numeric')
+    barcodeInput.value.setAttribute('pattern', '[0-9]*')
+  }
+}
+function onInputBlur() {}
+
+
+// Garantir consulta ao clicar no botão e ao pressionar enter
+function handleConsult() {
+  checkPrice();
+  // Força foco no input após consulta para facilitar uso em dispositivos móveis
+  nextTick(() => {
+    if (barcodeInput.value) barcodeInput.value.focus();
+  });
+}
 
 // Sincroniza todo o catálogo do backend para o IndexedDB
 async function syncCatalog() {
@@ -105,7 +137,26 @@ async function checkPrice() {
 </script>
 
 <style scoped>
+.connection-status-top {
+  position: absolute;
+  top: 18px;
+  right: 24px;
+  font-size: 1em;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 12px;
+  z-index: 10;
+  background: rgba(255,255,255,0.85);
+  box-shadow: 0 2px 8px #0001;
+  color: #008000;
+  transition: color 0.2s, background 0.2s;
+}
+.connection-status-top.offline {
+  color: #d00000;
+  background: #ffeaea;
+}
 .price-check {
+  position: relative;
   min-height: 100vh;
   width: 100vw;
   display: flex;
@@ -156,6 +207,22 @@ async function checkPrice() {
   box-shadow: 0 2px 8px #ff66001a;
   border: 2px solid #FF6600;
   background: #fff3e0;
+}
+
+.connection-status {
+  font-weight: bold;
+  margin-bottom: 12px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  display: inline-block;
+}
+.connection-status.online {
+  background: #e6ffe6;
+  color: #008000;
+}
+.connection-status.offline {
+  background: #ffeaea;
+  color: #d00000;
 }
 
 .input-row {

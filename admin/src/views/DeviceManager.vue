@@ -1,0 +1,275 @@
+<template>
+  <div class="device-manager-bg">
+    <div class="device-manager-card">
+      <header>
+        <h2>Gerenciar Equipamentos</h2>
+        <button @click="$router.back()">&larr; Voltar</button>
+      </header>
+      <form @submit.prevent="addDevice">
+        <select v-model="selectedStore" required>
+          <option disabled value="">Selecione a loja</option>
+          <option v-for="store in stores" :key="store.id" :value="store.id">{{ store.name }}</option>
+        </select>
+        <input v-model="newDevice" placeholder="Nome do equipamento" required />
+        <input v-model="newDeviceIdentifier" placeholder="Identificador único (ex: código, serial, QR)" required />
+        <button type="submit">Adicionar Equipamento</button>
+      </form>
+      
+      <!-- Filtros de pesquisa -->
+      <div class="filters">
+        <h3>Filtrar Equipamentos</h3>
+        <div class="filter-row">
+          <input v-model="filterName" placeholder="🔍 Buscar por nome" />
+          <select v-model="filterStore">
+            <option value="">Todas as lojas</option>
+            <option v-for="store in stores" :key="store.id" :value="store.id">{{ store.name }}</option>
+          </select>
+          <select v-model="filterStatus">
+            <option value="">Todos os status</option>
+            <option value="online">Online</option>
+            <option value="offline">Offline</option>
+            <option value="ativo">Ativo</option>
+            <option value="inativo">Inativo</option>
+          </select>
+          <input v-model="filterIdentifier" placeholder="🔍 Buscar por ID" />
+          <button @click="clearFilters" type="button" class="clear-btn">Limpar</button>
+        </div>
+      </div>
+      
+      <div v-if="filteredDevices.length === 0 && devices.length > 0" class="empty">Nenhum equipamento encontrado com os filtros aplicados.</div>
+      <div v-else-if="devices.length === 0" class="empty">Nenhum equipamento cadastrado.</div>
+      <ul>
+        <li v-for="device in filteredDevices" :key="device.id" :class="{'offline-alert': !device.online && offlineMinutes(device) >= 2}">
+          <span>{{ device.name }}</span>
+          <span>Loja: {{ getStoreName(device.store_id) }}</span>
+          <span :style="{color: device.online ? 'green' : 'red', fontWeight: 'bold'}">
+            {{ device.online ? 'Online' : 'Offline' }}
+          </span>
+          <span v-if="device.last_heartbeat">
+            Último sinal: {{ formatLastHeartbeat(device.last_heartbeat) }} ({{ offlineMinutes(device) }} min)
+          </span>
+          <span v-else>
+            Nunca conectado
+          </span>
+          <span v-if="device.identifier" class="badge-id">ID: {{ device.identifier }}</span>
+          <select v-model="device.status" @change="updateDevice(device)">
+            <option value="ativo">Ativo</option>
+            <option value="inativo">Inativo</option>
+          </select>
+          <button @click="deleteDevice(device.id)">Excluir</button>
+        </li>
+      </ul>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, computed } from 'vue'
+import dayjs from 'dayjs'
+
+const devices = ref([])
+const stores = ref([])
+const newDevice = ref('')
+const newDeviceIdentifier = ref('')
+const selectedStore = ref('')
+
+// Filtros
+const filterName = ref('')
+const filterStore = ref('')
+const filterStatus = ref('')
+const filterIdentifier = ref('')
+
+// Computed para dispositivos filtrados
+const filteredDevices = computed(() => {
+  return devices.value.filter(device => {
+    // Filtro por nome
+    if (filterName.value && !device.name.toLowerCase().includes(filterName.value.toLowerCase())) {
+      return false
+    }
+    
+    // Filtro por loja
+    if (filterStore.value && device.store_id !== filterStore.value) {
+      return false
+    }
+    
+    // Filtro por status
+    if (filterStatus.value) {
+      if (filterStatus.value === 'online' && !device.online) return false
+      if (filterStatus.value === 'offline' && device.online) return false
+      if (filterStatus.value === 'ativo' && device.status !== 'ativo') return false
+      if (filterStatus.value === 'inativo' && device.status !== 'inativo') return false
+    }
+    
+    // Filtro por identificador
+    if (filterIdentifier.value && device.identifier && !device.identifier.toLowerCase().includes(filterIdentifier.value.toLowerCase())) {
+      return false
+    }
+    
+    return true
+  })
+})
+
+function clearFilters() {
+  filterName.value = ''
+  filterStore.value = ''
+  filterStatus.value = ''
+  filterIdentifier.value = ''
+}
+
+function getStoreName(id) {
+  const store = stores.value.find(s => s.id === id)
+  return store ? store.name : '---'
+}
+
+async function fetchDevices() {
+  const res = await fetch('http://localhost:8000/admin/devices')
+  devices.value = await res.json()
+}
+
+async function fetchStores() {
+  const res = await fetch('http://localhost:8000/admin/stores')
+  stores.value = await res.json()
+}
+
+async function addDevice() {
+  if (!newDevice.value.trim() || !selectedStore.value || !newDeviceIdentifier.value.trim()) return
+  await fetch(`http://localhost:8000/admin/devices?store_id=${selectedStore.value}&name=${encodeURIComponent(newDevice.value)}&identifier=${encodeURIComponent(newDeviceIdentifier.value)}`, { method: 'POST' })
+  newDevice.value = ''
+  newDeviceIdentifier.value = ''
+  selectedStore.value = ''
+  await fetchDevices()
+}
+
+async function updateDevice(device) {
+  await fetch(`http://localhost:8000/admin/devices/${device.id}?name=${encodeURIComponent(device.name)}&status=${device.status}&online=${device.online}`, { method: 'PUT' })
+  await fetchDevices()
+}
+
+async function deleteDevice(id) {
+  await fetch(`http://localhost:8000/admin/devices/${id}`, { method: 'DELETE' })
+  await fetchDevices()
+}
+
+function formatLastHeartbeat(ts) {
+  return dayjs(ts).format('DD/MM/YYYY HH:mm:ss')
+}
+
+function offlineMinutes(device) {
+  if (!device.last_heartbeat) return 999
+  const now = dayjs()
+  const last = dayjs(device.last_heartbeat)
+  return Math.round(now.diff(last, 'minute', true))
+}
+
+// Atualização automática dos status dos equipamentos (polling)
+onMounted(() => {
+  fetchDevices()
+  fetchStores()
+  setInterval(fetchDevices, 5000) // Atualiza a cada 5s
+})
+</script>
+
+<style scoped>
+.device-manager-bg {
+  min-height: 100vh;
+  background: #fff3e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.device-manager-card {
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 8px 32px #ff66001a;
+  padding: 36px 28px;
+  min-width: 340px;
+  max-width: 540px;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.filters {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 18px;
+  border: 1px solid #e0e0e0;
+}
+.filters h3 {
+  margin: 0 0 12px 0;
+  color: #333;
+  font-size: 1.1em;
+}
+.filter-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.filter-row input, .filter-row select {
+  flex: 1;
+  min-width: 140px;
+}
+.clear-btn {
+  background: #6c757d;
+  flex-shrink: 0;
+}
+.clear-btn:hover {
+  background: #5a6268;
+}
+input, select {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: 2px solid #FF6600;
+}
+button {
+  background: #FF6600;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+.empty {
+  color: #888;
+  margin-bottom: 12px;
+}
+ul {
+  list-style: none;
+  padding: 0;
+}
+li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.offline-info {
+  font-size: 0.875em;
+  color: #666;
+  margin-top: 4px;
+}
+/* Alerta visual para offline prolongado */
+.offline-alert {
+  background: #ffeaea;
+  border-left: 4px solid #ff0000;
+  padding: 8px;
+  border-radius: 8px;
+}
+.badge-id {
+  background: #e6f7ff;
+  color: #0077b6;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.85em;
+  margin-left: 6px;
+}
+</style>
