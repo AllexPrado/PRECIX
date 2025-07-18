@@ -34,22 +34,23 @@ async function ensureDeviceUUID() {
 async function registerDeviceIfNeeded(deviceId) {
   try {
     // Verifica se já existe no backend
-    const res = await fetch(`http://localhost:8000/admin/devices`);
+    const res = await fetch(`http://192.168.18.7:8000/admin/devices`);
     const devices = await res.json();
     if (!devices.find(d => d.identifier === deviceId)) {
       // Registrar novo dispositivo
-      await fetch(`http://localhost:8000/admin/devices`, {
+      await fetch(`http://192.168.18.7:8000/admin/devices`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           store_id: 1, // Ajuste para a loja correta
-          name: 'Dispositivo Web',
+          name: navigator.userAgent,
           identifier: deviceId
         })
       });
     }
   } catch (e) {
-    // Silenciar erro
+    // Exibe erro no console para debug
+    console.warn('Erro ao registrar dispositivo:', e);
   }
 }
 
@@ -60,7 +61,7 @@ ensureDeviceUUID().then(async id => {
   // Heartbeat: só envia se DEVICE_ID estiver definido e não for ambiente admin/PC
   function sendHeartbeat() {
     if (DEVICE_ID && DEVICE_ID !== 'admin' && DEVICE_ID !== 'pc') {
-      fetch(`http://localhost:8000/device/heartbeat/${DEVICE_ID}`, { method: 'POST' })
+      fetch(`http://192.168.18.7:8000/device/heartbeat/${DEVICE_ID}`, { method: 'POST' })
         .catch(() => {})
     }
   }

@@ -1,5 +1,13 @@
 <template>
   <div class="price-check">
+    <!-- Painel de debug temporário -->
+    <div class="debug-panel" style="position:fixed;bottom:0;left:0;width:100vw;background:#fff8e0;color:#333;padding:8px 12px;font-size:0.95em;z-index:999;border-top:1px solid #ff6600;">
+      <div><b>DEBUG:</b></div>
+      <div>Sync status: {{ debug.syncStatus }}</div>
+      <div>Consulta IndexedDB: {{ debug.indexeddbResult }}</div>
+      <div>Consulta API: {{ debug.apiResult }}</div>
+      <div>Erro: {{ debug.error }}</div>
+    </div>
     <!-- Status de conexão discreto no topo direito -->
     <div class="connection-status-top" :class="{ online: isOnline, offline: !isOnline }">
       <span v-if="isOnline">● Online</span>
@@ -44,7 +52,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, reactive } from 'vue'
 import axios from 'axios'
 import { getProduct, saveProduct, saveProducts, clearProducts } from '../indexeddb.js'
 
@@ -55,6 +63,14 @@ const isOnline = ref(navigator.onLine)
 const barcodeInput = ref(null)
 window.addEventListener('online', () => isOnline.value = true)
 window.addEventListener('offline', () => isOnline.value = false)
+
+// Painel de debug
+const debug = reactive({
+  syncStatus: 'Aguardando...',
+  indexeddbResult: '',
+  apiResult: '',
+  error: ''
+})
 
 function onInputFocus() {
   // Força teclado numérico em iOS/Safari
@@ -83,10 +99,13 @@ async function syncCatalog() {
     if (Array.isArray(response.data)) {
       await clearProducts()
       await saveProducts(response.data)
-      console.log('Catálogo sincronizado no IndexedDB:', response.data.length, 'produtos')
+      debug.syncStatus = `Catálogo sincronizado: ${response.data.length} produtos.`
+    } else {
+      debug.syncStatus = 'Falha ao sincronizar catálogo: resposta inválida.'
     }
   } catch (e) {
-    console.warn('Falha ao sincronizar catálogo:', e)
+    debug.syncStatus = 'Falha ao sincronizar catálogo.'
+    debug.error = e.message || e
   }
 }
 
@@ -106,32 +125,45 @@ onUnmounted(() => {
 
 async function checkPrice() {
   const code = barcode.value.trim()
+  debug.error = ''
+  debug.indexeddbResult = ''
+  debug.apiResult = ''
   if (!code) {
     product.value = null
-    return // Não faz requisição se vazio
+    debug.indexeddbResult = 'Código vazio.'
+    return
   }
-  // Primeiro tenta buscar no IndexedDB
+  // Consulta IndexedDB
   const localProduct = await getProduct(code)
+  debug.indexeddbResult = localProduct ? JSON.stringify(localProduct) : 'Produto não encontrado no IndexedDB.'
   if (localProduct && localProduct.name) {
     product.value = localProduct
     return
   }
-  // Se não encontrar, busca na API
+  // Consulta API
   try {
     const url = `${API_BASE}/product/${code}`
-    console.log('Consultando URL:', url)
     const response = await axios.get(url)
+    debug.apiResult = response.data ? JSON.stringify(response.data) : 'Produto não encontrado na API.'
     if (response.data && response.data.name) {
       product.value = response.data
-      // Salva no IndexedDB para uso offline
       await saveProduct(response.data)
     } else {
+      const fallbackProduct = await getProduct(code)
+      debug.indexeddbResult = fallbackProduct ? JSON.stringify(fallbackProduct) : 'Produto não encontrado no IndexedDB.'
       product.value = null
       alert('Produto não encontrado!')
     }
   } catch (error) {
-    product.value = null
-    alert('Produto não encontrado!')
+    debug.error = error.message || error
+    const offlineProduct = await getProduct(code)
+    debug.indexeddbResult = offlineProduct ? JSON.stringify(offlineProduct) : 'Produto não encontrado no IndexedDB.'
+    if (offlineProduct && offlineProduct.name) {
+      product.value = offlineProduct
+    } else {
+      product.value = null
+      alert('Produto não encontrado! (offline)')
+    }
   }
 }
 </script>

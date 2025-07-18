@@ -1,0 +1,18 @@
+{
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/banners": true,
+    "frontend/public": true,
+    "admin/public": true
+  },
+  "search.exclude": {
+    "**/__pycache__": true,
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/banners": true,
+    "frontend/public": true,
+    "admin/public": true
+  }
+}

@@ -8,6 +8,10 @@ const URLS_TO_CACHE = [
   '/mascote-sonda.jpg',
   '/assets/global.css',
   '/src/style.css',
+  '/product/all',
+  '/Promocao-aniversario-Sonda.jpeg',
+  '/sonda-frutas.jpeg',
+  '/portfolio-sonda.jpg',
   // Adicione outros arquivos essenciais aqui
 ];
 

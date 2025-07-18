@@ -8,9 +8,18 @@ import os
 BANNERS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), 'banners'))
 os.makedirs(BANNERS_DIR, exist_ok=True)
 import logging
-
+FRONTEND_PUBLIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend', 'public'))
 
 app = FastAPI()
+
+# Endpoint para servir favicon.ico
+@app.get('/favicon.ico')
+def favicon():
+    file_path = os.path.join(FRONTEND_PUBLIC_DIR, 'favicon.ico')
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    raise HTTPException(status_code=404, detail='favicon not found')
+
 
 # Endpoint para status do sistema (dashboard admin)
 # Endpoint para status do sistema (dashboard admin)
@@ -180,8 +189,17 @@ def api_delete_device(device_id: int):
     return {"success": True}
 
 # Endpoint heartbeat: equipamento envia ping para marcar online
-@app.post('/device/heartbeat/{device_id}')
-def device_heartbeat(device_id: int):
+@app.post('/device/heartbeat/{identifier}')
+def device_heartbeat(identifier: str):
+    # Busca o device pelo identificador (UUID)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT id FROM devices WHERE identifier = ?', (identifier,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail='Dispositivo não encontrado')
+    device_id = row['id']
     set_device_online(device_id)
     return {"success": True}
 

@@ -4,10 +4,17 @@ export function saveProducts(products) {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
+      let count = 0;
       for (const prod of products) {
-        store.put(prod);
+        if (prod.barcode) {
+          store.put(prod);
+          count++;
+        }
       }
-      tx.oncomplete = () => resolve();
+      tx.oncomplete = () => {
+        console.log(`Produtos salvos no IndexedDB: ${count}`);
+        resolve();
+      };
       tx.onerror = () => reject(tx.error);
     });
   });
