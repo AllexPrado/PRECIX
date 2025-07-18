@@ -133,14 +133,21 @@ async function checkPrice() {
     debug.indexeddbResult = 'Código vazio.'
     return
   }
-  // Consulta IndexedDB
+  // Consulta IndexedDB primeiro
   const localProduct = await getProduct(code)
   debug.indexeddbResult = localProduct ? JSON.stringify(localProduct) : 'Produto não encontrado no IndexedDB.'
   if (localProduct && localProduct.name) {
     product.value = localProduct
     return
   }
-  // Consulta API
+  // Se offline, nunca tenta consultar API
+  if (!isOnline.value) {
+    product.value = null
+    debug.apiResult = 'Modo offline: não consultou API.'
+    alert('Produto não encontrado! (offline)')
+    return
+  }
+  // Consulta API se online
   try {
     const url = `${API_BASE}/product/${code}`
     const response = await axios.get(url)
@@ -149,21 +156,13 @@ async function checkPrice() {
       product.value = response.data
       await saveProduct(response.data)
     } else {
-      const fallbackProduct = await getProduct(code)
-      debug.indexeddbResult = fallbackProduct ? JSON.stringify(fallbackProduct) : 'Produto não encontrado no IndexedDB.'
       product.value = null
       alert('Produto não encontrado!')
     }
   } catch (error) {
     debug.error = error.message || error
-    const offlineProduct = await getProduct(code)
-    debug.indexeddbResult = offlineProduct ? JSON.stringify(offlineProduct) : 'Produto não encontrado no IndexedDB.'
-    if (offlineProduct && offlineProduct.name) {
-      product.value = offlineProduct
-    } else {
-      product.value = null
-      alert('Produto não encontrado! (offline)')
-    }
+    product.value = null
+    alert('Produto não encontrado! (erro de rede)')
   }
 }
 </script>

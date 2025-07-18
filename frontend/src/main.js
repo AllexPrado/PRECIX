@@ -32,13 +32,17 @@ async function ensureDeviceUUID() {
 
 // Função para registrar dispositivo no backend
 async function registerDeviceIfNeeded(deviceId) {
+  // Só tenta registrar se estiver online
+  if (!navigator.onLine) return;
+  
   try {
+    const API_BASE = import.meta.env.VITE_API_URL || 'http://192.168.18.7:8000';
     // Verifica se já existe no backend
-    const res = await fetch(`http://192.168.18.7:8000/admin/devices`);
+    const res = await fetch(`${API_BASE}/admin/devices`);
     const devices = await res.json();
     if (!devices.find(d => d.identifier === deviceId)) {
       // Registrar novo dispositivo
-      await fetch(`http://192.168.18.7:8000/admin/devices`, {
+      await fetch(`${API_BASE}/admin/devices`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -60,8 +64,9 @@ ensureDeviceUUID().then(async id => {
   await registerDeviceIfNeeded(DEVICE_ID);
   // Heartbeat: só envia se DEVICE_ID estiver definido e não for ambiente admin/PC
   function sendHeartbeat() {
-    if (DEVICE_ID && DEVICE_ID !== 'admin' && DEVICE_ID !== 'pc') {
-      fetch(`http://192.168.18.7:8000/device/heartbeat/${DEVICE_ID}`, { method: 'POST' })
+    if (DEVICE_ID && DEVICE_ID !== 'admin' && DEVICE_ID !== 'pc' && navigator.onLine) {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://192.168.18.7:8000';
+      fetch(`${API_BASE}/device/heartbeat/${DEVICE_ID}`, { method: 'POST' })
         .catch(() => {})
     }
   }
@@ -71,7 +76,8 @@ ensureDeviceUUID().then(async id => {
   }
 })
 
-// Registrar o service worker para PWA/offline
+// Registrar o service worker para PWA/offline (temporariamente desabilitado para debug)
+/*
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js')
@@ -79,5 +85,6 @@ if ('serviceWorker' in navigator) {
       .catch(err => console.warn('Erro ao registrar Service Worker:', err));
   });
 }
+*/
 
 createApp(App).mount('#app')

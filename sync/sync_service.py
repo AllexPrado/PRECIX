@@ -33,4 +33,4 @@ def import_txt_to_db(txt_path):
 
 if __name__ == '__main__':
     init_db()
-    import_txt_to_db('produtos.txt')  # Altere para o caminho do seu arquivo .txt
+    import_txt_to_db('../produtos.txt')  # Altere para o caminho do seu arquivo .txt
