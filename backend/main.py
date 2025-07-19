@@ -90,7 +90,16 @@ def get_all_products():
     cur.execute('SELECT barcode, name, price, promo FROM products')
     rows = cur.fetchall()
     conn.close()
-    return [dict(row) for row in rows]
+    # Corrige preço para reais se estiver em centavos
+    produtos = []
+    for row in rows:
+        produto = dict(row)
+        preco = produto['price']
+        # Se o preço for menor que 1 e não for zero, provavelmente está em centavos
+        if preco and preco < 1:
+            produto['price'] = round(preco * 100, 2)
+        produtos.append(produto)
+    return produtos
 
 
 
