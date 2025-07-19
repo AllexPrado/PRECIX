@@ -1,13 +1,31 @@
-# Node
-node_modules/
-dist/
+# Ignorar bancos de dados
+*.db
+backend/products.db
+sync/products.db
 
-# Python
-__pycache__/
-*.pyc
-
-# VSCode
-.vscode/
-
-# Legacy software
+# Ignorar arquivos de dados do cliente
+produtos.txt
+*.txt
 Kiosk/
+scripts_backup/
+
+# Ignorar arquivos de exportação e logs
+*.log
+*.bak
+*.csv
+
+# Ignorar arquivos sensíveis
+*.pem
+*.key
+*.ini
+*.xml
+*.tps
+*.bak
+
+# Node e Python
+node_modules/
+__pycache__/
+.env
+
+# Outros
+.DS_Store
