@@ -1,0 +1,13 @@
+﻿Loja=1002
+Tempo Pede Imagens=30
+Tempo Consulta=5
+Tempo Mostra=3
+Tempo Mensagem=2
+Serviço IP=139.10.11.100
+Serviço Porta=88
+Serviço Senha=img
+Serviço Usuário=img
+Barcode Sair=MXq*&44dbb
+Se Fala=1
+Volume Som=1
+Volume Beeper=1

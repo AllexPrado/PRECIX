@@ -10,6 +10,13 @@ export default defineConfig({
     emptyOutDir: true
   },
   server: {
-    port: 5174
+    port: 5174,
+    proxy: {
+      '/admin': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
   }
 })

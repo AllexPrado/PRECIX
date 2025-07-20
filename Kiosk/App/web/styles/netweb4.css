@@ -1,0 +1,571 @@
+/* Legacy NT4 support */
+.HtmlWithFooter{
+ margin:0;
+ padding:0;
+ height:100%;
+ border:none;
+}
+
+.PageBodyWithFooter {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ background-color: #FFF;
+ margin: 1em;
+ height: 100%;
+}
+
+.MenuBody {
+ background-color:#7190E0;
+ height:100%;
+ margin: 0;
+ padding: 0px;
+ border: 0px;
+ border-color: #FF0000;
+}
+
+/*replace with menutable */
+.MenuTable {
+ padding: 0px;
+ border-collapse: collapse;
+ border:0;
+ height:100%;
+ background-color: #7190e0;
+}
+
+.PageBody {
+ background-color: #FFF;
+ margin: 1em;
+ height: 96%;
+}
+
+.legend {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ color: #00FF00;
+ font-size: 20px;
+}
+
+.alert {
+font-weight: bold;
+padding-left:0.5em;
+padding-top:0.5em;
+padding-bottom:0.5em;
+margin: 0.5em;
+}
+
+.pagediv {
+ width: 100%;
+ height: 100%;
+ left: 0px;
+ top: 0px;
+ position: absolute;
+ z-index: 0;
+}
+
+.pagedivcontents {
+ z-index: 1;
+ left: 0px;
+ top: 0px;
+ position: absolute;
+ margin: 10px;
+}
+
+table.defaulttable {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ padding: 4px;
+ margin: 0px 0px 3px;
+ border-collapse: collapse;
+ border-color: #A0A0A0;
+ border-top: 1px solid #CCC;
+ border-left: 1px solid #CCC;
+ border-bottom: 1px solid #555;
+ border-right: 1px solid #555;
+}
+
+table.defaulttable th {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ color: #333;
+ font-weight: bold;
+ padding: 4px;
+ border-collapse: collapse;
+ border-color: #A0A0A0;
+ border-top: 1px solid #555;
+ border-left: 1px solid #555;
+ border-bottom: 1px solid #CCC;
+ border-right: 1px solid #CCC;
+ border: 1px solid #EDEDED;
+}
+
+table.BrowseTable {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ color: #333;
+ margin: 5px 0px 5px;
+ border-color: #888;
+ border-top: 1px solid #888;
+ border-left: 1px solid #888;
+ border-bottom: 1px solid #888;
+ border-right: 1px solid #888;
+ padding: 0px;
+ border-spacing: 0px;
+}
+
+table.BrowseTable th {
+ background-image: url('/images/BrowseHeader.png');
+ font-weight: bold;
+ padding: 3px;
+ border-top: 1px solid #AAA;
+ border-bottom: 1px solid #FFF;
+ border-left: 1px solid #CCC;
+ border-right: 1px solid #EEE;
+ border-collapse: separate;
+ white-space: nowrap;
+}
+
+table.BrowseTable td {
+ padding: 2px;
+ border-left: 0px solid #AAA;
+ border-right: 1px solid #EEE;
+ border-bottom: 1px solid #CCC;
+ border-top: 1px solid #EEE;
+ height: 20px;
+ /* white-space: nowrap; */
+}
+.BrowseFooter {
+ font-weight: bold;
+ color: #000080;
+}
+.BrowseEntry{
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ background-color: #FDFDFD;
+ border: 1px solid #888;
+ padding-left: 2px;
+ padding-right: 2px;
+ vertical-align:top;
+}
+tr.gb1 {background-color: #EEEEEE;}
+tr.gb2 {background-color: #FFFFFF;}
+tr.gb3 {background-color: #E2F9FE;}
+td.gr1 {background-color: #EEEEEE;}
+td.gr2 {background-color: #FFFFFF;}
+div.browsetableouter{
+ background-color : #EEEEEE;
+ float: left;
+ clear: both;
+}
+.MainHeading {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 14px;
+ color: #999;
+ font-weight: bold;
+}
+.SubHeading {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 12px;
+ color: #BBB;
+ font-weight: normal;
+}
+.MainTable {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ padding: 4px;
+ border-collapse: collapse;
+ border-color: #A0A0A0;
+ border-top: 1px solid #CCC;
+ border-left: 1px solid #CCC;
+ border-bottom: 1px solid #555;
+ border-right: 1px solid #555;
+}
+
+.MainTable th {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 13px;
+ color: #333;
+ font-weight: bold;
+ padding: 4px;
+ border-collapse: collapse;
+ border-color: #A0A0A0;
+ border-top: 1px solid #555;
+ border-left: 1px solid #555;
+ border-bottom: 1px solid #CCC;
+ border-right: 1px solid #CCC;
+}
+
+.MainTable td {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ color: #333;
+ padding: 4px;
+ border-collapse: collapse;
+ border-color: #A0A0A0;
+ border-top: 1px solid #555;
+ border-left: 1px solid #555;
+ border-bottom: 1px solid #CCC;
+ border-right: 1px solid #CCC;
+}
+.ServerSortHeader {font-family: Webdings;}
+
+.Locator {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+}
+.FormTable {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ padding: 4px;
+ border-collapse: collapse;
+ text-align: left;
+ margin-left: 10px;
+ border: 0px solid #800;
+ color: #333;
+/*  float: left; causes tab on xp-tabs to break*/
+}
+
+.FormTable td {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ padding: 4px;
+ border: 0px solid #888;
+ font-weight: normal;
+ /* white-space: nowrap; */
+}
+
+.FormTable img{
+ margin-bottom: 4px;
+}
+
+.FormPrompt {
+ font-weight: bold;
+ height: 1.5em;
+ display:table-cell;
+ vertical-align:top;
+ font-size: 11px;
+ float: left; /*needed for multiple forms fields in a cell */
+ border-collapse: collapse;
+ margin-right: 5px;
+}
+
+.FormComments {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ color: #BBB;
+ height: 1.5em;
+ display:table-cell;
+ vertical-align:top;
+ float: left;
+}
+
+.FormEntry{
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ background-color: #FDFDFD;
+ border: 1px solid #888;
+ padding-left: 2px;
+ padding-right: 2px;
+ vertical-align:top;
+}
+.FormEntryRight{direction: rtl;}
+.formrqd {background-color: #FEF5E2;}
+.formreadonly {background-color: #E2F9FE;}
+.formerror {background-color: #FFBBBB;}
+div.formcorner {background-color : #EEEEEE;}
+
+.TinyForm {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ font-weight: normal;
+ padding: 0px;
+ border-collapse: collapse;
+ text-align: left;
+ margin-left: 0px;
+ border: 0px;
+}
+
+.TinyForm th {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ font-weight: normal;
+ color: #333;
+ padding: 0px;
+ border: 0;
+}
+
+.TinyForm input {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ font-weight: normal;
+ color: #333;
+}
+.InvisibleTable {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 13px;
+ border-collapse: collapse;
+ padding: 0px;
+ border: 0px solid;
+}
+
+.InvisibleTable td {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ border: 0;
+ font-size: 13px;
+ margin: 0;
+ padding: 0;
+}
+div.headingouter{
+ background-color : #EEEEEE;
+ clear: both;
+}
+
+.headingtable {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 24px;
+ color: #999;
+ width: 100%;
+ border: 0;
+}
+
+.headingtable td {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 24px;
+ color: #999;
+ text-align: center;
+ border: 0;
+}
+
+.footertable {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 10px;
+ color: #999;
+ text-align: center;
+ width: 100%;
+ border: 0;
+}
+
+.footerTable td {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 10px;
+ color: #999;
+ text-align: center;
+ border: 0;
+}
+/* Buttons */
+.MainButton {
+ width: 80px;
+ height: 26px;
+ margin: 3px 1px;
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ cursor: pointer;
+ padding: 0px;
+}
+
+.MainButtonTable {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ cursor: pointer;
+ padding: 0px;
+ margin: 0px;
+}
+
+.MainButtonTable td {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ cursor: pointer;
+ padding: 0px;
+ margin: 0px;
+}
+
+.WideButton {
+ width: 200px;
+ height: 26px;
+ margin: 3px 1px;
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ cursor: pointer;
+ padding: 0px;
+}
+
+.WideButtonTable {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ cursor: pointer;
+ padding: 0px;
+ margin: 0px;
+}
+
+.WideButtonTable td {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ cursor: pointer;
+ padding: 0px;
+ margin: 0px;
+}
+
+.SmallButton {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 10px;
+ cursor: pointer;
+ padding: 0px;
+ margin: 0px;
+ height: 20px;
+}
+
+.SmallButtonTable {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 10px;
+ cursor: pointer;
+ padding: 0px;
+ margin: 0px;
+}
+
+.SmallButtonTable td{
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 10px;
+ cursor: pointer;
+ padding: 0px;
+ margin: 0px;
+}
+
+.LookupButton {
+ width: 26px;
+ height: 20px;
+ cursor: pointer;
+}
+
+.LookupButtonTable {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 10px;
+ cursor: pointer;
+ padding: 0px;
+ margin: 0px;
+}
+
+.LookupButtonTable td{
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 10px;
+ cursor: pointer;
+ padding: 0px;
+ margin: 0px;
+}
+
+.Button1  {
+ width: 75px;
+ height: 25px;
+ text-align: center;
+ cursor: pointer;
+}
+.Button2  {
+ width: 85px;
+ height: 25px;
+ text-align: center;
+ cursor: pointer;
+}
+.Button3  {
+ width: 100px;
+ height: 25px;
+ text-align: center;
+ cursor: pointer;
+}
+.Button4  {
+ width: 30px;
+ height: 25px;
+ text-align: center;
+ cursor: pointer;
+}
+.Button5  {
+ width: 50px;
+ height: 25px;
+ text-align: center;
+ cursor: pointer;
+}
+.Button100 {
+ width: 75px;
+ height: 25px;
+ background-image: url('/images/button.png');
+ text-align: center;
+ cursor: pointer;
+}
+
+/* InForm button is handy for buttons used "inline" in a form */
+.InFormButton {
+ width: 80px;
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ cursor: pointer;
+ padding: 0px;
+}
+
+.InFormButtonTable {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ cursor: pointer;
+ padding: 0px;
+ margin: 0px;
+}
+
+.InFormButtonTable td {
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ cursor: pointer;
+ padding: 0px;
+ margin: 0px;
+}
+.aFooter {
+ border-top: 4px solid #0080C0;
+ border-left: 0px;
+ border-bottom: 0px;
+ border-right: 0px;
+ font-family: Century Gothic,Tahoma,Verdana,Arial,Helvetica,sans-serif;
+ font-size: 10px;
+ font-weight: normal;
+ color: #888;
+ width: 100%;
+ background-color: #FAFAFA;
+ padding: 4px;
+ border-collapse: collapse;
+ position: absolute;
+ bottom: 0px;
+ left: 0px;
+ text-align:left;
+}
+
+.aHeader {
+ border-top: 0px;
+ border-left: 0px;
+ border-bottom: 4px solid #0080C0;
+ border-right: 0px;
+ font-family: Century Gothic,Tahoma,Verdana,Arial,Helvetica,sans-serif;
+ font-size: 24px;
+ font-weight: normal;
+ color: #888;
+ width: 100%;
+ background-color: #FAFAFA;
+ padding: 4px;
+ border-collapse: collapse;
+}
+
+.aHeader td{
+ padding: 4px;
+}
+.ScrollBrowse {
+ height: 300px;
+ overflow: auto;
+}
+.FormWizard {
+ background-color: #FAFAFA;
+ border-bottom:1px solid #EEEEEE;
+ border-top:1px solid #EEEEEE;
+}
+.BrowseEntry{
+ font-family: Tahoma, Verdana,  Arial, Helvetica, sans-serif;
+ font-size: 11px;
+ background-color: #FDFDFD;
+ border: 1px solid #888;
+ padding-left: 2px;
+ padding-right: 2px;
+ vertical-align:top;
+}
+
+/* end of nt4 support */

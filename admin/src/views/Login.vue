@@ -13,6 +13,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { saveToken } from '../auth.js'
 
 const username = ref('')
 const password = ref('')
@@ -29,7 +30,8 @@ async function login() {
     });
     if (response.ok) {
       const data = await response.json();
-      if (data.success) {
+      if (data.success && data.access_token) {
+        saveToken(data.access_token);
         error.value = false;
         router.push('/dashboard');
       } else {

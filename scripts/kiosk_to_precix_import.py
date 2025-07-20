@@ -80,5 +80,5 @@ def exportar_precix_para_txt(db_precix_path, txt_path):
     print('Exportação TXT concluída.')
 
 if __name__ == '__main__':
-    # importar_kiosk_para_precix(r'd:\Sonda\Precix\Kiosk\Precos\produto.db', r'd:\Sonda\Precix\sync\products.db')
-    exportar_precix_para_txt(r'd:\Sonda\Precix\sync\products.db', r'd:\Sonda\Precix\produtos.txt')
+    importar_kiosk_para_precix(r'd:\Sonda\Precix\Kiosk\Precos\produto.db', r'd:\Sonda\Precix\sync\products.db')
+    exportar_precix_para_txt(r'd:\Sonda\Precix\sync\products.db', r'd:\Sonda\Precix\sync\produtos.txt')

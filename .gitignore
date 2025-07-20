@@ -1,31 +1,43 @@
-# Ignorar bancos de dados
-*.db
-backend/products.db
-sync/products.db
-
-# Ignorar arquivos de dados do cliente
-produtos.txt
-*.txt
-Kiosk/
-scripts_backup/
-
-# Ignorar arquivos de exportação e logs
-*.log
-*.bak
-*.csv
-
-# Ignorar arquivos sensíveis
-*.pem
-*.key
-*.ini
-*.xml
-*.tps
-*.bak
-
-# Node e Python
-node_modules/
+# Python
 __pycache__/
-.env
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
 
-# Outros
-.DS_Store
+# Node
+node_modules/
+dist/
+
+# VSCode
+.vscode/
+
+# Env/Secrets
+.env
+.env.*
+*.env
+
+# Outros arquivos sensíveis
+*.bak
+*.log
+*.tps
+*.tpsbak
+*.pemhon
+*.key
+*.crtcache__/
+*.ini.env
+*.xml
+*.state.xml
+*.db-journal.DS_Store
+
+
+
+
+
+
+
+
+
+
+scripts_backup/# Backup/Scripts*.svg*.png*.jpeg*.jpg# Imagens temporárias

@@ -1,0 +1,8 @@
+cd ..	
+cd vmix
+cd vmix
+cd dataisp
+cd linux
+cd produtos
+mget produto.db 		
+quit 			

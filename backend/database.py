@@ -1,7 +1,9 @@
 import sqlite3
 from typing import Optional, Dict
+import logging
+import bcrypt  # Adicionado para hash de senha
 
-
+logging.basicConfig(level=logging.INFO)
 
 # Função para obter status do sistema (quantidade de produtos e última sincronização)
 def get_system_status():
@@ -17,7 +19,7 @@ def get_system_status():
         'last_sync': last_sync
     }
 
-DB_PATH = 'products.db'
+DB_PATH = r'd:\Sonda\Precix\sync\products.db'
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -39,6 +41,7 @@ def get_product_by_barcode(barcode: str) -> Optional[Dict]:
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
+    logging.info(f"[DB] Usando banco em: {DB_PATH}")
     # Tabela de produtos
     cur.execute('''
         CREATE TABLE IF NOT EXISTS products (
@@ -55,6 +58,15 @@ def init_db():
             password TEXT NOT NULL
         )
     ''')
+    # MIGRAÇÃO: Garante que a coluna 'role' existe
+    cur.execute("PRAGMA table_info(admin_users)")
+    admin_columns = [row[1] for row in cur.fetchall()]
+    if 'role' not in admin_columns:
+        logging.info("[DB] Adicionando coluna 'role' na tabela admin_users")
+        cur.execute("ALTER TABLE admin_users ADD COLUMN role TEXT DEFAULT 'admin'")
+    # Loga usuários admin existentes
+    cur.execute('SELECT * FROM admin_users')
+    logging.info(f"[DB] Usuários admin existentes ao iniciar: {cur.fetchall()}")
     # Tabela de lojas
     cur.execute('''
         CREATE TABLE IF NOT EXISTS stores (
@@ -72,9 +84,16 @@ def init_db():
             status TEXT DEFAULT 'ativo',
             last_sync TEXT,
             online INTEGER DEFAULT 0,
+            identifier TEXT,
             FOREIGN KEY(store_id) REFERENCES stores(id)
         )
     ''')
+    # MIGRAÇÃO: Garante que a coluna 'identifier' existe mesmo em bancos antigos
+    cur.execute("PRAGMA table_info(devices)")
+    columns = [row[1] for row in cur.fetchall()]
+    if 'identifier' not in columns:
+        logging.info("[DB] Adicionando coluna 'identifier' na tabela devices")
+        cur.execute('ALTER TABLE devices ADD COLUMN identifier TEXT')
     # Tabela de auditoria/logs
     cur.execute('''
         CREATE TABLE IF NOT EXISTS audit_log (
@@ -94,6 +113,9 @@ def init_db():
 def populate_example_data():
     conn = get_db_connection()
     cur = conn.cursor()
+    # Loga antes de inserir admin
+    cur.execute('SELECT * FROM admin_users')
+    logging.info(f"[DB] Usuários admin antes de popular: {cur.fetchall()}")
     example_products = [
         ('7891234567890', 'Arroz Sonda 5kg', 22.99, 'Leve 2 pague 1'),
         ('7899876543210', 'Feijão Preto 1kg', 8.49, None),
@@ -105,17 +127,39 @@ def populate_example_data():
         cur.execute('INSERT OR IGNORE INTO products (barcode, name, price, promo) VALUES (?, ?, ?, ?)', prod)
     # Usuário admin padrão: admin / admin123
     cur.execute('INSERT OR IGNORE INTO admin_users (username, password) VALUES (?, ?)', ('admin', 'admin123'))
+    # Loga depois de inserir admin
+    cur.execute('SELECT * FROM admin_users')
+    logging.info(f"[DB] Usuários admin após popular: {cur.fetchall()}")
     conn.commit()
     conn.close()
 
+# Função utilitária para gerar hash de senha
+# Documentação: https://pypi.org/project/bcrypt/
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def verify_password(password: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+    except Exception:
+        return False
+
 # Função para autenticar usuário admin
+# Compatível com senhas antigas (texto puro) e novas (hash)
 def authenticate_admin(username: str, password: str) -> bool:
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('SELECT * FROM admin_users WHERE username = ? AND password = ?', (username, password))
+    cur.execute('SELECT * FROM admin_users WHERE username = ?', (username,))
     user = cur.fetchone()
     conn.close()
-    return user is not None
+    if not user:
+        return False
+    stored = user['password']
+    # Compatibilidade: aceita hash bcrypt ou senha texto puro
+    if stored.startswith('$2b$') or stored.startswith('$2a$'):
+        return verify_password(password, stored)
+    else:
+        return password == stored
 
 
 # Funções de auditoria/log (definidas primeiro para evitar erros de import)
@@ -172,6 +216,7 @@ def update_store(store_id: int, name: str, status: str):
 def delete_store(store_id: int):
     conn = get_db_connection()
     cur = conn.cursor()
+    logging.info(f"[DB] Deletando loja id={store_id}")
     cur.execute('DELETE FROM stores WHERE id = ?', (store_id,))
     conn.commit()
     conn.close()
@@ -262,11 +307,10 @@ def delete_device(device_id: int):
     cur.execute('SELECT name FROM devices WHERE id = ?', (device_id,))
     result = cur.fetchone()
     device_name = result['name'] if result else f'Device {device_id}'
-    
+    logging.info(f"[DB] Deletando device id={device_id} nome={device_name}")
     cur.execute('DELETE FROM devices WHERE id = ?', (device_id,))
     conn.commit()
     conn.close()
-    
     # Log de auditoria
     add_audit_log(device_id, device_name, 'DEVICE_DELETED', 'Dispositivo removido do sistema')
 
