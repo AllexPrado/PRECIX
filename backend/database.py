@@ -233,11 +233,11 @@ def get_all_devices():
     now = datetime.utcnow()
     for row in rows:
         device = dict(row)
-        last_heartbeat = device.get('last_heartbeat')
-        # Considera online se o último heartbeat foi há menos de 2 minutos
-        if last_heartbeat:
+        last_sync = device.get('last_sync')
+        # Considera online se o último heartbeat (last_sync) foi há menos de 2 minutos
+        if last_sync:
             try:
-                dt = datetime.fromisoformat(last_heartbeat)
+                dt = datetime.fromisoformat(last_sync)
                 device['online'] = int((now - dt) < timedelta(minutes=2))
             except Exception:
                 device['online'] = 0
@@ -246,12 +246,13 @@ def get_all_devices():
         devices.append(device)
     return devices
 
-def add_device(store_id: int, name: str, status: str = 'ativo', last_sync: str = None, online: int = 0):
+def add_device(store_id: int, name: str, status: str = 'ativo', last_sync: str = None, online: int = 0, identifier: str = None):
     conn = get_db_connection()
     cur = conn.cursor()
-    # Gera identificador único simples (pode ser UUID, MAC, etc)
-    import uuid
-    identifier = str(uuid.uuid4())
+    # Usa o identifier fornecido ou gera um novo se não vier
+    if not identifier:
+        import uuid
+        identifier = str(uuid.uuid4())
     cur.execute('INSERT INTO devices (store_id, name, status, last_sync, online, identifier) VALUES (?, ?, ?, ?, ?, ?)', (store_id, name, status, last_sync, online, identifier))
     device_id = cur.lastrowid
     conn.commit()
@@ -260,9 +261,17 @@ def add_device(store_id: int, name: str, status: str = 'ativo', last_sync: str =
     add_audit_log(device_id, name, 'DEVICE_CREATED', f'Dispositivo criado na loja ID {store_id}')
     return device_id
 
-def update_device(device_id: int, name: str, status: str, last_sync: str = None, online: int = None):
+def update_device(device_id: int, name: str = None, status: str = None, last_sync: str = None, online: int = None):
     conn = get_db_connection()
     cur = conn.cursor()
+    # Busca valores atuais
+    cur.execute('SELECT name, status FROM devices WHERE id = ?', (device_id,))
+    row = cur.fetchone()
+    current_name = row['name'] if row else ''
+    current_status = row['status'] if row else ''
+    # Usa os valores atuais se não forem passados
+    name = name if name not in (None, '') else current_name
+    status = status if status not in (None, '') else current_status
     if online is not None:
         cur.execute('UPDATE devices SET name = ?, status = ?, last_sync = ?, online = ? WHERE id = ?', (name, status, last_sync, online, device_id))
     else:
@@ -270,23 +279,24 @@ def update_device(device_id: int, name: str, status: str, last_sync: str = None,
     conn.commit()
     conn.close()
 # Novo endpoint: atualizar status online (heartbeat)
-def set_device_online(device_id: int):
-    from datetime import datetime
-    now = datetime.utcnow().isoformat()
-    # Verifica se o device estava offline antes
+def set_device_online(identifier: str):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('SELECT name, online FROM devices WHERE id = ?', (device_id,))
-    result = cur.fetchone()
-    was_offline = result and not result['online']
-    device_name = result['name'] if result else f'Device {device_id}'
+    cur.execute('SELECT id FROM devices WHERE identifier = ?', (identifier,))
+    row = cur.fetchone()
+    if row:
+        device_id = row['id']
+        # Atualiza apenas last_sync e online, preservando nome/status
+        from datetime import datetime
+        now = datetime.utcnow().isoformat()
+        update_device(device_id, last_sync=now, online=1)
+        logging.info(f"[HEARTBEAT] Device online: id={device_id}, identifier={identifier}")
+    else:
+        # Loga todos os identifiers para debug
+        cur.execute('SELECT id, identifier, name FROM devices')
+        all_devices = cur.fetchall()
+        logging.warning(f"[HEARTBEAT] Device NOT FOUND for identifier={identifier}. Devices in DB: {[dict(row) for row in all_devices]}")
     conn.close()
-    
-    update_device(device_id, name='', status='', last_sync=now, online=1)
-    
-    # Log apenas se estava offline (evita spam de logs)
-    if was_offline:
-        add_audit_log(device_id, device_name, 'DEVICE_ONLINE', 'Dispositivo voltou online')
 
 def set_device_offline(device_id: int):
     # Busca nome do device
@@ -330,3 +340,12 @@ def export_products_to_txt(txt_path: str = 'produtos.txt'):
             promo = row['promo'] if row['promo'] else ''
             f.write(f'{barcode};{name};{price};{promo}\n')
     return txt_path
+
+def debug_list_device_identifiers():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT id, identifier, name FROM devices')
+    rows = cur.fetchall()
+    conn.close()
+    for row in rows:
+        logging.info(f"[DEBUG] Device: id={row['id']}, identifier={row['identifier']}, name={row['name']}")

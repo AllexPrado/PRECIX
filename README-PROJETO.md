@@ -22,6 +22,22 @@
 - Automação inteligente (exemplo: sincronizar preços, monitorar dispositivos)
 - Logs e eventos da IA
 - Scripts para importação de catálogo via .txt
+- **Monitoramento de dispositivos com UUID persistente:**
+  - Cada dispositivo recebe um UUID único, salvo no IndexedDB do frontend e exibido de forma segura (modal/ícone de engrenagem).
+  - Cadastro e heartbeat usam sempre esse UUID como identificador único.
+  - Backend registra e monitora dispositivos por UUID, evitando duplicidade e inconsistências.
+- **Heartbeat e status online/offline:**
+  - O frontend envia heartbeat periódico para o backend, que atualiza o campo `last_sync` (UTC) e marca o dispositivo como online.
+  - O painel/admin consulta `/admin/devices` a cada 5 segundos.
+  - O backend considera online se o último heartbeat foi há menos de 2 minutos; caso contrário, mostra offline.
+  - O tempo de 2 minutos pode ser ajustado facilmente no backend (`timedelta(minutes=2)`).
+- **Correções de timezone e consistência:**
+  - Backend e frontend padronizados para UTC, evitando erros de status por diferença de fuso.
+  - Função de cálculo de status online no backend e exibição no frontend revisadas para sempre usar UTC.
+- **Fluxo robusto de registro e monitoramento:**
+  - Registro de dispositivos via JSON, com UUID persistente.
+  - Logs detalhados de heartbeat, registro, exclusão e auditoria de dispositivos.
+  - Segurança: UUID não exposto diretamente, apenas via modal seguro.
 
 ## 3. Próximos Passos Recomendados
 - Personalizar as instruções do agente IA para o contexto do supermercado
@@ -32,6 +48,25 @@
 - Planejar e implementar automações específicas do negócio
 - Documentar e expandir integrações (ex: relatórios automáticos, alertas)
 - (Opcional) Migrar para modelo local (Ollama) se desejar reduzir custos
+- Implementar IA para monitoramento proativo do backend, frontend e admin (healthcheck dos endpoints, análise de logs, detecção de falhas)
+- Adicionar automação de sugestões de otimização de código, arquitetura e segurança via IA
+- Criar painel/aba de "Saúde do Sistema" no admin, exibindo status dos módulos, alertas e sugestões da IA
+- Expandir logs para incluir sugestões, alertas e ações automáticas da IA
+- Permitir execução de rotinas de teste/configuração sob demanda pela IA
+- **Alertas e notificações:**
+  - Implementar alertas automáticos para dispositivos offline por mais de X minutos.
+  - Notificações para administradores via painel, e-mail ou push.
+- **Logs e auditoria avançada:**
+  - Exibir histórico de status (online/offline) por dispositivo.
+  - Permitir exportação de logs para análise.
+- **Automação de respostas:**
+  - Acionar automações (ex: reinício remoto, comandos) quando um dispositivo ficar offline.
+- **Segurança avançada:**
+  - Implementar autenticação JWT para endpoints sensíveis.
+  - Revisar permissões de acesso no painel/admin.
+- **Documentação e checklist:**
+  - Consolidar toda a documentação técnica e de uso em um arquivo `CHECKLIST_FINAL.md` ou Wiki.
+  - Validar todos os fluxos com testes de ponta a ponta.
 
 ## 4. Checklist do Projeto (atualizado)
 - [x] Backend FastAPI com endpoints REST
@@ -43,8 +78,13 @@
 - [x] Monitoramento e automação IA
 - [x] Banco SQLite com identificador de devices
 - [x] Segurança (.gitignore atualizado)
-- [ ] Documentação final e treinamento
-- [ ] Expansão de automações e integrações
+- [x] Monitoramento de dispositivos com UUID persistente
+- [x] Heartbeat e status online/offline (2 min, UTC)
+- [x] Correções de timezone e consistência
+- [x] Fluxo robusto de registro e monitoramento
+- [ ] Alertas automáticos e histórico de status
+- [ ] Documentação final consolidada
+- [ ] Testes de ponta a ponta e treinamento
 
 ---
 

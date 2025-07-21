@@ -45,8 +45,8 @@
           <span :style="{color: device.online ? 'green' : 'red', fontWeight: 'bold'}">
             {{ device.online ? 'Online' : 'Offline' }}
           </span>
-          <span v-if="device.last_heartbeat">
-            Último sinal: {{ formatLastHeartbeat(device.last_heartbeat) }} ({{ offlineMinutes(device) }} min)
+          <span v-if="device.last_sync">
+            Último sinal: {{ formatLastHeartbeat(device.last_sync) }} ({{ offlineMinutes(device) }} min)
           </span>
           <span v-else>
             Nunca conectado
@@ -66,6 +66,8 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
+dayjs.extend(utc)
 
 const devices = ref([])
 const stores = ref([])
@@ -133,7 +135,15 @@ async function fetchStores() {
 
 async function addDevice() {
   if (!newDevice.value.trim() || !selectedStore.value || !newDeviceIdentifier.value.trim()) return
-  await fetch(`http://localhost:8000/admin/devices?store_id=${selectedStore.value}&name=${encodeURIComponent(newDevice.value)}&identifier=${encodeURIComponent(newDeviceIdentifier.value)}`, { method: 'POST' })
+  await fetch('http://localhost:8000/admin/devices', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      store_id: selectedStore.value,
+      name: newDevice.value,
+      identifier: newDeviceIdentifier.value
+    })
+  })
   newDevice.value = ''
   newDeviceIdentifier.value = ''
   selectedStore.value = ''
@@ -155,10 +165,11 @@ function formatLastHeartbeat(ts) {
 }
 
 function offlineMinutes(device) {
-  if (!device.last_heartbeat) return 999
-  const now = dayjs()
-  const last = dayjs(device.last_heartbeat)
-  return Math.round(now.diff(last, 'minute', true))
+  if (!device.last_sync) return 999;
+  // Força o dayjs a interpretar como UTC mesmo sem o sufixo Z
+  const now = dayjs.utc();
+  const last = dayjs(device.last_sync).utc();
+  return Math.round(now.diff(last, 'minute', true));
 }
 
 // Atualização automática dos status dos equipamentos (polling)

@@ -31,13 +31,7 @@ dist/
 *.state.xml
 *.db-journal.DS_Store
 
-
-
-
-
-
-
-
-
+Kiosk/App/*.dll
+Kiosk/
 
 scripts_backup/# Backup/Scripts*.svg*.png*.jpeg*.jpg# Imagens temporárias

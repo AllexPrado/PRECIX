@@ -1,12 +1,24 @@
 <template>
   <div class="price-check">
-    <!-- Painel de debug temporário -->
-    <div class="debug-panel" style="position:fixed;bottom:0;left:0;width:100vw;background:#fff8e0;color:#333;padding:8px 12px;font-size:0.95em;z-index:999;border-top:1px solid #ff6600;">
-      <div><b>DEBUG:</b></div>
-      <div>Sync status: {{ debug.syncStatus }}</div>
-      <div>Consulta IndexedDB: {{ debug.indexeddbResult }}</div>
-      <div>Consulta API: {{ debug.apiResult }}</div>
-      <div>Erro: {{ debug.error }}</div>
+    <!-- Ícone de configurações -->
+    <button class="settings-btn" @click="showUUIDModal = true" title="Configurações">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF6600" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09c0 .66.39 1.26 1 1.51a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 8c.66 0 1.26.39 1.51 1H21a2 2 0 1 1 0 4h-.09c-.66 0-1.26.39-1.51 1z"/></svg>
+    </button>
+    <!-- Modal UUID -->
+    <div v-if="showUUIDModal" class="uuid-modal-bg" @click.self="showUUIDModal = false">
+      <div class="uuid-modal">
+        <h3>Identificador do Dispositivo</h3>
+        <div class="uuid-box">
+          <template v-if="uuidLocal && uuidLocal.length > 0">
+            {{ uuidLocal }}
+          </template>
+          <template v-else>
+            <span style="color:#aaa;">UUID não gerado</span>
+          </template>
+        </div>
+        <button class="copy-btn" @click="copyUUID" :disabled="!uuidLocal">{{ copied ? 'Copiado!' : 'Copiar UUID' }}</button>
+        <button class="close-btn" @click="showUUIDModal = false">Fechar</button>
+      </div>
     </div>
     <!-- Status de conexão discreto no topo direito -->
     <div class="connection-status-top" :class="{ online: isOnline, offline: !isOnline }">
@@ -52,9 +64,42 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick, reactive } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, inject, watch } from 'vue'
 import axios from 'axios'
 import { getProduct, saveProduct, saveProducts, clearProducts } from '../indexeddb.js'
+
+const deviceUUID = inject('deviceUUID')
+const showUUIDModal = ref(false)
+const copied = ref(false)
+const uuidLocal = ref('')
+
+watch(deviceUUID, (val) => {
+  uuidLocal.value = val
+}, { immediate: true })
+
+function copyUUID() {
+  if (uuidLocal.value) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(uuidLocal.value)
+      copied.value = true
+      setTimeout(() => copied.value = false, 1200)
+    } else {
+      // Fallback para dispositivos sem clipboard API
+      const el = document.createElement('textarea')
+      el.value = uuidLocal.value
+      document.body.appendChild(el)
+      el.select()
+      try {
+        document.execCommand('copy')
+        copied.value = true
+        setTimeout(() => copied.value = false, 1200)
+      } catch (e) {
+        alert('Copie manualmente o UUID selecionado.')
+      }
+      document.body.removeChild(el)
+    }
+  }
+}
 
 const barcode = ref('')
 const product = ref(null)
@@ -64,16 +109,7 @@ const barcodeInput = ref(null)
 window.addEventListener('online', () => isOnline.value = true)
 window.addEventListener('offline', () => isOnline.value = false)
 
-// Painel de debug
-const debug = reactive({
-  syncStatus: 'Aguardando...',
-  indexeddbResult: '',
-  apiResult: '',
-  error: ''
-})
-
 function onInputFocus() {
-  // Força teclado numérico em iOS/Safari
   if (barcodeInput.value) {
     barcodeInput.value.setAttribute('inputmode', 'numeric')
     barcodeInput.value.setAttribute('pattern', '[0-9]*')
@@ -81,11 +117,8 @@ function onInputFocus() {
 }
 function onInputBlur() {}
 
-
-// Garantir consulta ao clicar no botão e ao pressionar enter
 function handleConsult() {
   checkPrice();
-  // Força foco no input após consulta para facilitar uso em dispositivos móveis
   nextTick(() => {
     if (barcodeInput.value) barcodeInput.value.focus();
   });
@@ -99,24 +132,19 @@ async function syncCatalog() {
     if (Array.isArray(response.data)) {
       await clearProducts()
       await saveProducts(response.data)
-      debug.syncStatus = `Catálogo sincronizado: ${response.data.length} produtos.`
     } else {
-      debug.syncStatus = 'Falha ao sincronizar catálogo: resposta inválida.'
+      // debug removido
     }
   } catch (e) {
-    debug.syncStatus = 'Falha ao sincronizar catálogo.'
-    debug.error = e.message || e
+    // debug removido
   }
 }
-
 
 let syncInterval = null
 onMounted(() => {
   barcode.value = ''
   product.value = null
-  // Sincroniza catálogo ao iniciar
   syncCatalog()
-  // Sincronização periódica: 2x ao dia (a cada 12 horas)
   syncInterval = setInterval(syncCatalog, 12 * 60 * 60 * 1000)
 })
 onUnmounted(() => {
@@ -125,17 +153,12 @@ onUnmounted(() => {
 
 async function checkPrice() {
   const code = barcode.value.trim()
-  debug.error = ''
-  debug.indexeddbResult = ''
-  debug.apiResult = ''
   if (!code) {
     product.value = null
-    debug.indexeddbResult = 'Código vazio.'
     return
   }
   // Consulta IndexedDB primeiro
   const localProduct = await getProduct(code)
-  debug.indexeddbResult = localProduct ? JSON.stringify(localProduct) : 'Produto não encontrado no IndexedDB.'
   if (localProduct && localProduct.name) {
     product.value = localProduct
     return
@@ -143,7 +166,6 @@ async function checkPrice() {
   // Se offline, nunca tenta consultar API
   if (!isOnline.value) {
     product.value = null
-    debug.apiResult = 'Modo offline: não consultou API.'
     alert('Produto não encontrado! (offline)')
     return
   }
@@ -151,7 +173,6 @@ async function checkPrice() {
   try {
     const url = `${API_BASE}/product/${code}`
     const response = await axios.get(url)
-    debug.apiResult = response.data ? JSON.stringify(response.data) : 'Produto não encontrado na API.'
     if (response.data && response.data.name) {
       product.value = response.data
       await saveProduct(response.data)
@@ -160,7 +181,6 @@ async function checkPrice() {
       alert('Produto não encontrado!')
     }
   } catch (error) {
-    debug.error = error.message || error
     product.value = null
     alert('Produto não encontrado! (erro de rede)')
   }
@@ -403,5 +423,99 @@ button:hover {
 @keyframes glassIn {
   from { opacity: 0; transform: scale(0.95) translateY(30px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.settings-btn {
+  position: fixed;
+  bottom: 18px;
+  right: 18px;
+  background: #fff;
+  border: none;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px #ff66001a;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1001;
+  transition: box-shadow 0.2s, background 0.2s;
+}
+.settings-btn:hover {
+  background: #fff3e0;
+  box-shadow: 0 4px 16px #ff66002a;
+}
+.uuid-modal-bg {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.25);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.uuid-modal {
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 8px 40px #ff66002a;
+  padding: 32px 24px 24px 24px;
+  min-width: 320px;
+  max-width: 90vw;
+  text-align: center;
+  animation: fadeIn 0.3s;
+}
+.uuid-box {
+  font-family: monospace;
+  font-size: 1.1em;
+  background: #fff8e0;
+  border: 1px solid #ff6600;
+  border-radius: 8px;
+  padding: 12px 8px;
+  margin: 18px 0 18px 0;
+  word-break: break-all;
+  user-select: all;
+  color: #FF6600; /* Deixa o UUID bem visível */
+  font-weight: bold;
+}
+.copy-btn {
+  background: linear-gradient(90deg, #FF6600 60%, #FF9900 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 22px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin-right: 12px;
+  margin-bottom: 8px;
+  box-shadow: 0 2px 8px #ff66001a;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.copy-btn:disabled {
+  background: #eee;
+  color: #aaa;
+  cursor: not-allowed;
+}
+.copy-btn:hover:enabled {
+  background: linear-gradient(90deg, #FF4500 60%, #FF9900 100%);
+  box-shadow: 0 4px 16px #ff66002a;
+}
+.close-btn {
+  background: #eee;
+  color: #333;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 22px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  margin-bottom: 8px;
+  box-shadow: 0 2px 8px #ff66001a;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.close-btn:hover {
+  background: #fff3e0;
+  box-shadow: 0 4px 16px #ff66002a;
 }
 </style>

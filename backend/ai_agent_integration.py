@@ -6,6 +6,14 @@ IA_ENDPOINT = os.getenv('PRECIX_IA_ENDPOINT', os.environ.get('AI_AGENT_URL', 'ht
 IA_TOKEN = os.getenv('PRECIX_IA_TOKEN', None)
 IA_TIMEOUT = int(os.getenv('PRECIX_IA_TIMEOUT', '10'))
 
+PROMPT_PATH = os.path.join(os.path.dirname(__file__), 'prompt_supermercado.txt')
+def get_ia_prompt():
+    try:
+        with open(PROMPT_PATH, 'r', encoding='utf-8') as f:
+            return f.read()
+    except Exception:
+        return None
+
 def notify_ai_agent(event_type, details=None):
     """
     Envia um evento para o agente de IA real (Agno, Ollama, etc).
@@ -16,6 +24,10 @@ def notify_ai_agent(event_type, details=None):
         'event_type': event_type,
         'details': details or {}
     }
+    # Adiciona o prompt customizado em todas as requisições
+    prompt = get_ia_prompt()
+    if prompt:
+        payload['context'] = prompt
     headers = {'Content-Type': 'application/json'}
     if IA_TOKEN:
         headers['Authorization'] = f'Bearer {IA_TOKEN}'
@@ -41,4 +53,4 @@ def notify_ai_agent(event_type, details=None):
 
 # Exemplo de uso:
 if __name__ == '__main__':
-    notify_ia_agent('sync_start', {'source': 'backend', 'info': 'Sincronização iniciada'})
+    notify_ai_agent('sync_start', {'source': 'backend', 'info': 'Sincronização iniciada'})

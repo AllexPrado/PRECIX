@@ -108,8 +108,156 @@ def startup():
         logging.info('Usuário admin padrão criado: admin/admin')
     conn.close()
     notify_ai_agent('startup', {'source': 'backend', 'info': 'Backend iniciado'})
+    start_ia_healthcheck()  # Inicia monitoramento proativo
 
 
+
+# --- Funções auxiliares de automação IA ---
+from datetime import datetime
+import json
+
+IA_AUTONOMOUS_ACTIONS_LOG = os.path.join(os.path.dirname(__file__), 'logs', 'ia_autonomous_actions.log')
+os.makedirs(os.path.dirname(IA_AUTONOMOUS_ACTIONS_LOG), exist_ok=True)
+
+def log_ia_autonomous_action(action, result, details=None):
+    entry = {
+        'timestamp': datetime.now().isoformat(),
+        'action': action,
+        'result': result,
+        'details': details or {}
+    }
+    with open(IA_AUTONOMOUS_ACTIONS_LOG, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+
+def ia_autonomous_check_devices():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT id, name, identifier, last_sync, online FROM devices')
+    now = datetime.now()
+    offline_count = 0
+    for row in cur.fetchall():
+        last_sync = row['last_sync']
+        online = row['online']
+        if last_sync:
+            try:
+                last_dt = datetime.fromisoformat(last_sync)
+            except Exception:
+                continue
+            diff = (now - last_dt).total_seconds() / 60
+            if diff > 10 and online:
+                set_device_offline(row['id'])
+                log_ia_autonomous_action(
+                    action='set_device_offline',
+                    result='success',
+                    details={'device_id': row['id'], 'name': row['name'], 'identifier': row['identifier'], 'reason': f'No heartbeat for {diff:.1f} min'}
+                )
+                notify_ai_agent('device_offline_auto', {'device_id': row['id'], 'name': row['name'], 'identifier': row['identifier'], 'reason': f'No heartbeat for {diff:.1f} min'})
+                offline_count += 1
+    conn.close()
+    return offline_count
+
+# --- IA Monitoramento Proativo e Otimização do Sistema ---
+HEALTHCHECK_ENDPOINTS = [
+    '/admin/status',
+    '/admin/devices',
+    '/admin/stores',
+    '/product/all',
+    '/health'
+]
+
+HEALTHCHECK_LOG = os.path.join(os.path.dirname(__file__), 'logs', 'healthcheck.log')
+os.makedirs(os.path.dirname(HEALTHCHECK_LOG), exist_ok=True)
+
+# Função para checar endpoints periodicamente
+def ia_healthcheck_loop():
+    while True:
+        results = []
+        for ep in HEALTHCHECK_ENDPOINTS:
+            try:
+                url = f'http://127.0.0.1:8000{ep}'
+                r = requests.get(url, timeout=5)
+                status = r.status_code
+                ok = status == 200
+            except Exception as e:
+                ok = False
+                status = str(e)
+            results.append({'endpoint': ep, 'ok': ok, 'status': status, 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S')})
+        # Loga resultado
+        with open(HEALTHCHECK_LOG, 'a', encoding='utf-8') as f:
+            for res in results:
+                f.write(json.dumps(res, ensure_ascii=False) + '\n')
+        # Notifica IA se algum endpoint falhar
+        for res in results:
+            if not res['ok']:
+                notify_ai_agent('healthcheck_fail', res)
+        # Executa automações autônomas da IA a cada ciclo
+        try:
+            ia_autonomous_execute_all()
+        except Exception as e:
+            log_ia_autonomous_action('autonomous_execute', 'fail', {'error': str(e)})
+        time.sleep(60)  # roda a cada 1 min
+
+def start_ia_healthcheck():
+    t = threading.Thread(target=ia_healthcheck_loop, daemon=True)
+    t.start()
+
+OPTIMIZATION_LOG = os.path.join(os.path.dirname(__file__), 'logs', 'optimization_suggestions.log')
+
+def ia_analyze_logs_and_optimize():
+    # Exemplo: IA analisa healthcheck.log e sugere melhorias
+    if not os.path.exists(HEALTHCHECK_LOG):
+        return
+    with open(HEALTHCHECK_LOG, 'r', encoding='utf-8') as f:
+        lines = f.readlines()[-100:]
+    issues = [json.loads(l) for l in lines if not json.loads(l)['ok']]
+    if issues:
+        suggestion = {
+            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S'),
+            'suggestion': f"Foram detectados {len(issues)} falhas recentes em endpoints. Recomenda-se revisar logs e infraestrutura.",
+            'issues': issues
+        }
+        with open(OPTIMIZATION_LOG, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(suggestion, ensure_ascii=False) + '\n')
+        notify_ai_agent('optimization_suggestion', suggestion)
+
+@app.get('/admin/ia-health-dashboard')
+def ia_health_dashboard():
+    # Últimos healthchecks
+    health = []
+    if os.path.exists(HEALTHCHECK_LOG):
+        with open(HEALTHCHECK_LOG, 'r', encoding='utf-8') as f:
+            health = [json.loads(l) for l in f.readlines()[-20:]]
+    # Últimas sugestões de otimização
+    optim = []
+    if os.path.exists(OPTIMIZATION_LOG):
+        with open(OPTIMIZATION_LOG, 'r', encoding='utf-8') as f:
+            optim = [json.loads(l) for l in f.readlines()[-10:]]
+    return {
+        'healthchecks': health,
+        'optimizations': optim
+    }
+
+@app.post('/admin/ia-analyze-logs')
+def ia_analyze_logs_endpoint():
+    ia_analyze_logs_and_optimize()
+    return {'success': True, 'message': 'Análise de logs e sugestão de otimização executada.'}
+
+@app.on_event('startup')
+def startup():
+    init_db()
+    # Cria usuário admin padrão se não existir nenhum
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT COUNT(*) as total FROM admin_users')
+    total = cur.fetchone()['total']
+    if total == 0:
+        cur.execute('INSERT INTO admin_users (username, password) VALUES (?, ?)', ('admin', 'admin'))
+        conn.commit()
+        import logging
+        logging.info('Usuário admin padrão criado: admin/admin')
+    conn.close()
+    notify_ai_agent('startup', {'source': 'backend', 'info': 'Backend iniciado'})
+    start_ia_healthcheck()  # Inicia monitoramento proativo
 
 # Endpoint para retornar todos os produtos (para sync do frontend)
 @app.get('/product/all')
@@ -294,14 +442,8 @@ async def api_add_device(request: Request):
     identifier = data.get('identifier')
     if not store_id or not name or not identifier:
         return {"success": False, "message": "Todos os campos são obrigatórios."}
-    # Adiciona dispositivo com identificador único
-    add_device(store_id, name)
-    # Atualiza identificador
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('UPDATE devices SET identifier = ? WHERE store_id = ? AND name = ?', (identifier, store_id, name))
-    conn.commit()
-    conn.close()
+    # Adiciona dispositivo já com o identifier correto
+    add_device(store_id, name, identifier=identifier)
     notify_ai_agent('device_added', {'store_id': store_id, 'name': name, 'identifier': identifier})
     return {"success": True}
 
@@ -325,9 +467,16 @@ def device_heartbeat(identifier: str):
     row = cur.fetchone()
     conn.close()
     if not row:
-        raise HTTPException(status_code=404, detail='Dispositivo não encontrado')
-    device_id = row['id']
-    set_device_online(device_id)
+        # Tenta buscar por identifier ignorando case e espaços
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT id FROM devices WHERE TRIM(LOWER(identifier)) = ?', (identifier.strip().lower(),))
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            raise HTTPException(status_code=404, detail='Dispositivo não encontrado')
+    # Corrigido: passa identifier para set_device_online
+    set_device_online(identifier)
     notify_ai_agent('device_heartbeat', {'identifier': identifier})
     return {"success": True}
 
@@ -388,18 +537,25 @@ def create_admin_user_endpoint(data: dict = Body(...)):
 def update_admin_user(username: str, data: dict = Body(...)):
     from database import hash_password
     password = data.get('password')
-    if not password:
-        raise HTTPException(status_code=400, detail='Senha obrigatória')
-    hashed = hash_password(password)
+    role = data.get('role')
+    if not password and not role:
+        raise HTTPException(status_code=400, detail='Nada para atualizar')
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('UPDATE admin_users SET password = ? WHERE username = ?', (hashed, username))
+    if password and role:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, role = ? WHERE username = ?', (hashed, role, username))
+    elif password:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ? WHERE username = ?', (hashed, username))
+    elif role:
+        cur.execute('UPDATE admin_users SET role = ? WHERE username = ?', (role, username))
     if cur.rowcount == 0:
         conn.close()
         raise HTTPException(status_code=404, detail='Usuário não encontrado')
     conn.commit()
     conn.close()
-    return {'success': True, 'message': 'Senha atualizada com sucesso'}
+    return {'success': True, 'message': 'Usuário atualizado com sucesso'}
 
 @app.delete('/admin/users/{username}')
 def delete_admin_user(username: str):
@@ -412,22 +568,6 @@ def delete_admin_user(username: str):
     conn.commit()
     conn.close()
     return {'success': True, 'message': 'Usuário removido com sucesso'}
-
-# Healthcheck endpoint
-@app.get('/health')
-def healthcheck():
-    return {"status": "ok"}
-
-# IA Chat endpoint (exemplo)
-@app.post('/chat')
-async def chat_endpoint(request: Request):
-    data = await request.json()
-    message = data.get('message')
-    if not message:
-        raise HTTPException(status_code=400, detail='Mensagem é obrigatória')
-    # Aqui você chamaria a lógica do seu chatbot ou IA
-    response_message = f"Echo: {message}"
-    return {"message": response_message}
 
 # --- AUTOMAÇÕES INTELIGENTES DA IA ---
 from fastapi import BackgroundTasks
@@ -451,44 +591,270 @@ def get_automation_history(limit=50):
 
 @app.get('/admin/ia-automations')
 def ia_automations():
-    # Exemplo: buscar sugestões da IA
-    resp = notify_ai_agent('suggest_automations', {})
-    suggestions = resp.get('suggestions') if resp else []
-    return {"suggestions": suggestions or [
+    # Sugestões fixas e exemplos de automações inteligentes
+    suggestions = [
         {"title": "Sincronizar preços automaticamente", "desc": "A IA recomenda agendar sincronização diária dos preços."},
-        {"title": "Monitorar dispositivos offline", "desc": "A IA pode alertar quando um dispositivo ficar offline por mais de 10 minutos."}
-    ], "history": get_automation_history()}
+        {"title": "Monitorar dispositivos offline", "desc": "A IA pode alertar quando um dispositivo ficar offline por mais de 10 minutos."},
+        {"title": "Gerar relatório de vendas do dia", "desc": "A IA pode gerar e enviar um relatório de vendas diário automaticamente."},
+        {"title": "Verificar estoque baixo", "desc": "A IA pode analisar o estoque e alertar sobre produtos com quantidade crítica."},
+        {"title": "Analisar performance do sistema", "desc": "A IA pode monitorar tempo de resposta e sugerir melhorias de performance."},
+        {"title": "Sugerir promoções para produtos parados", "desc": "A IA pode identificar produtos com baixa saída e sugerir promoções."},
+        {"title": "Enviar alerta de falha crítica", "desc": "A IA pode notificar a equipe em caso de erro grave no sistema."}
+    ]
+    return {"suggestions": suggestions, "history": get_automation_history()}
 
 from database import export_products_to_txt, set_device_offline, set_device_online
 import threading
+import time
 
-def sync_prices_background():
-    # Exemplo: exporta produtos para TXT (mock de sincronização)
-    export_products_to_txt('produtos_sync_ia.txt')
-    notify_ai_agent('sync_success', {'info': 'Sincronização de preços concluída pela IA.'})
+# --- IA Monitoramento Proativo e Otimização do Sistema ---
+HEALTHCHECK_ENDPOINTS = [
+    '/admin/status',
+    '/admin/devices',
+    '/admin/stores',
+    '/product/all',
+    '/health'
+]
 
-def monitor_devices_background():
-    # Exemplo: verifica dispositivos offline e notifica
-    # Aqui você pode implementar lógica real de monitoramento
-    notify_ai_agent('monitor_devices', {'info': 'Monitoramento de dispositivos executado.'})
+HEALTHCHECK_LOG = os.path.join(os.path.dirname(__file__), 'logs', 'healthcheck.log')
+os.makedirs(os.path.dirname(HEALTHCHECK_LOG), exist_ok=True)
 
-@app.post('/admin/ia-automation/execute')
-def execute_automation(data: dict = Body(...), background_tasks: BackgroundTasks = None):
-    action = data.get('action')
-    params = data.get('params', {})
-    notify_ai_agent('automation_execute', {'action': action, 'params': params})
-    log_automation(action)
-    msg = f"Ação '{action}' executada."
-    if action == 'Sincronizar preços automaticamente':
-        if background_tasks:
-            background_tasks.add_task(sync_prices_background)
-        else:
-            threading.Thread(target=sync_prices_background).start()
-        msg = 'Sincronização de preços iniciada pela IA.'
-    elif action == 'Monitorar dispositivos offline':
-        if background_tasks:
-            background_tasks.add_task(monitor_devices_background)
-        else:
-            threading.Thread(target=monitor_devices_background).start()
-        msg = 'Monitoramento de dispositivos iniciado pela IA.'
-    return {"success": True, "message": msg}
+# Função para checar endpoints periodicamente
+def ia_healthcheck_loop():
+    while True:
+        results = []
+        for ep in HEALTHCHECK_ENDPOINTS:
+            try:
+                url = f'http://127.0.0.1:8000{ep}'
+                r = requests.get(url, timeout=5)
+                status = r.status_code
+                ok = status == 200
+            except Exception as e:
+                ok = False
+                status = str(e)
+            results.append({'endpoint': ep, 'ok': ok, 'status': status, 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S')})
+        # Loga resultado
+        with open(HEALTHCHECK_LOG, 'a', encoding='utf-8') as f:
+            for res in results:
+                f.write(json.dumps(res, ensure_ascii=False) + '\n')
+        # Notifica IA se algum endpoint falhar
+        for res in results:
+            if not res['ok']:
+                notify_ai_agent('healthcheck_fail', res)
+        # Executa automações autônomas da IA a cada ciclo
+        try:
+            ia_autonomous_execute_all()
+        except Exception as e:
+            log_ia_autonomous_action('autonomous_execute', 'fail', {'error': str(e)})
+        time.sleep(60)  # roda a cada 1 min
+
+def start_ia_healthcheck():
+    t = threading.Thread(target=ia_healthcheck_loop, daemon=True)
+    t.start()
+
+OPTIMIZATION_LOG = os.path.join(os.path.dirname(__file__), 'logs', 'optimization_suggestions.log')
+
+def ia_analyze_logs_and_optimize():
+    # Exemplo: IA analisa healthcheck.log e sugere melhorias
+    if not os.path.exists(HEALTHCHECK_LOG):
+        return
+    with open(HEALTHCHECK_LOG, 'r', encoding='utf-8') as f:
+        lines = f.readlines()[-100:]
+    issues = [json.loads(l) for l in lines if not json.loads(l)['ok']]
+    if issues:
+        suggestion = {
+            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S'),
+            'suggestion': f"Foram detectados {len(issues)} falhas recentes em endpoints. Recomenda-se revisar logs e infraestrutura.",
+            'issues': issues
+        }
+        with open(OPTIMIZATION_LOG, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(suggestion, ensure_ascii=False) + '\n')
+        notify_ai_agent('optimization_suggestion', suggestion)
+
+@app.get('/admin/ia-health-dashboard')
+def ia_health_dashboard():
+    # Últimos healthchecks
+    health = []
+    if os.path.exists(HEALTHCHECK_LOG):
+        with open(HEALTHCHECK_LOG, 'r', encoding='utf-8') as f:
+            health = [json.loads(l) for l in f.readlines()[-20:]]
+    # Últimas sugestões de otimização
+    optim = []
+    if os.path.exists(OPTIMIZATION_LOG):
+        with open(OPTIMIZATION_LOG, 'r', encoding='utf-8') as f:
+            optim = [json.loads(l) for l in f.readlines()[-10:]]
+    return {
+        'healthchecks': health,
+        'optimizations': optim
+    }
+
+@app.post('/admin/ia-analyze-logs')
+def ia_analyze_logs_endpoint():
+    ia_analyze_logs_and_optimize()
+    return {'success': True, 'message': 'Análise de logs e sugestão de otimização executada.'}
+
+@app.on_event('startup')
+def startup():
+    init_db()
+    # Cria usuário admin padrão se não existir nenhum
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT COUNT(*) as total FROM admin_users')
+    total = cur.fetchone()['total']
+    if total == 0:
+        cur.execute('INSERT INTO admin_users (username, password) VALUES (?, ?)', ('admin', 'admin'))
+        conn.commit()
+        import logging
+        logging.info('Usuário admin padrão criado: admin/admin')
+    conn.close()
+    notify_ai_agent('startup', {'source': 'backend', 'info': 'Backend iniciado'})
+    start_ia_healthcheck()  # Inicia monitoramento proativo
+
+# Endpoint para retornar todos os produtos (para sync do frontend)
+@app.get('/product/all')
+def get_all_products():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT barcode, name, price, promo FROM products')
+    rows = cur.fetchall()
+    conn.close()
+    # Corrige preço para reais se estiver em centavos
+    produtos = []
+    for row in rows:
+        produto = dict(row)
+        preco = produto['price']
+        # Se o preço for menor que 1 e não for zero, provavelmente está em centavos
+        if preco and preco < 1:
+            produto['price'] = round(preco * 100, 2)
+        produtos.append(produto)
+    notify_ai_agent('sync_success', {'source': 'backend', 'info': 'Produtos sincronizados'})
+    return produtos
+
+
+
+# Endpoint de login admin
+from fastapi.responses import JSONResponse
+@app.post('/admin/login')
+async def admin_login(request: Request):
+    data = await request.json()
+    username = data.get('username')
+    password = data.get('password')
+    if not username or not password:
+        return JSONResponse(status_code=400, content={"success": False, "message": "Usuário e senha obrigatórios"})
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM admin_users WHERE username = ?', (username,))
+    user = cur.fetchone()
+    conn.close()
+    if user and authenticate_admin(username, password):
+        role = user['role'] if 'role' in user.keys() else 'admin'
+        access_token = create_access_token({"sub": username, "role": role})
+        return {"success": True, "access_token": access_token, "token_type": "bearer", "role": role}
+    else:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Usuário ou senha inválidos"})
+
+# Função utilitária para checar se usuário é admin
+from jose import jwt
+SECRET_KEY = "precix_super_secret_key_2025"
+ALGORITHM = "HS256"
+def require_admin(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get('role') != 'admin':
+            raise HTTPException(status_code=403, detail='Acesso restrito a administradores')
+    except Exception:
+        raise HTTPException(status_code=401, detail='Token inválido ou expirado')
+
+@app.get('/admin/users')
+def list_admin_users(current_user: str = Depends(require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT username, role FROM admin_users')
+    users = [{"username": row['username'], "role": row['role'] if 'role' in row.keys() else 'admin'} for row in cur.fetchall()]
+    conn.close()
+    return {'users': users}
+
+@app.post('/admin/users')
+def create_admin_user_endpoint(data: dict = Body(...), current_user: str = Depends(require_admin)):
+    from database import hash_password
+    username = data.get('username')
+    password = data.get('password')
+    role = data.get('role', 'admin')
+    if not username or not password:
+        raise HTTPException(status_code=400, detail='Usuário e senha obrigatórios')
+    hashed = hash_password(password)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('INSERT INTO admin_users (username, password, role) VALUES (?, ?, ?)', (username, hashed, role))
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        if 'UNIQUE constraint failed' in str(e):
+            raise HTTPException(status_code=409, detail='Usuário já existe')
+        raise HTTPException(status_code=500, detail='Erro ao criar usuário')
+    conn.close()
+    return {'success': True, 'message': 'Usuário criado com sucesso'}
+
+@app.put('/admin/users/{username}')
+def update_admin_user(username: str, data: dict = Body(...), current_user: str = Depends(require_admin)):
+    from database import hash_password
+    password = data.get('password')
+    role = data.get('role')
+    if not password and not role:
+        raise HTTPException(status_code=400, detail='Nada para atualizar')
+    conn = get_db_connection()
+    cur = conn.cursor()
+    if password and role:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, role = ? WHERE username = ?', (hashed, role, username))
+    elif password:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ? WHERE username = ?', (hashed, username))
+    elif role:
+        cur.execute('UPDATE admin_users SET role = ? WHERE username = ?', (role, username))
+    if cur.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail='Usuário não encontrado')
+    conn.commit()
+    conn.close()
+    return {'success': True, 'message': 'Usuário atualizado com sucesso'}
+
+@app.delete('/admin/users/{username}')
+def delete_admin_user(username: str, current_user: str = Depends(require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('DELETE FROM admin_users WHERE username = ?', (username,))
+    if cur.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail='Usuário não encontrado')
+    conn.commit()
+    conn.close()
+    return {'success': True, 'message': 'Usuário removido com sucesso'}
+
+# Monitoramento de identificadores duplicados de dispositivos
+def ia_autonomous_check_duplicate_device_identifiers():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT identifier, COUNT(*) as qtd FROM devices WHERE identifier IS NOT NULL GROUP BY identifier HAVING qtd > 1')
+    duplicates = cur.fetchall()
+    for dup in duplicates:
+        log_ia_autonomous_action('duplicate_device_identifier', 'warning', {'identifier': dup['identifier'], 'count': dup['qtd']})
+        notify_ai_agent('duplicate_device_identifier', {'identifier': dup['identifier'], 'count': dup['qtd']})
+    conn.close()
+    return len(duplicates)
+
+# Atualizar função de execução das automações autônomas
+def ia_autonomous_execute_all():
+    offline_count = ia_autonomous_check_devices()
+    ia_autonomous_cleanup_logs()
+    fixed_products = ia_autonomous_fix_product_data()
+    fixed_outliers = ia_autonomous_fix_outlier_prices()
+    duplicate_ids = ia_autonomous_check_duplicate_device_identifiers()
+    log_ia_autonomous_action('autonomous_execute', 'success', {
+        'offline_devices': offline_count,
+        'fixed_products': fixed_products,
+        'fixed_outlier_prices': fixed_outliers,
+        'duplicate_device_identifiers': duplicate_ids
+    })

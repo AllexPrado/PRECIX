@@ -10,12 +10,16 @@ router = APIRouter()
 LOG_FILE = os.path.join(os.path.dirname(__file__), 'logs', 'ia_events.log')
 os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
 
-def log_ia_event(event_type, details, response=None):
+# Novo: log detalhado incluindo usuário, tempo de resposta e tipo de interação
+
+def log_ia_event(event_type, details, response=None, user=None, elapsed=None):
     entry = {
         'timestamp': datetime.now().isoformat(),
         'event_type': event_type,
         'details': details,
-        'response': response
+        'response': response,
+        'user': user,
+        'elapsed': elapsed
     }
     with open(LOG_FILE, 'a', encoding='utf-8') as f:
         f.write(json.dumps(entry, ensure_ascii=False) + '\n')
@@ -35,7 +39,6 @@ def api_get_ia_events(limit: int = 100):
 @router.get('/admin/ia-health')
 def ia_health():
     try:
-        # Tenta enviar um evento ping para a IA
         resp = notify_ai_agent('ping', {'timestamp': time.time()})
         online = bool(resp)
         return {"online": online, "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S')}
@@ -47,9 +50,12 @@ def ia_health():
 async def ia_chat(request: Request):
     data = await request.json()
     message = data.get('message')
+    user = data.get('user', 'anon')
     if not message:
         return JSONResponse({"error": "Mensagem não informada."}, status_code=400)
-    # Envia mensagem para a IA (Agno)
+    start = time.time()
     resp = notify_ai_agent('chat', {'message': message})
+    elapsed = round(time.time() - start, 3)
     reply = resp.get('reply') if resp else None
+    log_ia_event('chat', {'message': message}, resp, user=user, elapsed=elapsed)
     return {"reply": reply or "Sem resposta da IA."}
