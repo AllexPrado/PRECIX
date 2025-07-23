@@ -31,7 +31,5 @@ dist/
 *.state.xml
 *.db-journal.DS_Store
 
-Kiosk/App/*.dll
+# Ignorar completamente a pasta Kiosk (não faz parte do projeto)
 Kiosk/
-
-scripts_backup/# Backup/Scripts*.svg*.png*.jpeg*.jpg# Imagens temporárias

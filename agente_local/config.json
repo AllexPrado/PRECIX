@@ -1,0 +1,14 @@
+{
+  "equipamentos": [
+    {
+      "ip": "192.168.18.7",
+      "porta": 21,
+      "descricao": "Simulador PC Local"
+    },
+    {
+      "ip": "192.168.18.27",
+      "porta": 21,
+      "descricao": "Simulador Cel"
+    }
+  ]
+}
