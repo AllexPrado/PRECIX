@@ -49,7 +49,9 @@ def buscar_dados_precix(api_url):
     try:
         response = requests.get(api_url)
         response.raise_for_status()
-        return response.json()
+        dados = response.json()
+        logging.info(f"Dados recebidos da API: {type(dados)} - {str(dados)[:500]}")
+        return dados
     except Exception as e:
         logging.error(f"Erro ao buscar dados PRECIX: {e}")
         return None
@@ -57,11 +59,45 @@ def buscar_dados_precix(api_url):
 # Função para gerar arquivo de preços (exemplo: pricetab.txt)
 def gerar_arquivo_precos(dados, filename):
     try:
-        with open(filename, 'w', encoding='utf-8') as f:
-            for produto in dados.get('produtos', []):
-                linha = f"{produto['codigo']};{produto['descricao']};{produto['preco']}\n"
+        config = load_config()
+        sep = config.get('arquivo_separador', ';')
+        campos = config.get('arquivo_campos', ['barcode', 'name', 'price'])
+        local = config.get('arquivo_local', LOG_DIR)
+        ia_ativo = config.get('ia_ativo', False)
+        layout = config.get('arquivo_layout', 'barcode;name;price')
+        loja_codigo = config.get('loja_codigo', '')
+        loja_nome = config.get('loja_nome', '')
+        produtos = None
+        # Se a resposta for uma lista, já são os produtos
+        if isinstance(dados, list):
+            produtos = dados
+        # Se for dict, pode estar em 'produtos' ou ser um único produto
+        elif isinstance(dados, dict):
+            if 'produtos' in dados and isinstance(dados['produtos'], list):
+                produtos = dados['produtos']
+            elif 'barcode' in dados:
+                produtos = [dados]
+            else:
+                produtos = []
+        else:
+            produtos = []
+        logging.info(f"Produtos extraídos: {type(produtos)} - Quantidade: {len(produtos) if produtos else 0}")
+        if not produtos:
+            logging.warning(f"Nenhum produto encontrado para gerar arquivo de preços. Tipo recebido: {type(dados)}. Conteúdo: {str(dados)[:500]}")
+            return
+        abs_path = os.path.join(local, 'pricetab.txt')
+        with open(abs_path, 'w', encoding='utf-8') as f:
+            for produto in produtos:
+                if not isinstance(produto, dict):
+                    logging.error(f"Produto inválido (não é dict): {type(produto)} - {produto}")
+                    continue
+                # Usa layout customizado se definido
+                campos_layout = layout.split(sep)
+                linha = sep.join([str(produto.get(c, '')) for c in campos_layout]) + '\n'
                 f.write(linha)
-        logging.info(f"Arquivo de preços gerado: {filename}")
+        logging.info(f"Arquivo de preços gerado: {abs_path} | Loja: {loja_codigo} - {loja_nome} | Layout: {layout}")
+        if ia_ativo:
+            logging.info("Agno IA: Sugestão - Layout OK, campos exportados: " + ', '.join(campos))
     except Exception as e:
         logging.error(f"Erro ao gerar arquivo de preços: {e}")
 
@@ -112,7 +148,10 @@ def main():
     while True:
         dados = buscar_dados_precix(api_url)
         if dados:
-            gerar_arquivo_precos(dados, 'pricetab.txt')
+            try:
+                gerar_arquivo_precos(dados, os.path.join(LOG_DIR, 'pricetab.txt'))
+            except Exception as e:
+                logging.error(f"Erro ao chamar gerar_arquivo_precos: {e}")
             for equipamento in config.get('equipamentos', []):
                 status = monitorar_equipamento(equipamento['ip'])
                 ia_supervisao(equipamento, status)
@@ -122,7 +161,7 @@ def main():
                         int(equipamento['porta']),
                         usuario,
                         senha,
-                        'pricetab.txt',
+                        os.path.join(LOG_DIR, 'pricetab.txt'),
                         'pricetab.txt'
                     )
                     if enviado:

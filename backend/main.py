@@ -858,3 +858,7 @@ def ia_autonomous_execute_all():
         'fixed_outlier_prices': fixed_outliers,
         'duplicate_device_identifiers': duplicate_ids
     })
+
+@app.get('/api/produtos')
+def api_produtos():
+    return get_all_products()
