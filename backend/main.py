@@ -862,3 +862,7 @@ def ia_autonomous_execute_all():
 @app.get('/api/produtos')
 def api_produtos():
     return get_all_products()
+
+@app.get('/api/ping')
+def api_ping():
+    return {"status": "ok"}
