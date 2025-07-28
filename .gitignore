@@ -33,3 +33,11 @@ dist/
 
 # Ignorar completamente a pasta Kiosk (não faz parte do projeto)
 Kiosk/
+
+# PyInstaller/Build
+*.spec
+dist/
+build/
+*.exe
+*.msi
+*.iss

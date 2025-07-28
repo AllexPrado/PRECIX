@@ -19,10 +19,12 @@ import os
 from datetime import datetime
 
 # Configuração inicial
-CONFIG_PATH = 'config.json'
+USER_CONFIG_DIR = os.path.join(os.environ.get('LOCALAPPDATA', os.getcwd()), 'AgentePRECIX')
+os.makedirs(USER_CONFIG_DIR, exist_ok=True)
+CONFIG_PATH = os.path.join(USER_CONFIG_DIR, 'config.json')
 
 # Caminho seguro para log
-LOG_DIR = os.path.join(os.environ.get('LOCALAPPDATA', os.getcwd()), 'AgentePRECIX')
+LOG_DIR = USER_CONFIG_DIR
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG_PATH = os.path.join(LOG_DIR, 'agente.log')
 
@@ -33,6 +35,16 @@ def load_config():
         with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception:
+        # Se não existir, copia config.json padrão do diretório do programa
+        default_path = os.path.join(os.path.dirname(__file__), 'config.json')
+        if os.path.exists(default_path):
+            try:
+                import shutil
+                shutil.copy(default_path, CONFIG_PATH)
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                pass
         return {"equipamentos": []}
 
 # Função para cadastrar novo equipamento
@@ -81,9 +93,15 @@ def gerar_arquivo_precos(dados, filename):
                 produtos = []
         else:
             produtos = []
+        # Correção: garantir layout e campos válidos
+        if not layout:
+            layout = 'barcode;name;price'
+        if not campos or not isinstance(campos, list):
+            campos = ['barcode', 'name', 'price']
+        campos_layout = layout.split(sep)
         logging.info(f"Produtos extraídos: {type(produtos)} - Quantidade: {len(produtos) if produtos else 0}")
-        if not produtos:
-            logging.warning(f"Nenhum produto encontrado para gerar arquivo de preços. Tipo recebido: {type(dados)}. Conteúdo: {str(dados)[:500]}")
+        if not produtos or len(produtos) == 0:
+            logging.error(f"Nenhum produto válido para gerar arquivo de preços. Dados recebidos: {str(dados)[:500]}")
             return
         abs_path = os.path.join(local, 'pricetab.txt')
         with open(abs_path, 'w', encoding='utf-8') as f:
@@ -91,8 +109,6 @@ def gerar_arquivo_precos(dados, filename):
                 if not isinstance(produto, dict):
                     logging.error(f"Produto inválido (não é dict): {type(produto)} - {produto}")
                     continue
-                # Usa layout customizado se definido
-                campos_layout = layout.split(sep)
                 linha = sep.join([str(produto.get(c, '')) for c in campos_layout]) + '\n'
                 f.write(linha)
         logging.info(f"Arquivo de preços gerado: {abs_path} | Loja: {loja_codigo} - {loja_nome} | Layout: {layout}")
@@ -116,15 +132,27 @@ def enviar_arquivo_ftp(ip, porta, usuario, senha, localfile, remotefile):
         return False
 
 # Função para monitorar equipamentos (ping)
-def monitorar_equipamento(ip):
+def monitorar_equipamento(ip, porta):
     try:
         socket.setdefaulttimeout(2)
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        result = s.connect_ex((ip, 80))
+        result = s.connect_ex((ip, porta))
         s.close()
-        return result == 0
+        if result == 0:
+            return 'OK'
+        # Se TCP falhar, tenta ICMP (ping)
+        import platform, subprocess
+        param = '-n' if platform.system().lower()=='windows' else '-c'
+        command = ['ping', param, '1', ip]
+        try:
+            output = subprocess.check_output(command, stderr=subprocess.STDOUT, universal_newlines=True)
+            if 'TTL=' in output or 'ttl=' in output:
+                return 'OK (ping)'
+        except Exception:
+            pass
+        return 'Desconhecido'
     except Exception:
-        return False
+        return 'Desconhecido'
 
 # Função de IA embarcada (estrutura inicial)
 def ia_supervisao(equipamento, status):
@@ -137,36 +165,108 @@ def ia_supervisao(equipamento, status):
     else:
         logging.info(f"Equipamento OK: {equipamento['ip']}:{equipamento['porta']}")
 
-# Função principal expandida
-def main():
-    logging.basicConfig(filename=LOG_PATH, level=logging.INFO)
-    print("Agente Local PRECIX iniciado.")
+# Função para forçar atualização manual
+def forcar_atualizacao_manual():
+    """Força a geração e envio do pricetab.txt para todos os equipamentos."""
     config = load_config()
     api_url = config.get('api_url', 'http://localhost:8000/api/produtos')
     usuario = config.get('ftp_usuario', 'user')
     senha = config.get('ftp_senha', 'pass')
+    dados = buscar_dados_precix(api_url)
+    historico = []
+    if dados:
+        try:
+            gerar_arquivo_precos(dados, os.path.join(LOG_DIR, 'pricetab.txt'))
+        except Exception as e:
+            logging.error(f"Erro ao chamar gerar_arquivo_precos (manual): {e}")
+        equipamentos = config.get('equipamentos', [])
+        for equipamento in equipamentos:
+            status = monitorar_equipamento(equipamento['ip'], int(equipamento['porta']))
+            equipamento['status'] = status
+            ia_supervisao(equipamento, status)
+            if status == 'OK' or status == 'OK (ping)':
+                enviado = enviar_arquivo_ftp(
+                    equipamento['ip'],
+                    int(equipamento['porta']),
+                    usuario,
+                    senha,
+                    os.path.join(LOG_DIR, 'pricetab.txt'),
+                    'pricetab.txt'
+                )
+                if enviado:
+                    historico.append(f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Atualização enviada para {equipamento['ip']}:{equipamento['porta']} [{status}]")
+                    logging.info(f"Atualização enviada para {equipamento['ip']}:{equipamento['porta']} [{status}]")
+                else:
+                    historico.append(f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Falha ao enviar para {equipamento['ip']}:{equipamento['porta']} [{status}]")
+            else:
+                historico.append(f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Equipamento offline {equipamento['ip']}:{equipamento['porta']} [{status}]")
+        # Salva status e histórico no config.json
+        config['equipamentos'] = equipamentos
+        config['historico_atualizacoes'] = '\n'.join(historico)
+        config['ultima_atualizacao'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2)
+    else:
+        logging.error("Falha ao buscar dados PRECIX para atualização manual.")
+
+# Função principal expandida
+def main():
+    logging.basicConfig(filename=LOG_PATH, level=logging.INFO)
+    print("Agente Local PRECIX iniciado.")
     while True:
-        dados = buscar_dados_precix(api_url)
-        if dados:
+        config = load_config()
+        intervalo = int(config.get('automacao_intervalo', 1))  # em minutos
+        forcar = config.get('forcar_atualizacao', False)
+        if forcar:
             try:
-                gerar_arquivo_precos(dados, os.path.join(LOG_DIR, 'pricetab.txt'))
+                forcar_atualizacao_manual()
+                logging.info("Atualização manual forçada executada com sucesso.")
             except Exception as e:
-                logging.error(f"Erro ao chamar gerar_arquivo_precos: {e}")
-            for equipamento in config.get('equipamentos', []):
-                status = monitorar_equipamento(equipamento['ip'])
-                ia_supervisao(equipamento, status)
-                if status:
-                    enviado = enviar_arquivo_ftp(
-                        equipamento['ip'],
-                        int(equipamento['porta']),
-                        usuario,
-                        senha,
-                        os.path.join(LOG_DIR, 'pricetab.txt'),
-                        'pricetab.txt'
-                    )
-                    if enviado:
-                        logging.info(f"Atualização enviada para {equipamento['ip']}:{equipamento['porta']}")
-        time.sleep(60)
+                logging.error(f"Erro ao executar atualização manual forçada: {e}")
+            # Sempre zera a flag, mesmo em caso de erro
+            config['forcar_atualizacao'] = False
+            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2)
+        else:
+            api_url = config.get('api_url', 'http://192.168.18.7:8000/product/all')
+            usuario = config.get('ftp_usuario', 'user')
+            senha = config.get('ftp_senha', 'pass')
+            dados = buscar_dados_precix(api_url)
+            if dados:
+                try:
+                    gerar_arquivo_precos(dados, os.path.join(LOG_DIR, 'pricetab.txt'))
+                except Exception as e:
+                    logging.error(f"Erro ao chamar gerar_arquivo_precos: {e}")
+                historico = []
+                equipamentos = config.get('equipamentos', [])
+                for equipamento in equipamentos:
+                    status = monitorar_equipamento(equipamento['ip'], int(equipamento['porta']))
+                    equipamento['status'] = status
+                    ia_supervisao(equipamento, status)
+                    if status == 'OK' or status == 'OK (ping)':
+                        enviado = enviar_arquivo_ftp(
+                            equipamento['ip'],
+                            int(equipamento['porta']),
+                            usuario,
+                            senha,
+                            os.path.join(LOG_DIR, 'pricetab.txt'),
+                            'pricetab.txt'
+                        )
+                        if enviado:
+                            historico.append(f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Atualização enviada para {equipamento['ip']}:{equipamento['porta']} [{status}]")
+                            logging.info(f"Atualização enviada para {equipamento['ip']}:{equipamento['porta']} [{status}]")
+                        else:
+                            historico.append(f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Falha ao enviar para {equipamento['ip']}:{equipamento['porta']} [{status}]")
+                    else:
+                        historico.append(f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Equipamento offline {equipamento['ip']}:{equipamento['porta']} [{status}]")
+                # Salva status e histórico no config.json
+                config['equipamentos'] = equipamentos
+                config['historico_atualizacoes'] = '\n'.join(historico)
+                config['ultima_atualizacao'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+                with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, indent=2)
+        time.sleep(intervalo * 60)
 
 if __name__ == "__main__":
+    # Garante que só roda como serviço
     main()

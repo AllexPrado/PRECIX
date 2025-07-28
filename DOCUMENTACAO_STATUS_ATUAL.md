@@ -5,14 +5,14 @@
 ### Agente Local
 - Interface gráfica (PyQt5) com abas para Lojas, Equipamentos, Arquivo de Preços, Integração PRECIX, Envio, Monitoramento, Logs e Automação.
 - Cadastro, edição e remoção de lojas e equipamentos legados.
-- Persistência robusta em `config.json` (tratamento de arquivos corrompidos/vazios).
-- Geração de arquivo de preços customizável.
-- Teste de envio FTP/TCP/local.
+- Persistência robusta em `config.json` (tratamento de arquivos corrompidos ou vazios).
+- Geração de arquivo de preços customizável e validada.
+- Teste de envio FTP, TCP e local.
 - Monitoramento de status dos equipamentos, histórico e alertas.
-- Visualização/exportação de logs.
+- Visualização e exportação de logs.
 - Automação de atualização manual e por intervalo.
-- Correção de crash ao cadastrar loja (tratamento de exceção).
-- Instalador Inno Setup revisado.
+- Correção de falha ao cadastrar loja (tratamento de exceção).
+- Instalador Inno Setup revisado e funcional.
 
 ### Agente IA
 - Estrutura inicial embarcada no agente local para monitoramento, sugestão de correções e automação.
@@ -46,10 +46,10 @@
 
 - **Agente Local:** 100% funcional, interface robusta, persistência corrigida, pronto para testes operacionais.
 - **Agente IA:** Estrutura inicial embarcada, integração básica, pronto para expandir automações e correções.
-- **Agno:** IA integrada ao agente local, pronto para expandir sugestões e automações.
+- **Agno:** IA integrada ao agente local, pronta para expandir sugestões e automações.
 - **Admin:** Painel funcional, pronto para expandir uploads, relatórios e integrações.
-- **Backend:** API funcional, exportação de arquivos, pronto para expandir endpoints e monitoramento.
-- **Frontend:** PWA funcional, pronto para expandir consultas, relatórios e integração IA.
+- **Backend:** API funcional, exportação de arquivos, pronta para expandir endpoints e monitoramento.
+- **Frontend:** PWA funcional, pronta para expandir consultas, relatórios e integração IA.
 
 ---
 
@@ -82,7 +82,7 @@
 
 ---
 
-## Orientação para Amanhã
+## Orientações para os Próximos Testes
 
 1. Testar o agente local em ambiente real, validando todos os cadastros, envios e automações.
 2. Validar integração do agente local com backend e IA.
@@ -95,4 +95,4 @@
 
 ---
 
-**Status atualizado em 24/07/2025.**
+**Status atualizado em 27/07/2025.**

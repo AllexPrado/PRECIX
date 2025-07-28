@@ -1,11 +1,15 @@
 """
 Interface gráfica (GUI) do Agente Local PRECIX
-Permite cadastro, edição e remoção de equipamentos legados
+Este arquivo deve ser executado apenas para interface, nunca importar ou executar loops do serviço.
 """
 
 import sys
-import json
 import os
+import json
+import shutil
+import requests
+import ftplib
+import socket
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QTableWidget, QTableWidgetItem, QLineEdit, QLabel, QMessageBox,
@@ -14,8 +18,32 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtCore import Qt
 
-CONFIG_PATH = 'config.json'
+CONFIG_PATH = os.path.join(os.environ.get('LOCALAPPDATA', os.getcwd()), 'AgentePRECIX', 'config.json')
+os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
 
+# Função para carregar configuração
+
+def load_config():
+    try:
+        if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        else:
+            # Se não existir, tenta copiar config.json padrão do diretório do app (dist ou raiz do instalador)
+            possible_paths = [
+                os.path.join(os.path.dirname(sys.argv[0]), 'config.json'),
+                os.path.join(os.path.dirname(__file__), 'config.json')
+            ]
+            for default_path in possible_paths:
+                if os.path.exists(default_path):
+                    import shutil
+                    shutil.copy(default_path, CONFIG_PATH)
+                    with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                        return json.load(f)
+            return {"lojas": [], "equipamentos": []}
+    except Exception:
+        return {"lojas": [], "equipamentos": []}
+        
 class LojaWidget(QWidget):
     def __init__(self):
         super().__init__()
@@ -69,18 +97,19 @@ class LojaWidget(QWidget):
             QMessageBox.warning(self, 'Erro', 'Preencha todos os campos!')
             return
         try:
-            # Verifica se o arquivo existe e tem conteúdo válido
-            if not os.path.exists(CONFIG_PATH) or os.path.getsize(CONFIG_PATH) == 0:
-                config = {"lojas": []}
-            else:
+            # Carrega todo o config.json existente
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
                 with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
                     try:
                         config = json.load(f)
                     except Exception:
-                        config = {"lojas": []}
+                        config = {"lojas": [], "equipamentos": []}
+            else:
+                config = {"lojas": [], "equipamentos": []}
             if "lojas" not in config:
                 config["lojas"] = []
             config["lojas"].append({"codigo": codigo, "nome": nome})
+            # Garante que outros campos não sejam perdidos
             with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2)
             self.load_lojas()
@@ -168,8 +197,11 @@ class ConfiguracaoArquivoWidget(QWidget):
 
     def carregar_config(self):
         try:
-            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-                config = json.load(f)
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            else:
+                config = {"lojas": [], "equipamentos": []}
             self.sep_combo.setCurrentText(config.get('arquivo_separador', ';'))
             self.sep_custom.setText(config.get('arquivo_separador_custom', ''))
             self.path_input.setText(config.get('arquivo_local', ''))
@@ -195,11 +227,15 @@ class ConfiguracaoArquivoWidget(QWidget):
             {'barcode': '123', 'name': 'Produto A', 'price': 10.5},
             {'barcode': '456', 'name': 'Produto B', 'price': 20.0}
         ]
-        with open(filename, 'w', encoding='utf-8') as f:
-            for p in produtos:
-                linha = sep.join([str(p.get(c, '')) for c in campos]) + '\n'
-                f.write(linha)
-        QMessageBox.information(self, 'Arquivo gerado', f'Arquivo de teste gerado em: {filename}')
+        try:
+            with open(filename, 'w', encoding='utf-8') as f:
+                for p in produtos:
+                    linha = sep.join([str(p.get(c, '')) for c in campos]) + '\n'
+                    f.write(linha)
+            QMessageBox.information(self, 'Arquivo gerado', f'Arquivo de teste gerado em: {filename}')
+        except Exception as e:
+            QMessageBox.critical(self, 'Erro', f'Falha ao gerar arquivo: {str(e)}')
+        # Não altera config.json!
         if self.ia_cb.isChecked():
             self.ia_output.setText('Agno IA: Sugestão - Layout OK, campos exportados: ' + ', '.join(campos))
         else:
@@ -226,10 +262,13 @@ class ConfiguracaoArquivoWidget(QWidget):
         ia_ativo = self.ia_cb.isChecked()
         layout = self.layout_input.text().strip() or 'barcode;name;price'
         try:
-            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-                config = json.load(f)
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            else:
+                config = {"lojas": [], "equipamentos": []}
         except Exception:
-            config = {}
+            config = {"lojas": [], "equipamentos": []}
         config['arquivo_separador'] = sep
         config['arquivo_separador_custom'] = self.sep_custom.text().strip()
         config['arquivo_campos'] = campos
@@ -290,8 +329,11 @@ class IntegracaoPrecixWidget(QWidget):
 
     def carregar_config(self):
         try:
-            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-                config = json.load(f)
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            else:
+                config = {"lojas": [], "equipamentos": []}
             self.porta_input.setText(str(config.get('porta_local', '8000')))
             self.timeout_input.setText(str(config.get('timeout', '10')))
             self.modo_combo.setCurrentText(config.get('modo_operacao', 'Produção'))
@@ -307,7 +349,6 @@ class IntegracaoPrecixWidget(QWidget):
         timeout = int(self.timeout_input.text().strip() or '10')
         modo = self.modo_combo.currentText()
         try:
-            # O endpoint real não é exibido, apenas testado internamente
             url = f'http://localhost:{porta}/api/ping'
             r = requests.get(url, timeout=timeout)
             if r.status_code == 200:
@@ -316,15 +357,16 @@ class IntegracaoPrecixWidget(QWidget):
                 self.status_output.setText(f'Erro: {r.status_code}')
         except Exception as e:
             self.status_output.setText(f'Falha: {str(e)[:60]}')
-        # Atualiza última sincronização
         from datetime import datetime
         self.sync_output.setText(datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
-        # Salva status no config
         try:
-            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-                config = json.load(f)
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            else:
+                config = {"lojas": [], "equipamentos": []}
         except Exception:
-            config = {}
+            config = {"lojas": [], "equipamentos": []}
         config['porta_local'] = porta
         config['timeout'] = timeout
         config['modo_operacao'] = modo
@@ -376,8 +418,11 @@ class EnvioWidget(QWidget):
 
     def carregar_config(self):
         try:
-            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-                config = json.load(f)
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            else:
+                config = {"lojas": [], "equipamentos": []}
             self.metodo_combo.setCurrentText(config.get('envio_metodo', 'FTP'))
             self.host_input.setText(config.get('envio_host', ''))
             self.porta_input.setText(str(config.get('envio_porta', '21')))
@@ -411,12 +456,14 @@ class EnvioWidget(QWidget):
                 self.status_output.setText('Local: Nenhum teste necessário')
         except Exception as e:
             self.status_output.setText(f'Falha: {str(e)[:60]}')
-        # Salva config
         try:
-            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-                config = json.load(f)
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            else:
+                config = {"lojas": [], "equipamentos": []}
         except Exception:
-            config = {}
+            config = {"lojas": [], "equipamentos": []}
         config['envio_metodo'] = metodo
         config['envio_host'] = host
         config['envio_porta'] = porta
@@ -535,26 +582,49 @@ class AutomacaoWidget(QWidget):
 
     def carregar_config(self):
         try:
-            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-                config = json.load(f)
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            else:
+                config = {"lojas": [], "equipamentos": []}
             self.intervalo_input.setText(str(config.get('automacao_intervalo', '60')))
         except Exception:
             pass
 
     def forcar_atualizacao(self):
-        # Simulação de atualização manual
-        self.status_output.setText('Atualização manual executada!')
+        # Marca flag no config.json para forçar atualização real
         from datetime import datetime
         try:
-            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-                config = json.load(f)
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            else:
+                config = {"lojas": [], "equipamentos": []}
         except Exception:
-            config = {}
-        config['automacao_intervalo'] = self.intervalo_input.text().strip() or '60'
-        config['automacao_status'] = self.status_output.text()
+            config = {"lojas": [], "equipamentos": []}
+        config['forcar_atualizacao'] = True
+        config['automacao_status'] = 'Solicitada atualização manual'
         config['automacao_ultima'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2)
+        self.status_output.setText('Atualização manual solicitada! Aguarde execução pelo serviço.')
+
+    def atualizar_status(self):
+        try:
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            else:
+                config = {}
+            status = config.get('automacao_status', '-')
+            ultima = config.get('automacao_ultima', '-')
+            self.status_output.setText(f'Status: {status}\nÚltima: {ultima}')
+        except Exception:
+            self.status_output.setText('Status: -')
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.atualizar_status()
 
 class EquipamentosGUI(QWidget):
     def __init__(self):
@@ -574,8 +644,30 @@ class EquipamentosGUI(QWidget):
         self.table = QTableWidget()
         self.equip_layout.addWidget(self.table)
         self.load_equipamentos()
-        self.add_form()
-        self.add_buttons()
+        # Formulário e botões só na aba de equipamentos
+        self.form_layout = QHBoxLayout()
+        self.ip_input = QLineEdit()
+        self.ip_input.setPlaceholderText('IP')
+        self.porta_input = QLineEdit()
+        self.porta_input.setPlaceholderText('Porta')
+        self.desc_input = QLineEdit()
+        self.desc_input.setPlaceholderText('Descrição')
+        self.loja_input = QLineEdit()
+        self.loja_input.setPlaceholderText('Código da loja')
+        self.form_layout.addWidget(QLabel('Novo Equipamento:'))
+        self.form_layout.addWidget(self.ip_input)
+        self.form_layout.addWidget(self.porta_input)
+        self.form_layout.addWidget(self.desc_input)
+        self.form_layout.addWidget(self.loja_input)
+        self.equip_layout.addLayout(self.form_layout)
+        self.btn_layout = QHBoxLayout()
+        self.add_btn = QPushButton('Adicionar')
+        self.add_btn.clicked.connect(self.adicionar_equipamento)
+        self.btn_layout.addWidget(self.add_btn)
+        self.refresh_btn = QPushButton('Atualizar')
+        self.refresh_btn.clicked.connect(self.load_equipamentos)
+        self.btn_layout.addWidget(self.refresh_btn)
+        self.equip_layout.addLayout(self.btn_layout)
         self.tabs.addTab(self.equip_tab, 'Equipamentos')
         # Aba de configuração de arquivo
         self.config_tab = ConfiguracaoArquivoWidget()
@@ -604,39 +696,13 @@ class EquipamentosGUI(QWidget):
         except Exception:
             equipamentos = []
         self.table.setRowCount(len(equipamentos))
-        self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels(['IP', 'Porta', 'Descrição'])
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(['IP', 'Porta', 'Descrição', 'Código da Loja'])
         for i, eq in enumerate(equipamentos):
             self.table.setItem(i, 0, QTableWidgetItem(str(eq['ip'])))
             self.table.setItem(i, 1, QTableWidgetItem(str(eq['porta'])))
             self.table.setItem(i, 2, QTableWidgetItem(eq['descricao']))
-
-    def add_form(self):
-        self.form_layout = QHBoxLayout()
-        self.ip_input = QLineEdit()
-        self.ip_input.setPlaceholderText('IP')
-        self.porta_input = QLineEdit()
-        self.porta_input.setPlaceholderText('Porta')
-        self.desc_input = QLineEdit()
-        self.desc_input.setPlaceholderText('Descrição')
-        self.loja_input = QLineEdit()
-        self.loja_input.setPlaceholderText('Código da loja')
-        self.form_layout.addWidget(QLabel('Novo Equipamento:'))
-        self.form_layout.addWidget(self.ip_input)
-        self.form_layout.addWidget(self.porta_input)
-        self.form_layout.addWidget(self.desc_input)
-        self.form_layout.addWidget(self.loja_input)
-        self.layout.addLayout(self.form_layout)
-
-    def add_buttons(self):
-        self.btn_layout = QHBoxLayout()
-        self.add_btn = QPushButton('Adicionar')
-        self.add_btn.clicked.connect(self.adicionar_equipamento)
-        self.btn_layout.addWidget(self.add_btn)
-        self.refresh_btn = QPushButton('Atualizar')
-        self.refresh_btn.clicked.connect(self.load_equipamentos)
-        self.btn_layout.addWidget(self.refresh_btn)
-        self.layout.addLayout(self.btn_layout)
+            self.table.setItem(i, 3, QTableWidgetItem(str(eq.get('loja', ''))))
 
     def adicionar_equipamento(self):
         ip = self.ip_input.text().strip()
@@ -647,24 +713,32 @@ class EquipamentosGUI(QWidget):
             QMessageBox.warning(self, 'Erro', 'Preencha todos os campos!')
             return
         try:
-            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-        except Exception:
-            config = {"equipamentos": []}
-        if "equipamentos" not in config:
-            config["equipamentos"] = []
-        config["equipamentos"].append({"ip": ip, "porta": int(porta), "descricao": desc, "loja": loja})
-        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2)
-        self.load_equipamentos()
-        self.ip_input.clear()
-        self.porta_input.clear()
-        self.desc_input.clear()
-        self.loja_input.clear()
-        QMessageBox.information(self, 'Sucesso', 'Equipamento cadastrado!')
+            # Carrega todo o config.json existente
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    try:
+                        config = json.load(f)
+                    except Exception:
+                        config = {"lojas": [], "equipamentos": []}
+            else:
+                config = {"lojas": [], "equipamentos": []}
+            if "equipamentos" not in config:
+                config["equipamentos"] = []
+            config["equipamentos"].append({"ip": ip, "porta": int(porta), "descricao": desc, "loja": loja})
+            # Garante que outros campos não sejam perdidos
+            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2)
+            self.load_equipamentos()
+            self.ip_input.clear()
+            self.porta_input.clear()
+            self.desc_input.clear()
+            self.loja_input.clear()
+            QMessageBox.information(self, 'Sucesso', 'Equipamento cadastrado!')
+        except Exception as e:
+            QMessageBox.critical(self, 'Erro', f'Falha ao cadastrar equipamento: {str(e)}')
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app = QApplication(sys.argv)
-    gui = EquipamentosGUI()
-    gui.show()
+    window = EquipamentosGUI()
+    window.show()
     sys.exit(app.exec_())
