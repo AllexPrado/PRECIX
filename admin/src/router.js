@@ -3,6 +3,7 @@ import Login from './views/Login.vue'
 import Dashboard from './views/Dashboard.vue'
 import BannerManager from './views/BannerManager.vue'
 import IALogView from './views/IALogView.vue'
+import AgentManager from './views/AgentManager.vue'
 
 import StoreManager from './views/StoreManager.vue'
 import DeviceManager from './views/DeviceManager.vue'
@@ -18,7 +19,8 @@ const routes = [
   { path: '/stores', component: StoreManager },
   { path: '/devices', component: DeviceManager },
   { path: '/audit', component: AuditLog },
-  { path: '/users', component: UserManager } // nova rota para gestão de usuários
+  { path: '/users', component: UserManager }, // nova rota para gestão de usuários
+  { path: '/agents', component: AgentManager } // nova rota para agentes locais
 ]
 
 const router = createRouter({

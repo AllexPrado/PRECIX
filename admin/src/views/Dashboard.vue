@@ -22,6 +22,7 @@
           <button @click="goToAuditLog" class="admin-btn">Logs de Auditoria</button>
           <button @click="goToIALogView" class="admin-btn">Logs e Eventos da IA</button>
           <button @click="goToUserManager" class="admin-btn">Usuários Administradores</button>
+          <button @click="goToAgentManager" class="admin-btn">Gerenciar Agentes Locais</button>
         </section>
         <section class="backup-restore">
           <h3>Backup/Restore do Banco de Dados</h3>
@@ -79,6 +80,9 @@ function goToIALogView() {
 }
 function goToUserManager() {
   router.push('/users')
+}
+function goToAgentManager() {
+  router.push('/agents')
 }
 function logout() {
   removeToken()

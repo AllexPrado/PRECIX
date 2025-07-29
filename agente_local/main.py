@@ -16,6 +16,7 @@ import requests
 import ftplib
 import socket
 import os
+import uuid
 from datetime import datetime
 
 # Configuração inicial
@@ -209,6 +210,22 @@ def forcar_atualizacao_manual():
     else:
         logging.error("Falha ao buscar dados PRECIX para atualização manual.")
 
+# Função para enviar status do agente local para o backend PRECIX
+def enviar_status_agente():
+    """Envia status do agente local para o backend PRECIX."""
+    config = load_config()
+    backend_url = config.get('backend_url', 'http://localhost:8000/admin/agents/status')
+    agent_id = config.get('agente_id') or str(uuid.getnode())
+    status_payload = {
+        "id": agent_id,
+        "status": "online",
+        "last_update": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+    try:
+        requests.post(backend_url, json=status_payload, timeout=5)
+    except Exception as e:
+        logging.error(f"Erro ao enviar status do agente local: {e}")
+
 # Função principal expandida
 def main():
     logging.basicConfig(filename=LOG_PATH, level=logging.INFO)
@@ -217,6 +234,7 @@ def main():
         config = load_config()
         intervalo = int(config.get('automacao_intervalo', 1))  # em minutos
         forcar = config.get('forcar_atualizacao', False)
+        enviar_status_agente()  # Envia status a cada ciclo
         if forcar:
             try:
                 forcar_atualizacao_manual()

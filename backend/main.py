@@ -866,3 +866,52 @@ def api_produtos():
 @app.get('/api/ping')
 def api_ping():
     return {"status": "ok"}
+
+from fastapi import BackgroundTasks
+
+# --- Gerenciamento Centralizado dos Agentes Locais ---
+AGENTS_STATUS = {}
+AGENTS_LOGS = {}
+
+@app.post('/admin/agents/status')
+def update_agent_status(data: dict = Body(...)):
+    agent_id = data.get('agent_id')
+    status = data.get('status')
+    info = data.get('info', {})
+    if not agent_id or not status:
+        raise HTTPException(status_code=400, detail='agent_id e status obrigatórios')
+    AGENTS_STATUS[agent_id] = {'status': status, 'info': info, 'timestamp': datetime.now().isoformat()}
+    return {'success': True}
+
+@app.post('/admin/agents/logs')
+def update_agent_logs(data: dict = Body(...)):
+    agent_id = data.get('agent_id')
+    logs = data.get('logs', [])
+    if not agent_id:
+        raise HTTPException(status_code=400, detail='agent_id obrigatório')
+    if agent_id not in AGENTS_LOGS:
+        AGENTS_LOGS[agent_id] = []
+    AGENTS_LOGS[agent_id].extend(logs)
+    return {'success': True}
+
+@app.get('/admin/agents')
+def list_agents():
+    # Lista todos os agentes conhecidos e seus status
+    return [{'agent_id': k, **v} for k, v in AGENTS_STATUS.items()]
+
+@app.get('/admin/agents/{agent_id}/logs')
+def get_agent_logs(agent_id: str):
+    return {'logs': AGENTS_LOGS.get(agent_id, [])}
+
+@app.post('/admin/agents/{agent_id}/command')
+def send_agent_command(agent_id: str, data: dict = Body(...)):
+    # Apenas registra o comando para ser buscado pelo agente local
+    cmd = data.get('command')
+    if not cmd:
+        raise HTTPException(status_code=400, detail='command obrigatório')
+    # Aqui pode-se implementar fila de comandos, integração websocket, etc.
+    # Por enquanto, apenas loga o comando recebido
+    if agent_id not in AGENTS_LOGS:
+        AGENTS_LOGS[agent_id] = []
+    AGENTS_LOGS[agent_id].append({'type': 'command', 'command': cmd, 'timestamp': datetime.now().isoformat()})
+    return {'success': True, 'message': f'Comando {cmd} registrado para o agente {agent_id}'}
