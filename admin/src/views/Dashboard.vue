@@ -20,7 +20,7 @@
           <button @click="goToStoreManager" class="admin-btn">Gerenciar Lojas</button>
           <button @click="goToDeviceManager" class="admin-btn">Gerenciar Equipamentos</button>
           <button @click="goToAuditLog" class="admin-btn">Logs de Auditoria</button>
-          <button @click="goToIALogView" class="admin-btn">Logs e Eventos da IA</button>
+          <button @click="goToIALogView" class="admin-btn ia-central-btn">Central de IAs</button>
           <button @click="goToUserManager" class="admin-btn">Usuários Administradores</button>
           <button @click="goToAgentManager" class="admin-btn">Gerenciar Agentes Locais</button>
         </section>
@@ -236,6 +236,20 @@ main {
 }
 .admin-btn:hover {
   background: #e65c00;
+}
+.ia-central-btn {
+  background: #007bff;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 14px 28px;
+  font-weight: 700;
+  font-size: 1.15rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.ia-central-btn:hover {
+  background: #0056b3;
 }
 .backup-restore {
   background: #fff7ef;

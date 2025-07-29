@@ -13,6 +13,7 @@
             <tr>
               <th>ID</th>
               <th>Status</th>
+              <th>Loja</th>
               <th>Última Atualização</th>
               <th>Ações</th>
             </tr>
@@ -26,12 +27,26 @@
                 </span>
               </td>
               <td>
+                <span v-if="agent.loja_codigo || agent.loja_nome">
+                  <b v-if="agent.loja_codigo">{{ agent.loja_codigo }}</b>
+                  <span v-if="agent.loja_nome"> - {{ agent.loja_nome }}</span>
+                </span>
+                <span v-else>-</span>
+              </td>
+              <td>
                 <span v-if="agent.last_update">{{ agent.last_update }}</span>
                 <span v-else>Nunca conectado</span>
               </td>
-              <td>
+              <td class="actions-cell">
                 <button @click="viewLogs(agent.id)">Ver Logs</button>
                 <button @click="sendCommand(agent.id)">Enviar Comando</button>
+                <div class="menu-wrapper">
+                  <button class="menu-btn" @click="toggleMenu(agent.id)">⋯</button>
+                  <div v-if="openMenuId === agent.id" class="menu-popover">
+                    <button @click="editAgent(agent)">Editar</button>
+                    <button @click="deleteAgent(agent.id)">Excluir</button>
+                  </div>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -64,6 +79,7 @@ export default {
     const selectedAgentId = ref(null)
     const showCommandDialog = ref(false)
     const commandText = ref('')
+    const openMenuId = ref(null)
 
     const fetchAgents = async () => {
       loading.value = true
@@ -97,6 +113,29 @@ export default {
       commandText.value = ''
     }
 
+    // Excluir agente
+    const deleteAgent = async (agentId) => {
+      openMenuId.value = null
+      if (confirm('Tem certeza que deseja excluir este agente?')) {
+        await fetch(`/admin/agents/${agentId}`, { method: 'DELETE' })
+        await fetchAgents()
+      }
+    }
+
+    // Editar agente (esqueleto)
+    const editAgent = (agent) => {
+      openMenuId.value = null
+      alert('Função de edição pode ser implementada aqui!')
+    }
+
+    // Menu popover
+    const toggleMenu = (id) => {
+      openMenuId.value = openMenuId.value === id ? null : id
+    }
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.menu-wrapper')) openMenuId.value = null
+    })
+
     onMounted(fetchAgents)
 
     return {
@@ -108,7 +147,11 @@ export default {
       commandText,
       viewLogs,
       sendCommand,
-      confirmSendCommand
+      confirmSendCommand,
+      deleteAgent,
+      editAgent,
+      openMenuId,
+      toggleMenu
     }
   }
 }
@@ -193,5 +236,56 @@ pre {
   border-radius: 10px;
   padding: 1.5rem;
   margin-top: 1.5rem;
+}
+.actions-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.menu-wrapper {
+  position: relative;
+  display: inline-block;
+}
+.menu-btn {
+  background: #ff6600;
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  font-size: 1.3em;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.menu-popover {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  background: #fff;
+  border: 1px solid #ff6600;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px #ff660033;
+  z-index: 10;
+  min-width: 110px;
+  display: flex;
+  flex-direction: column;
+}
+.menu-popover button {
+  background: none;
+  color: #ff6600;
+  border: none;
+  padding: 10px 16px;
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 1px solid #ffe0b2;
+}
+.menu-popover button:last-child {
+  border-bottom: none;
+}
+.menu-popover button:hover {
+  background: #fff3e0;
 }
 </style>

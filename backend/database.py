@@ -106,6 +106,17 @@ def init_db():
             FOREIGN KEY(device_id) REFERENCES devices(id)
         )
     ''')
+    # Tabela de status dos agentes locais (persistência)
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS agents_status (
+            agent_id TEXT PRIMARY KEY,
+            loja_codigo TEXT,
+            loja_nome TEXT,
+            status TEXT,
+            last_update TEXT,
+            ip TEXT
+        )
+    ''')
     conn.commit()
     conn.close()
 
@@ -349,3 +360,31 @@ def debug_list_device_identifiers():
     conn.close()
     for row in rows:
         logging.info(f"[DEBUG] Device: id={row['id']}, identifier={row['identifier']}, name={row['name']}")
+
+def upsert_agent_status(agent_id: str, loja_codigo: str = None, loja_nome: str = None, status: str = None, last_update: str = None, ip: str = None):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            INSERT INTO agents_status (agent_id, loja_codigo, loja_nome, status, last_update, ip)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(agent_id) DO UPDATE SET
+                loja_codigo=excluded.loja_codigo,
+                loja_nome=excluded.loja_nome,
+                status=excluded.status,
+                last_update=excluded.last_update,
+                ip=excluded.ip
+        ''', (agent_id, loja_codigo, loja_nome, status, last_update, ip))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logging.error(f"[DB][upsert_agent_status] Erro ao inserir/atualizar agente: {e}")
+        raise
+
+def get_all_agents_status():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM agents_status')
+    rows = cur.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]

@@ -214,13 +214,28 @@ def forcar_atualizacao_manual():
 def enviar_status_agente():
     """Envia status do agente local para o backend PRECIX."""
     config = load_config()
-    backend_url = config.get('backend_url', 'http://localhost:8000/admin/agents/status')
+    backend_url = config.get('backend_url')
+    if not backend_url:
+        backend_url = 'http://192.168.18.7:8000/admin/agents/status'
     agent_id = config.get('agente_id') or str(uuid.getnode())
+    # Busca loja_codigo e loja_nome direto ou do primeiro item de 'lojas'
+    loja_codigo = config.get('loja_codigo')
+    loja_nome = config.get('loja_nome')
+    if (not loja_codigo or not loja_nome) and 'lojas' in config and isinstance(config['lojas'], list) and len(config['lojas']) > 0:
+        loja = config['lojas'][0]
+        if not loja_codigo:
+            loja_codigo = loja.get('codigo')
+        if not loja_nome:
+            loja_nome = loja.get('nome')
     status_payload = {
-        "id": agent_id,
+        "agent_id": agent_id,
         "status": "online",
         "last_update": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }
+    if loja_codigo:
+        status_payload["loja_codigo"] = loja_codigo
+    if loja_nome:
+        status_payload["loja_nome"] = loja_nome
     try:
         requests.post(backend_url, json=status_payload, timeout=5)
     except Exception as e:

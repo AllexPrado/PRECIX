@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
-from database import get_product_by_barcode, init_db, populate_example_data, get_db_connection, authenticate_admin, get_system_status, export_products_to_txt, get_all_stores, add_store, update_store, delete_store, get_all_devices, add_device, update_device, delete_device, set_device_online, set_device_offline, add_audit_log, get_audit_logs, get_device_audit_logs
+from database import get_product_by_barcode, init_db, populate_example_data, get_db_connection, authenticate_admin, get_system_status, export_products_to_txt, get_all_stores, add_store, update_store, delete_store, get_all_devices, add_device, update_device, delete_device, set_device_online, set_device_offline, add_audit_log, get_audit_logs, get_device_audit_logs, upsert_agent_status, get_all_agents_status
 from static_middleware import mount_frontend
 from fastapi.responses import FileResponse
 import shutil
@@ -11,6 +11,9 @@ from auth_jwt import create_access_token, verify_access_token
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi import Depends
 from backup_restore import router as backup_restore_router
+from datetime import datetime
+import requests
+from fastapi.responses import JSONResponse
 
 BANNERS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), 'banners'))
 os.makedirs(BANNERS_DIR, exist_ok=True)
@@ -113,9 +116,6 @@ def startup():
 
 
 # --- Funções auxiliares de automação IA ---
-from datetime import datetime
-import json
-
 IA_AUTONOMOUS_ACTIONS_LOG = os.path.join(os.path.dirname(__file__), 'logs', 'ia_autonomous_actions.log')
 os.makedirs(os.path.dirname(IA_AUTONOMOUS_ACTIONS_LOG), exist_ok=True)
 
@@ -867,8 +867,6 @@ def api_produtos():
 def api_ping():
     return {"status": "ok"}
 
-from fastapi import BackgroundTasks
-
 # --- Gerenciamento Centralizado dos Agentes Locais ---
 AGENTS_STATUS = {}
 AGENTS_LOGS = {}
@@ -878,9 +876,26 @@ def update_agent_status(data: dict = Body(...)):
     agent_id = data.get('agent_id')
     status = data.get('status')
     info = data.get('info', {})
+    loja_codigo = data.get('loja_codigo')
+    loja_nome = data.get('loja_nome')
+    ip = data.get('ip')
     if not agent_id or not status:
         raise HTTPException(status_code=400, detail='agent_id e status obrigatórios')
-    AGENTS_STATUS[agent_id] = {'status': status, 'info': info, 'timestamp': datetime.now().isoformat()}
+    agent_status = {'status': status, 'info': info, 'timestamp': datetime.now().isoformat()}
+    if loja_codigo:
+        agent_status['loja_codigo'] = loja_codigo
+    if loja_nome:
+        agent_status['loja_nome'] = loja_nome
+    AGENTS_STATUS[agent_id] = agent_status
+    # Persistência no banco
+    upsert_agent_status(
+        agent_id=agent_id,
+        loja_codigo=loja_codigo,
+        loja_nome=loja_nome,
+        status=status,
+        last_update=datetime.now().isoformat(),
+        ip=ip
+    )
     return {'success': True}
 
 @app.post('/admin/agents/logs')
@@ -896,22 +911,64 @@ def update_agent_logs(data: dict = Body(...)):
 
 @app.get('/admin/agents')
 def list_agents():
-    # Lista todos os agentes conhecidos e seus status
-    return [{'agent_id': k, **v} for k, v in AGENTS_STATUS.items()]
+    # Lista todos os agentes persistidos no banco
+    agents = get_all_agents_status()
+    # Mantém compatibilidade: se algum agente só está em memória, inclui também
+    for k, v in AGENTS_STATUS.items():
+        if not any(a['agent_id'] == k for a in agents):
+            agents.append({'agent_id': k, **v})
+    # Ajusta formato para frontend
+    return [
+        {'id': a.get('agent_id', a.get('id')), 'status': a.get('status'), 'loja_codigo': a.get('loja_codigo'), 'loja_nome': a.get('loja_nome'), 'last_update': a.get('last_update', a.get('timestamp')), **{k: v for k, v in a.items() if k not in ['agent_id', 'status', 'loja_codigo', 'loja_nome', 'last_update', 'timestamp', 'id']}}
+        for a in agents
+    ]
 
-@app.get('/admin/agents/{agent_id}/logs')
-def get_agent_logs(agent_id: str):
-    return {'logs': AGENTS_LOGS.get(agent_id, [])}
+@app.delete('/admin/agents/{agent_id}')
+def delete_agent(agent_id: str):
+    # Remove do banco
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('DELETE FROM agents_status WHERE agent_id = ?', (agent_id,))
+    conn.commit()
+    conn.close()
+    # Remove da memória (opcional)
+    AGENTS_STATUS.pop(agent_id, None)
+    AGENTS_LOGS.pop(agent_id, None)
+    return {'success': True}
 
-@app.post('/admin/agents/{agent_id}/command')
-def send_agent_command(agent_id: str, data: dict = Body(...)):
-    # Apenas registra o comando para ser buscado pelo agente local
-    cmd = data.get('command')
-    if not cmd:
-        raise HTTPException(status_code=400, detail='command obrigatório')
-    # Aqui pode-se implementar fila de comandos, integração websocket, etc.
-    # Por enquanto, apenas loga o comando recebido
-    if agent_id not in AGENTS_LOGS:
-        AGENTS_LOGS[agent_id] = []
-    AGENTS_LOGS[agent_id].append({'type': 'command', 'command': cmd, 'timestamp': datetime.now().isoformat()})
-    return {'success': True, 'message': f'Comando {cmd} registrado para o agente {agent_id}'}
+from fastapi import Request
+
+@app.post('/admin/ia-automation/execute')
+async def ia_automation_execute(request: Request):
+    data = await request.json()
+    action = data.get('action')
+    params = data.get('params', {})
+    if not action:
+        return {"success": False, "message": "Ação não especificada."}
+    # Aciona IA (exemplo: notify_ai_agent)
+    try:
+        from ai_agent_integration import notify_ai_agent
+        ia_response = notify_ai_agent('automation_execute', {"action": action, "params": params})
+        log_automation(action)
+        return {"success": True, "message": f"Automação '{action}' executada.", "ia_response": ia_response}
+    except Exception as e:
+        return {"success": False, "message": f"Erro ao executar automação: {e}"}
+
+@app.post('/admin/ia-chat')
+async def ia_chat(request: Request):
+    data = await request.json()
+    message = data.get('message')
+    if not message:
+        return JSONResponse({"error": "Mensagem não informada."}, status_code=400)
+    try:
+        agno_resp = requests.post(
+            "http://localhost:8080/event",
+            json={"event_type": "chat", "details": {"message": message}},
+            timeout=30
+        )
+        if agno_resp.status_code == 200:
+            return agno_resp.json()
+        else:
+            return JSONResponse({"error": "Erro ao consultar Agno."}, status_code=500)
+    except Exception as e:
+        return JSONResponse({"error": f"Falha ao conectar ao Agno: {e}"}, status_code=500)
