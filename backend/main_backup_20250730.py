@@ -1,6 +1,5 @@
 # Backup do main.py gerado automaticamente em 30/07/2025
 
-import json
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
 from database import get_product_by_barcode, init_db, populate_example_data, get_db_connection, authenticate_admin, get_system_status, export_products_to_txt, get_all_stores, add_store, update_store, delete_store, get_all_devices, add_device, update_device, delete_device, set_device_online, set_device_offline, add_audit_log, get_audit_logs, get_device_audit_logs, upsert_agent_status, get_all_agents_status
@@ -17,8 +16,6 @@ from backup_restore import router as backup_restore_router
 from datetime import datetime
 import requests
 from fastapi.responses import JSONResponse
-import threading
-import time
 
 BANNERS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), 'banners'))
 os.makedirs(BANNERS_DIR, exist_ok=True)
@@ -46,26 +43,24 @@ def favicon():
         return FileResponse(file_path)
     raise HTTPException(status_code=404, detail='favicon not found')
 
-@app.on_event("startup")
-async def startup_event():
-    # Inicializa o banco de dados e popula com dados de exemplo
-    init_db()
-    populate_example_data()
 
-@app.get("/status")
-async def system_status():
-    # Verifica o status do sistema
-    status = get_system_status()
-    return JSONResponse(content=status)
+# Endpoint para status do sistema (dashboard admin)
+# Endpoint para status do sistema (dashboard admin)
+@app.get('/admin/status')
+def admin_status():
+    return get_system_status()
 
-@app.post("/notify-ai-agent/")
-async def notify_agent(request: Request):
-    # Notifica o agente AI sobre uma nova requisição
-    data = await request.json()
-    response = notify_ai_agent(data)
-    return JSONResponse(content=response)
+# Endpoint para upload de banner
+@app.post('/admin/banners/upload')
+async def upload_banner(file: UploadFile = File(...)):
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+        return {"success": False, "message": "Formato de imagem não suportado."}
+    dest_path = os.path.join(BANNERS_DIR, file.filename)
+    with open(dest_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    return {"success": True, "filename": file.filename}
 
-# Resto dos endpoints e lógica da aplicação... (continua com todo o conteúdo do main_backup_20250730.py, linha a linha, até o final)
 # Endpoint para listar banners
 @app.get('/admin/banners')
 def list_banners():
@@ -119,6 +114,8 @@ def startup():
     conn.close()
     notify_ai_agent('startup', {'source': 'backend', 'info': 'Backend iniciado'})
     start_ia_healthcheck()  # Inicia monitoramento proativo
+
+
 
 # --- Funções auxiliares de automação IA ---
 IA_AUTONOMOUS_ACTIONS_LOG = os.path.join(os.path.dirname(__file__), 'logs', 'ia_autonomous_actions.log')
@@ -407,6 +404,8 @@ def mount_frontend_if_exists():
 
 mount_frontend_if_exists()
 
+
+
 # Endpoints de lojas
 @app.get('/admin/stores')
 def api_get_stores():
@@ -435,6 +434,7 @@ def api_delete_store(store_id: int):
 @app.get('/admin/devices')
 def api_get_devices():
     return get_all_devices()
+
 
 @app.post('/admin/devices')
 async def api_add_device(request: Request):
@@ -482,12 +482,14 @@ def device_heartbeat(identifier: str):
     notify_ai_agent('device_heartbeat', {'identifier': identifier})
     return {"success": True}
 
+
 # Endpoint para exportar produtos para .txt
 @app.get('/admin/export-txt')
 def export_txt():
     txt_path = export_products_to_txt()
     notify_ai_agent('export', {'file': txt_path})
     return FileResponse(txt_path, media_type='text/plain', filename='produtos.txt')
+
 
 # Endpoints de auditoria
 @app.get('/admin/audit-logs')
@@ -704,39 +706,6 @@ async def ia_chat(request: Request):
         )
         if agno_resp.status_code == 200:
             agno_data = agno_resp.json()
-            # Garante que sempre retorna uma resposta amigável
-            resposta = agno_data.get("response")
-            if not resposta:
-                resposta = agno_data if isinstance(agno_data, str) else str(agno_data)
-            return {"ia_response": resposta}
+            return {"ia_response": agno_data.get("response", agno_data)}
         else:
             return {"ia_response": "Sem resposta da IA (Agno não respondeu corretamente)."}
-    except requests.exceptions.ConnectionError:
-        return {"ia_response": "Erro: Não foi possível conectar ao servidor Agno (IA)."}
-
-@app.get('/admin/status')
-def admin_status():
-    return {"status": "ok", "message": "Admin status endpoint is working."}
-
-@app.get('/health')
-def health():
-    return {"status": "ok", "message": "Health endpoint is working."}
-
-@app.get("/admin/ia-automation/list")
-def list_automations():
-    # Exemplo: lista nomes de automações disponíveis (pode ser expandido)
-    automations = [
-        "atualizar_precos",
-        "gerar_relatorio",
-        "otimizar_estoque"
-    ]
-    return {"automations": automations}
-
-@app.get("/admin/ia-logs/list")
-def list_ia_logs():
-    import os
-    log_dir = os.path.join(os.path.dirname(__file__), "logs")
-    if not os.path.exists(log_dir):
-        return {"logs": []}
-    files = [f for f in os.listdir(log_dir) if f.endswith(".log")]
-    return {"logs": files}

@@ -27,11 +27,29 @@
     </div>
     <div v-if="tab==='logs'" class="ia-logs-panel">
       <h2 class="ia-chat-panel-title">Logs & Eventos</h2>
-      <div class="ia-logs-content">(Em breve: exibição de logs e eventos da IA)</div>
+      <div class="ia-logs-content">
+        <div v-if="logsLoading">Carregando logs...</div>
+        <div v-else-if="logsError" class="ia-chat-error">{{ logsError }}</div>
+        <div v-else>
+          <div v-if="logs.length === 0">Nenhum log encontrado.</div>
+          <ul v-else>
+            <li v-for="log in logs" :key="log">{{ log }}</li>
+          </ul>
+        </div>
+      </div>
     </div>
     <div v-if="tab==='insights'" class="ia-automations-panel">
       <h2 class="ia-chat-panel-title">Automações Inteligentes</h2>
-      <div class="ia-automations-content">(Em breve: sugestões e execuções automáticas da IA)</div>
+      <div class="ia-automations-content">
+        <div v-if="automationsLoading">Carregando automações...</div>
+        <div v-else-if="automationsError" class="ia-chat-error">{{ automationsError }}</div>
+        <div v-else>
+          <div v-if="automations.length === 0">Nenhuma automação disponível.</div>
+          <ul v-else>
+            <li v-for="automation in automations" :key="automation">{{ automation }}</li>
+          </ul>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -45,7 +63,19 @@ export default {
       chatInput: '',
       chatHistory: [],
       chatLoading: false,
-      chatError: ''
+      chatError: '',
+      logs: [],
+      logsLoading: false,
+      logsError: '',
+      automations: [],
+      automationsLoading: false,
+      automationsError: ''
+    }
+  },
+  watch: {
+    tab(newTab) {
+      if (newTab === 'logs') this.fetchLogs()
+      if (newTab === 'insights') this.fetchAutomations()
     }
   },
   methods: {
@@ -77,6 +107,35 @@ export default {
       }
       this.chatLoading = false;
     },
+    async fetchLogs() {
+      this.logsLoading = true;
+      this.logsError = '';
+      try {
+        const res = await fetch('/admin/ia-logs/list');
+        const data = await res.json();
+        this.logs = data.logs || [];
+      } catch (e) {
+        this.logsError = 'Erro ao carregar logs.';
+      }
+      this.logsLoading = false;
+    },
+    async fetchAutomations() {
+      this.automationsLoading = true;
+      this.automationsError = '';
+      try {
+        const res = await fetch('/admin/ia-automation/list');
+        const data = await res.json();
+        this.automations = data.automations || [];
+      } catch (e) {
+        this.automationsError = 'Erro ao carregar automações.';
+      }
+      this.automationsLoading = false;
+    }
+  },
+  mounted() {
+    // Carrega logs/automations se a aba já estiver selecionada
+    if (this.tab === 'logs') this.fetchLogs();
+    if (this.tab === 'insights') this.fetchAutomations();
   }
 }
 </script>
