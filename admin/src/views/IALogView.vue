@@ -4,7 +4,6 @@
     <button class="back-btn" @click="goBack">← Voltar ao Painel</button>
     <div class="ia-central-tabs">
       <button :class="['ia-central-tab', {active: tab==='chat'}]" @click="tab='chat'">Chat</button>
-      <button :class="['ia-central-tab', {active: tab==='logs'}]" @click="tab='logs'">Logs & Eventos</button>
       <button :class="['ia-central-tab', {active: tab==='insights'}]" @click="tab='insights'">Automações</button>
     </div>
     <div v-if="tab==='chat'" class="ia-chat-panel">
@@ -24,18 +23,11 @@
         <button type="submit" :disabled="!chatInput || chatLoading">Enviar</button>
       </form>
       <div v-if="chatError" class="ia-chat-error">{{ chatError }}</div>
-    </div>
-    <div v-if="tab==='logs'" class="ia-logs-panel">
-      <h2 class="ia-chat-panel-title">Logs & Eventos</h2>
-      <div class="ia-logs-content">
-        <div v-if="logsLoading">Carregando logs...</div>
-        <div v-else-if="logsError" class="ia-chat-error">{{ logsError }}</div>
-        <div v-else>
-          <div v-if="logs.length === 0">Nenhum log encontrado.</div>
-          <ul v-else>
-            <li v-for="log in logs" :key="log">{{ log }}</li>
-          </ul>
-        </div>
+      <div class="ia-suggestions-panel">
+        <h3>Sugestões Inteligentes</h3>
+        <ul>
+          <li v-for="sug in chatSuggestions" :key="sug" @click="useSuggestion(sug)">{{ sug }}</li>
+        </ul>
       </div>
     </div>
     <div v-if="tab==='insights'" class="ia-automations-panel">
@@ -46,9 +38,30 @@
         <div v-else>
           <div v-if="automations.length === 0">Nenhuma automação disponível.</div>
           <ul v-else>
-            <li v-for="automation in automations" :key="automation">{{ automation }}</li>
+            <li v-for="automation in automations" :key="automation.name" class="automation-item">
+              <div class="automation-header">
+                <b>{{ automation.name.replace(/_/g, ' ').toUpperCase() }}</b>
+                <span :class="['automation-status', automation.status]">{{ automation.status }}</span>
+              </div>
+              <div class="automation-desc">{{ automation.desc }}</div>
+              <button class="automation-run-btn" @click="runAutomation(automation)" :disabled="automation.running">
+                {{ automation.running ? 'Executando...' : 'Executar' }}
+              </button>
+              <div v-if="automation.result" class="automation-result">
+                <b>Resultado:</b> {{ automation.result }}
+              </div>
+            </li>
           </ul>
         </div>
+      </div>
+      <div class="ia-anomalies-panel">
+        <h3>Anomalias & Relatórios</h3>
+        <button @click="fetchAnomalies" class="anomaly-btn">Atualizar Anomalias</button>
+        <ul>
+          <li v-for="anom in anomalies" :key="anom.timestamp">
+            <b>{{ anom.suggestion }}</b> <span style="color:#888">({{ anom.timestamp }})</span>
+          </li>
+        </ul>
       </div>
     </div>
   </div>
@@ -64,17 +77,20 @@ export default {
       chatHistory: [],
       chatLoading: false,
       chatError: '',
-      logs: [],
-      logsLoading: false,
-      logsError: '',
+      chatSuggestions: [
+        'Quais automações estão disponíveis?',
+        'Há algum problema detectado no sistema?',
+        'Gerar relatório de otimização',
+        'Executar automação de atualização de preços'
+      ],
       automations: [],
       automationsLoading: false,
-      automationsError: ''
+      automationsError: '',
+      anomalies: [],
     }
   },
   watch: {
     tab(newTab) {
-      if (newTab === 'logs') this.fetchLogs()
       if (newTab === 'insights') this.fetchAutomations()
     }
   },
@@ -89,12 +105,13 @@ export default {
       const userMsg = { role: 'user', text: this.chatInput };
       this.chatHistory = [...this.chatHistory, userMsg];
       const currentInput = this.chatInput;
+      const history = this.chatHistory.map(m => ({ role: m.role, text: m.text }));
       this.chatInput = '';
       try {
         const res = await fetch('/admin/ia-chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: currentInput })
+          body: JSON.stringify({ message: currentInput, history })
         });
         const data = await res.json();
         if (data && data.reply) {
@@ -107,17 +124,9 @@ export default {
       }
       this.chatLoading = false;
     },
-    async fetchLogs() {
-      this.logsLoading = true;
-      this.logsError = '';
-      try {
-        const res = await fetch('/admin/ia-logs/list');
-        const data = await res.json();
-        this.logs = data.logs || [];
-      } catch (e) {
-        this.logsError = 'Erro ao carregar logs.';
-      }
-      this.logsLoading = false;
+    useSuggestion(sug) {
+      this.chatInput = sug;
+      this.sendChat();
     },
     async fetchAutomations() {
       this.automationsLoading = true;
@@ -125,16 +134,85 @@ export default {
       try {
         const res = await fetch('/admin/ia-automation/list');
         const data = await res.json();
-        this.automations = data.automations || [];
+        // Apenas automações relevantes para execução manual
+        const extras = [
+          { name: 'ia_autonomous_check_devices', desc: 'Verificar dispositivos offline manualmente.', status: 'pronto' },
+          { name: 'ia_autonomous_fix_product_data', desc: 'Corrigir dados inconsistentes de produtos manualmente.', status: 'pronto' },
+          { name: 'ia_autonomous_fix_outlier_prices', desc: 'Corrigir preços fora do padrão manualmente.', status: 'pronto' },
+          { name: 'executar_todas_automacoes_autonomas', desc: 'Executar todas as automações autônomas do sistema (checagem de dispositivos, correção de produtos/outliers, etc).', status: 'pronto' }
+        ];
+        this.automations = (data.automations || []).concat(extras);
       } catch (e) {
         this.automationsError = 'Erro ao carregar automações.';
       }
       this.automationsLoading = false;
-    }
+    },
+    async runAutomation(automation) {
+      automation.running = true;
+      automation.result = '';
+      try {
+        let action = automation.name;
+        if (action.startsWith('ia_autonomous_')) {
+          const res = await fetch('/admin/ia-automation/execute-autonomous', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action })
+          });
+          const data = await res.json();
+          automation.result = data.message || 'Executado.';
+        } else if (action === 'executar_todas_automacoes_autonomas') {
+          const res = await fetch('/admin/ia-analyze-logs', { method: 'POST' });
+          const data = await res.json();
+          automation.result = data.message || 'Executado.';
+        } else {
+          const res = await fetch('/admin/ia-automation/execute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action })
+          });
+          const data = await res.json();
+          automation.result = data.message || 'Executado.';
+        }
+      } catch (e) {
+        automation.result = 'Erro ao executar automação.';
+      }
+      automation.running = false;
+    },
+    async fetchAnomalies() {
+      try {
+        const res = await fetch('/admin/ia-health-dashboard');
+        const data = await res.json();
+        this.anomalies = (data.optimizations || []).map(o => ({ suggestion: o.suggestion, timestamp: o.timestamp }));
+      } catch (e) {
+        this.anomalies = [{ suggestion: 'Erro ao buscar anomalias.', timestamp: new Date().toISOString() }];
+      }
+    },
+    async sendSpecialRequest(type) {
+      this.chatLoading = true;
+      this.chatError = '';
+      let endpoint = '';
+      if (type === 'system_status') endpoint = '/admin/ia-special/check-system-status';
+      if (type === 'endpoint_health') endpoint = '/admin/ia-special/check-endpoint-health';
+      if (!endpoint) return;
+      try {
+        const res = await fetch(endpoint, { method: 'POST' });
+        const data = await res.json();
+        let msg = '';
+        if (type === 'system_status' && data.system_status) {
+          msg = 'Status do sistema: ' + JSON.stringify(data.system_status);
+        } else if (type === 'endpoint_health' && data.healthchecks) {
+          msg = 'Healthcheck dos endpoints:\n' + data.healthchecks.map(h => `${h.endpoint}: ${h.ok ? 'OK' : 'FALHA'} (${h.status})`).join('\n');
+        } else {
+          msg = 'Nenhuma informação retornada.';
+        }
+        this.chatHistory = [...this.chatHistory, { role: 'ia', text: msg }];
+      } catch (e) {
+        this.chatError = 'Erro ao consultar função especializada.';
+      }
+      this.chatLoading = false;
+    },
   },
   mounted() {
-    // Carrega logs/automations se a aba já estiver selecionada
-    if (this.tab === 'logs') this.fetchLogs();
     if (this.tab === 'insights') this.fetchAutomations();
   }
 }
@@ -192,7 +270,7 @@ export default {
   border-bottom: 2.5px solid #ff9800;
   font-weight: 700;
 }
-.ia-chat-panel, .ia-logs-panel, .ia-automations-panel {
+.ia-chat-panel, .ia-automations-panel {
   background: #fafbfc;
   border-radius: 7px;
   border: 1px solid #e0e0e0;
@@ -274,10 +352,158 @@ export default {
   margin-top: 0.5rem;
   text-align: center;
 }
-.ia-logs-content, .ia-automations-content {
+.ia-automations-content {
   color: #888;
   font-size: 1.1rem;
   padding: 1.5rem 0;
   text-align: center;
+}
+.log-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  z-index: 1000;
+}
+.log-modal h3 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+.log-modal pre {
+  background: #333;
+  padding: 1rem;
+  border-radius: 5px;
+  overflow: auto;
+  flex: 1;
+}
+.log-modal button {
+  align-self: flex-end;
+  background: #ff9800;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 0.7rem 1.5rem;
+  font-size: 1rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+.log-modal button:hover {
+  background: #e68900;
+}
+.ia-suggestions-panel {
+  margin-top: 2rem;
+  background: #e3f2fd;
+  border-radius: 7px;
+  border: 1px solid #90caf9;
+  padding: 1.2rem 1.5rem;
+}
+.ia-suggestions-panel h3 {
+  color: #1976d2;
+  margin-bottom: 1rem;
+}
+.ia-suggestions-panel ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+.ia-suggestions-panel li {
+  background: #fff;
+  color: #1976d2;
+  border: 1px solid #90caf9;
+  border-radius: 4px;
+  padding: 0.5rem 1.2rem;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s, color 0.2s;
+}
+.ia-suggestions-panel li:hover {
+  background: #1976d2;
+  color: #fff;
+}
+.automation-item {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 5px;
+  margin-bottom: 1.2rem;
+  padding: 1.2rem 1.5rem;
+  box-shadow: 0 1px 4px #0001;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.automation-header {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  font-size: 1.1rem;
+}
+.automation-status {
+  font-weight: 600;
+  color: #388e3c;
+}
+.automation-desc {
+  color: #555;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+.automation-run-btn {
+  background: #1976d2;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 0.6rem 1.4rem;
+  font-size: 1rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+.automation-run-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+.automation-result {
+  background: #e3f2fd;
+  color: #1976d2;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.98rem;
+}
+.ia-anomalies-panel {
+  margin-top: 2.5rem;
+  background: #fff8f0;
+  border-radius: 7px;
+  border: 1px solid #ffe0b2;
+  padding: 1.2rem 1.5rem;
+}
+.ia-anomalies-panel h3 {
+  color: #ff9800;
+  margin-bottom: 1rem;
+}
+.anomaly-btn {
+  background: #ff9800;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1.2rem;
+  font-size: 1rem;
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  transition: background 0.2s;
+}
+.anomaly-btn:hover {
+  background: #e68900;
 }
 </style>

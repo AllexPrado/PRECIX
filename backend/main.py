@@ -161,6 +161,79 @@ def ia_autonomous_check_devices():
     conn.close()
     return offline_count
 
+def ia_autonomous_cleanup_logs():
+    from datetime import datetime, timedelta
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Remove logs com mais de 30 dias
+    limite = (datetime.utcnow() - timedelta(days=30)).isoformat()
+    cur.execute('DELETE FROM audit_log WHERE timestamp < ?', (limite,))
+    removidos = cur.rowcount
+    conn.commit()
+    conn.close()
+    log_ia_autonomous_action(
+        action='cleanup_logs',
+        result='success',
+        details={'removed_logs': removidos, 'older_than': limite}
+    )
+    return removidos
+
+def ia_autonomous_fix_product_data():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Corrige produtos com nome vazio
+    cur.execute("UPDATE products SET name = 'Produto sem nome' WHERE name IS NULL OR TRIM(name) = ''")
+    nome_corrigido = cur.rowcount
+    # Corrige preços negativos ou nulos
+    cur.execute("UPDATE products SET price = 0.01 WHERE price IS NULL OR price <= 0")
+    preco_corrigido = cur.rowcount
+    # Corrige promoções inconsistentes (promo nulo vira string vazia)
+    cur.execute("UPDATE products SET promo = '' WHERE promo IS NULL")
+    promo_corrigido = cur.rowcount
+    conn.commit()
+    conn.close()
+    total = nome_corrigido + preco_corrigido + promo_corrigido
+    log_ia_autonomous_action(
+        action='fix_product_data',
+        result='success',
+        details={'name_fixed': nome_corrigido, 'price_fixed': preco_corrigido, 'promo_fixed': promo_corrigido}
+    )
+    return total
+
+def ia_autonomous_fix_outlier_prices():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Busca todos os preços válidos
+    cur.execute("SELECT price FROM products WHERE price IS NOT NULL AND price > 0 ORDER BY price")
+    prices = [row['price'] for row in cur.fetchall()]
+    if not prices:
+        conn.close()
+        return 0
+    # Calcula mediana
+    n = len(prices)
+    if n % 2 == 1:
+        mediana = prices[n // 2]
+    else:
+        mediana = (prices[n // 2 - 1] + prices[n // 2]) / 2
+    # Define limites de outlier (ex: 10x acima ou 0.1x abaixo da mediana)
+    limite_sup = mediana * 10
+    limite_inf = mediana * 0.1
+    # Corrige preços muito altos
+    cur.execute("UPDATE products SET price = ? WHERE price > ?", (limite_sup, limite_sup))
+    acima = cur.rowcount
+    # Corrige preços muito baixos (mas > 0)
+    cur.execute("UPDATE products SET price = ? WHERE price < ? AND price > 0", (limite_inf, limite_inf))
+    abaixo = cur.rowcount
+    conn.commit()
+    conn.close()
+    total = acima + abaixo
+    log_ia_autonomous_action(
+        action='fix_outlier_prices',
+        result='success',
+        details={'fixed_above': acima, 'fixed_below': abaixo, 'median': mediana, 'limit_sup': limite_sup, 'limit_inf': limite_inf}
+    )
+    return total
+
 # --- IA Monitoramento Proativo e Otimização do Sistema ---
 HEALTHCHECK_ENDPOINTS = [
     '/admin/status',
@@ -694,25 +767,59 @@ async def ia_automation_execute(request: Request):
 async def ia_chat(request: Request):
     data = await request.json()
     message = data.get('message')
+    history = data.get('history', [])
     if not message:
         return JSONResponse({"error": "Mensagem não informada."}, status_code=400)
+    # Enriquecer contexto para a IA
     try:
+        # Buscar contexto do sistema
+        status = get_system_status()
+        automations = [
+            {"name": "atualizar_precos", "desc": "Atualiza os preços dos produtos automaticamente."},
+            {"name": "gerar_relatorio", "desc": "Gera relatórios inteligentes de vendas e estoque."},
+            {"name": "otimizar_estoque", "desc": "Sugere otimizações de estoque com base em IA."},
+            {"name": "executar_todas_automacoes_autonomas", "desc": "Executa todas as automações autônomas do sistema."}
+        ]
+        # Último incidente/anomalia
+        OPTIMIZATION_LOG = os.path.join(os.path.dirname(__file__), 'logs', 'optimization_suggestions.log')
+        last_incident = None
+        if os.path.exists(OPTIMIZATION_LOG):
+            with open(OPTIMIZATION_LOG, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            if lines:
+                last_incident = json.loads(lines[-1])
+        # Montar contexto para IA
+        system_context = {
+            "system_status": status,
+            "available_automations": automations,
+            "latest_incident": last_incident
+        }
+        agno_prompt = {
+            "event_type": "chat",
+            "details": {
+                "message": message,
+                "history": history,
+                "system_context": system_context,
+                "instructions": "Responda de forma natural, humanizada, clara e contextualizada. Use o contexto do sistema para agregar valor real ao usuário. Se possível, sugira ações, explique resultados e seja proativo."
+            }
+        }
         agno_resp = requests.post(
             "http://localhost:8080/event",
-            json={"event_type": "chat", "details": {"message": message}},
-            timeout=10
+            json=agno_prompt,
+            timeout=15
         )
         if agno_resp.status_code == 200:
             agno_data = agno_resp.json()
-            # Garante que sempre retorna uma resposta amigável
             resposta = agno_data.get("response")
-            if not resposta:
-                resposta = agno_data if isinstance(agno_data, str) else str(agno_data)
-            return {"ia_response": resposta}
+            if not resposta or resposta.strip() in ["Desculpe, não sei responder.", "Não entendi.", "", None]:
+                resposta = "Desculpe, não consegui entender sua solicitação. Poderia reformular ou ser mais específico?"
+            return {"reply": resposta}
         else:
-            return {"ia_response": "Sem resposta da IA (Agno não respondeu corretamente)."}
+            return {"reply": "Sem resposta da IA (Agno não respondeu corretamente)."}
     except requests.exceptions.ConnectionError:
-        return {"ia_response": "Erro: Não foi possível conectar ao servidor Agno (IA)."}
+        return {"reply": "Erro: Não foi possível conectar ao servidor Agno (IA)."}
+    except Exception as e:
+        return {"reply": f"Erro interno: {e}"}
 
 @app.get('/admin/status')
 def admin_status():
@@ -724,11 +831,10 @@ def health():
 
 @app.get("/admin/ia-automation/list")
 def list_automations():
-    # Exemplo: lista nomes de automações disponíveis (pode ser expandido)
     automations = [
-        "atualizar_precos",
-        "gerar_relatorio",
-        "otimizar_estoque"
+        {"name": "atualizar_precos", "desc": "Atualiza os preços dos produtos automaticamente.", "status": "pronto"},
+        {"name": "gerar_relatorio", "desc": "Gera relatórios inteligentes de vendas e estoque.", "status": "pronto"},
+        {"name": "otimizar_estoque", "desc": "Sugere otimizações de estoque com base em IA.", "status": "pronto"}
     ]
     return {"automations": automations}
 
@@ -740,3 +846,111 @@ def list_ia_logs():
         return {"logs": []}
     files = [f for f in os.listdir(log_dir) if f.endswith(".log")]
     return {"logs": files}
+
+from fastapi import Query
+
+@app.get("/admin/ia-logs/content")
+def get_log_content(file: str = Query(...)):
+    import os
+    log_dir = os.path.join(os.path.dirname(__file__), "logs")
+    file_path = os.path.join(log_dir, file)
+    if not os.path.exists(file_path):
+        return {"error": "Arquivo de log não encontrado."}
+    with open(file_path, encoding="utf-8") as f:
+        content = f.read()
+    return {"file": file, "content": content}
+
+@app.get('/admin/ia-get-system-status')
+def ia_get_system_status():
+    status = get_system_status()
+    return status
+
+@app.get('/admin/ia-get-latest-incident')
+def ia_get_latest_incident():
+    # Busca última sugestão/anomalia relevante
+    OPTIMIZATION_LOG = os.path.join(os.path.dirname(__file__), 'logs', 'optimization_suggestions.log')
+    if not os.path.exists(OPTIMIZATION_LOG):
+        return {"incident": None}
+    with open(OPTIMIZATION_LOG, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    if not lines:
+        return {"incident": None}
+    last = json.loads(lines[-1])
+    return {"incident": last}
+
+@app.get('/admin/ia-get-automations')
+def ia_get_automations():
+    automations = [
+        {"name": "atualizar_precos", "desc": "Atualiza os preços dos produtos automaticamente."},
+        {"name": "gerar_relatorio", "desc": "Gera relatórios inteligentes de vendas e estoque."},
+        {"name": "otimizar_estoque", "desc": "Sugere otimizações de estoque com base em IA."},
+        {"name": "executar_todas_automacoes_autonomas", "desc": "Executa todas as automações autônomas do sistema."}
+    ]
+    return {"automations": automations}
+
+@app.post('/admin/ia-execute-automation')
+def ia_execute_automation(data: dict = Body(...)):
+    action = data.get('action')
+    if not action:
+        return {"success": False, "message": "Ação não especificada."}
+    # Reaproveita endpoint já existente
+    from ai_agent_integration import notify_ai_agent
+    try:
+        ia_response = notify_ai_agent('automation_execute', {"action": action})
+        log_automation(action)
+        return {"success": True, "message": f"Automação '{action}' executada.", "ia_response": ia_response}
+    except Exception as e:
+        return {"success": False, "message": f"Erro ao executar automação: {e}"}
+
+@app.post('/admin/ia-automation/execute-autonomous')
+def execute_autonomous_automation(data: dict = Body(...)):
+    action = data.get('action')
+    if action == 'ia_autonomous_check_devices':
+        result = ia_autonomous_check_devices()
+        return {"success": True, "message": f"Dispositivos offline verificados: {result}"}
+    elif action == 'ia_autonomous_cleanup_logs':
+        result = ia_autonomous_cleanup_logs()
+        return {"success": True, "message": "Limpeza de logs executada."}
+    elif action == 'ia_autonomous_fix_product_data':
+        result = ia_autonomous_fix_product_data()
+        return {"success": True, "message": "Correção de dados de produtos executada."}
+    elif action == 'ia_autonomous_fix_outlier_prices':
+        result = ia_autonomous_fix_outlier_prices()
+        return {"success": True, "message": "Correção de preços fora do padrão executada."}
+    elif action == 'ia_autonomous_check_duplicate_device_identifiers':
+        result = ia_autonomous_check_duplicate_device_identifiers()
+        return {"success": True, "message": f"Identificadores duplicados verificados: {result}"}
+    else:
+        return {"success": False, "message": "Ação autônoma não reconhecida."}
+
+def log_automation(action, result=None, details=None):
+    """Registra a execução de uma automação no log do sistema."""
+    from datetime import datetime
+    log_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "action": action,
+        "result": result,
+        "details": details
+    }
+    # Aqui você pode salvar em arquivo, banco de dados ou apenas print/log
+    print(f"[AUTOMATION LOG] {log_entry}")
+    # Exemplo: salvar em arquivo
+    try:
+        with open("automation.log", "a", encoding="utf-8") as f:
+            f.write(str(log_entry) + "\n")
+    except Exception as e:
+        print(f"Erro ao registrar automação: {e}")
+
+@app.post('/admin/ia-special/check-system-status')
+def ia_special_check_system_status():
+    status = get_system_status()
+    return {"success": True, "system_status": status}
+
+@app.post('/admin/ia-special/check-endpoint-health')
+def ia_special_check_endpoint_health():
+    from fastapi.responses import JSONResponse
+    health = []
+    if os.path.exists(HEALTHCHECK_LOG):
+        with open(HEALTHCHECK_LOG, 'r', encoding='utf-8') as f:
+            health = [json.loads(l) for l in f.readlines()[-20:]]
+    return {"success": True, "healthchecks": health}
