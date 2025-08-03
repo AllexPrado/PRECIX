@@ -24,10 +24,10 @@ const API_BASE = import.meta.env.VITE_API_URL || ''
 
 async function fetchBanners() {
   try {
-    const response = await axios.get(`${API_BASE}/admin/banners`)
+    const response = await axios.get(`/admin/banners`)
     if (Array.isArray(response.data)) {
       banners.value = response.data.map(b => ({
-        img: `${API_BASE}${b.url}`,
+        img: b.url,
         alt: b.filename
       }))
     }
@@ -62,6 +62,17 @@ function resetIdleTimer() {
     if (interval) clearInterval(interval)
     interval = setInterval(nextSlide, 5000)
   }, 15000)
+}
+
+function enableFullscreen() {
+  const carouselElement = document.querySelector('.carousel-fullscreen');
+  if (carouselElement.requestFullscreen) {
+    carouselElement.requestFullscreen();
+  } else if (carouselElement.webkitRequestFullscreen) {
+    carouselElement.webkitRequestFullscreen();
+  } else if (carouselElement.msRequestFullscreen) {
+    carouselElement.msRequestFullscreen();
+  }
 }
 
 onMounted(async () => {
@@ -108,22 +119,20 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 80vw;
-  height: 60vh;
-  max-width: 700px;
-  max-height: 420px;
-  background: rgba(255,255,255,0.95);
-  border-radius: 32px;
-  box-shadow: 0 8px 40px 0 #ff66002a, 0 1.5px 8px #ff66001a;
-  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+  max-width: 100vw;
+  max-height: 100vh;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
 }
   .carousel-img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    background: #fff;
-    border-radius: 32px;
-    box-shadow: 0 8px 32px #0003;
+    width: 100vw;
+    height: 100vh;
+    object-fit: cover;
+    border-radius: 0;
+    box-shadow: none;
     filter: brightness(1) contrast(1.08) saturate(1.1);
     transition: transform 0.7s cubic-bezier(.4,1.4,.6,1);
   }
@@ -152,17 +161,26 @@ onUnmounted(() => {
 }
 @media (max-width: 700px) {
   .carousel-img-wrapper {
-    width: 98vw;
-    height: 38vh;
-    max-width: 98vw;
-    max-height: 38vh;
-    border-radius: 18px;
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+  }
+  .carousel-img {
+    width: 100vw;
+    height: 100vh;
+    object-fit: cover;
+    border-radius: 0;
+    box-shadow: none;
   }
   .carousel-text {
     font-size: 1.2rem;
     padding: 18px 0 8px 0;
-    border-bottom-left-radius: 18px;
-    border-bottom-right-radius: 18px;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
   }
 }
 </style>

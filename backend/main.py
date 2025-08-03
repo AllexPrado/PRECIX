@@ -89,6 +89,17 @@ def delete_banner(filename: str):
         return {"success": True}
     return {"success": False, "message": "Arquivo não encontrado."}
 
+# Endpoint para upload de banner
+@app.post('/admin/banners/upload')
+async def upload_banner(file: UploadFile = File(...)):
+    try:
+        dest_path = os.path.join(BANNERS_DIR, file.filename)
+        with open(dest_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        return {"success": True, "filename": file.filename, "url": f"/admin/banners/{file.filename}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao salvar banner: {str(e)}")
+
 # Configuração básica de logs
 logging.basicConfig(level=logging.INFO)
 

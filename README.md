@@ -66,7 +66,6 @@ Acesse: http://localhost:5174
 ---
 
 ## Próximos Passos Sugeridos
-- Integrar o carrossel do frontend para exibir banners cadastrados via admin
 - Melhorar logs, auditoria e monitoramento
 - Gerenciamento de usuários/admins
 - Tela de monitoramento de equipamentos
