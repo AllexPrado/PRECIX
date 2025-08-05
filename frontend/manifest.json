@@ -2,7 +2,7 @@
   "name": "PreciX - Consulta de Preços",
   "short_name": "PreciX",
   "start_url": "/",
-  "display": "fullscreen",
+  "display": "standalone",
   "background_color": "#fff3e0",
   "theme_color": "#FF6600",
   "description": "Sistema profissional de consulta de preços para supermercados.",

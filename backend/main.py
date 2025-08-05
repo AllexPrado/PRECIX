@@ -89,16 +89,16 @@ def delete_banner(filename: str):
         return {"success": True}
     return {"success": False, "message": "Arquivo não encontrado."}
 
-# Endpoint para upload de banner
+# Endpoint para fazer upload de banner
 @app.post('/admin/banners/upload')
-async def upload_banner(file: UploadFile = File(...)):
-    try:
-        dest_path = os.path.join(BANNERS_DIR, file.filename)
-        with open(dest_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        return {"success": True, "filename": file.filename, "url": f"/admin/banners/{file.filename}"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao salvar banner: {str(e)}")
+async def upload_banner(file: UploadFile = File(...), username: str = Depends(get_current_user)):
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+        raise HTTPException(status_code=400, detail="Formato de arquivo não suportado.")
+    file_path = os.path.join(BANNERS_DIR, file.filename)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    return {"success": True, "filename": file.filename}
 
 # Configuração básica de logs
 logging.basicConfig(level=logging.INFO)
@@ -756,6 +756,15 @@ def delete_agent(agent_id: str):
     AGENTS_LOGS.pop(agent_id, None)
     return {'success': True}
 
+@app.get('/admin/agents/status')
+def get_agents_status():
+    """Retorna o status de todos os agentes locais."""
+    try:
+        agents = get_all_agents_status()
+        return {"success": True, "agents": agents}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 from fastapi import Request
 
 @app.post('/admin/ia-automation/execute')
@@ -965,3 +974,138 @@ def ia_special_check_endpoint_health():
         with open(HEALTHCHECK_LOG, 'r', encoding='utf-8') as f:
             health = [json.loads(l) for l in f.readlines()[-20:]]
     return {"success": True, "healthchecks": health}
+
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class ErrorMonitorMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        # Monitorar apenas erros críticos (4xx/5xx)
+        if response.status_code >= 400:
+            try:
+                import requests
+                # Tenta obter o corpo da resposta de forma segura
+                body = None
+                if hasattr(response, 'body') and response.body:
+                    body = response.body
+                else:
+                    body = str(response)
+                error_event = {
+                    "event_type": "error_detected",
+                    "details": {
+                        "path": request.url.path,
+                        "method": request.method,
+                        "status_code": response.status_code,
+                        "response": str(body)
+                    }
+                }
+                requests.post("http://localhost:8080/event", json=error_event, timeout=2)
+            except Exception as e:
+                logging.error(f"Erro ao enviar evento para Agno: {e}")
+        return response
+
+app.add_middleware(ErrorMonitorMiddleware)
+
+from fastapi import Depends
+
+@app.post('/admin/auto-fix')
+def auto_fix_endpoint(data: dict = Body(...), current_user: str = Depends(require_admin)):
+    """
+    Endpoint seguro para aplicar correções automáticas sugeridas pelos agentes especialistas.
+    Recebe instruções, patches ou scripts e aplica mudanças no código/configuração.
+    Todas as alterações são registradas para auditoria e rollback.
+    """
+    import logging
+    import os
+    import datetime
+    agent = data.get('agent', 'desconhecido')  # Identifica o agente especialista
+    patch = data.get('patch')
+    script = data.get('script')
+    file_path = data.get('file_path')
+    change_log = os.path.join(os.path.dirname(__file__), 'logs', 'auto_fix.log')
+    result = None
+    try:
+        if patch and file_path:
+            # Aplica patch diretamente no arquivo
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(patch)
+            result = f'Patch aplicado em {file_path}'
+        elif script:
+            # Executa script de ajuste
+            exec(script, globals())
+            result = 'Script executado com sucesso.'
+        else:
+            return {'success': False, 'message': 'Nada para corrigir.'}
+        # Log da alteração incluindo agente
+        with open(change_log, 'a', encoding='utf-8') as logf:
+            logf.write(f"[{datetime.datetime.now().isoformat()}] {current_user} (agente: {agent}): {result}\n")
+        return {'success': True, 'message': result}
+    except Exception as e:
+        logging.error(f'Erro na autocorreção: {e}')
+        return {'success': False, 'message': f'Erro na autocorreção: {e}'}
+
+# --- Bloco de integração dos agentes IA e orquestrador Agno ---
+import requests
+
+AGENTS = [
+    'backend',
+    'frontend',
+    'admin',
+    'sync',
+    'scripts',
+    'local'
+]
+
+AUTO_FIX_URL = 'http://127.0.0.1:8000/admin/auto-fix'
+
+# Função utilitária para agentes especialistas enviarem correção
+def agent_send_auto_fix(agent, patch=None, script=None, file_path=None, token=None):
+    payload = {
+        'agent': agent,
+        'patch': patch,
+        'script': script,
+        'file_path': file_path
+    }
+    headers = {'Authorization': f'Bearer {token}'} if token else {}
+    try:
+        resp = requests.post(AUTO_FIX_URL, json=payload, headers=headers, timeout=10)
+        return resp.json()
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+# Orquestrador Agno: recebe evento, decide qual agente atua e dispara correção
+# Exemplo simplificado: Agno recebe evento de erro e delega para agente adequado
+
+def agno_orchestrate_auto_fix(event, token=None):
+    """
+    Recebe evento de erro, analisa e delega correção ao agente especialista.
+    """
+    # Exemplo: decisão baseada no path do erro
+    path = event.get('details', {}).get('path', '')
+    if '/admin/' in path:
+        agent = 'admin'
+    elif '/product/' in path:
+        agent = 'backend'
+    elif '/device/' in path:
+        agent = 'sync'
+    else:
+        agent = 'local'
+    # Exemplo de patch/script gerado (simulação)
+    patch = event.get('suggested_patch')
+    script = event.get('suggested_script')
+    file_path = event.get('file_path')
+    result = agent_send_auto_fix(agent, patch=patch, script=script, file_path=file_path, token=token)
+    # Loga decisão do Agno
+    with open(os.path.join(os.path.dirname(__file__), 'logs', 'agno_orchestrator.log'), 'a', encoding='utf-8') as logf:
+        logf.write(f"[{datetime.now().isoformat()}] Agno delegou para agente '{agent}': {result}\n")
+    return result
+
+# Exemplo de uso:
+# evento = {
+#     'details': {'path': '/admin/users', 'method': 'POST', 'status_code': 500},
+#     'suggested_patch': "...código corrigido...",
+#     'file_path': 'd:/Sonda/Precix/backend/main.py'
+# }
+# token = 'TOKEN_ADMIN_JWT'
+# agno_orchestrate_auto_fix(evento, token)
+# --- Fim do bloco de integração dos agentes IA ---

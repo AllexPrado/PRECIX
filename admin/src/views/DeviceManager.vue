@@ -123,15 +123,6 @@ function getStoreName(id) {
   return store ? store.name : '---'
 }
 
-// Exibir quantidade total de equipamentos por loja
-const storeEquipmentCount = computed(() => {
-  const counts = {};
-  stores.value.forEach(store => {
-    counts[store.id] = devices.value.filter(d => d.store_id === store.id).length;
-  });
-  return counts;
-});
-
 async function fetchDevices() {
   const res = await fetch('http://localhost:8000/admin/devices')
   devices.value = await res.json()
@@ -143,34 +134,20 @@ async function fetchStores() {
 }
 
 async function addDevice() {
-  // Validação: nome, loja e identificador não podem ser vazios
-  if (!newDevice.value.trim() || !selectedStore.value || !newDeviceIdentifier.value.trim()) {
-    alert('Preencha todos os campos obrigatórios!')
-    return
-  }
-  // Validação: evitar duplicidade de identificador
-  if (devices.value.some(d => d.identifier === newDeviceIdentifier.value.trim())) {
-    alert('Já existe um equipamento com este identificador!')
-    return
-  }
-  try {
-    await fetch('http://localhost:8000/admin/devices', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        store_id: selectedStore.value,
-        name: newDevice.value,
-        identifier: newDeviceIdentifier.value
-      })
+  if (!newDevice.value.trim() || !selectedStore.value || !newDeviceIdentifier.value.trim()) return
+  await fetch('http://localhost:8000/admin/devices', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      store_id: selectedStore.value,
+      name: newDevice.value,
+      identifier: newDeviceIdentifier.value
     })
-    alert('Equipamento cadastrado com sucesso!')
-    newDevice.value = ''
-    newDeviceIdentifier.value = ''
-    selectedStore.value = ''
-    await fetchDevices()
-  } catch (e) {
-    alert('Erro ao cadastrar equipamento!')
-  }
+  })
+  newDevice.value = ''
+  newDeviceIdentifier.value = ''
+  selectedStore.value = ''
+  await fetchDevices()
 }
 
 async function updateDevice(device) {
@@ -179,14 +156,8 @@ async function updateDevice(device) {
 }
 
 async function deleteDevice(id) {
-  if (!confirm('Tem certeza que deseja excluir este equipamento?')) return
-  try {
-    await fetch(`http://localhost:8000/admin/devices/${id}`, { method: 'DELETE' })
-    alert('Equipamento excluído com sucesso!')
-    await fetchDevices()
-  } catch (e) {
-    alert('Erro ao excluir equipamento!')
-  }
+  await fetch(`http://localhost:8000/admin/devices/${id}`, { method: 'DELETE' })
+  await fetchDevices()
 }
 
 function formatLastHeartbeat(ts) {

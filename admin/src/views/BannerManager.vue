@@ -1,4 +1,3 @@
-
 <template>
   <div class="banner-manager-bg">
     <div class="banner-manager-card">
@@ -27,6 +26,7 @@
 </template>
 
 <script>
+import { authFetch } from '../auth.js';
 export default {
   data() {
     return {
@@ -57,7 +57,7 @@ export default {
       this.loading = true;
       this.error = '';
       try {
-        const res = await fetch(`${this.backendUrl}/admin/banners/upload`, {
+        const res = await authFetch(`${this.backendUrl}/admin/banners/upload`, {
           method: 'POST',
           body: formData,
         });
