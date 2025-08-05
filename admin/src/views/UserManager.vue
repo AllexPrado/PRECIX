@@ -9,12 +9,23 @@
         <option value="admin">Administrador</option>
         <option value="operador">Operador</option>
       </select>
+      <select v-model="newStoreId">
+        <option value="">Selecione a loja</option>
+        <option v-for="store in stores" :key="store.id" :value="store.id">{{ store.name }}</option>
+      </select>
+      <div class="permissoes">
+        <label v-for="perm in permissoesDisponiveis" :key="perm.value">
+          <input type="checkbox" v-model="newPermissoes" :value="perm.value" /> {{ perm.label }}
+        </label>
+      </div>
       <button type="submit">Adicionar</button>
     </form>
     <div v-if="error" class="error-msg">{{ error }}</div>
     <ul class="user-list">
       <li v-for="user in users" :key="user.username">
         <span>{{ user.username }} <small>({{ user.role || 'admin' }})</small></span>
+        <span v-if="user.store_id"> | Loja: {{ getStoreName(user.store_id) }}</span>
+        <span v-if="user.permissoes"> | Permissões: {{ user.permissoes }}</span>
         <button v-if="userRole === 'admin'" @click="showChangePassword(user.username)">Alterar Senha</button>
         <button v-if="userRole === 'admin'" @click="showChangeRole(user)" :disabled="user.username === 'admin'">Alterar Perfil</button>
         <button v-if="userRole === 'admin'" @click="deleteUser(user.username)" :disabled="user.username === 'admin'">Remover</button>
@@ -49,9 +60,20 @@ import { authFetch, getUserRole } from '../auth.js'
 
 const router = useRouter()
 const users = ref([])
+const stores = ref([])
 const newUsername = ref('')
 const newPassword = ref('')
 const newRole = ref('operador')
+const newStoreId = ref('')
+const newPermissoes = ref([])
+const permissoesDisponiveis = [
+  { value: 'dashboard', label: 'Dashboard' },
+  { value: 'banners', label: 'Banners' },
+  { value: 'equipamentos', label: 'Equipamentos' },
+  { value: 'auditoria', label: 'Auditoria' },
+  { value: 'central_ia', label: 'Central de IAs' },
+  { value: 'usuarios', label: 'Usuários' }
+]
 const error = ref('')
 const showPasswordDialog = ref(false)
 const showRoleDialog = ref(false)
@@ -64,6 +86,21 @@ function goToDashboard() {
   router.push('/dashboard')
 }
 
+function getStoreName(storeId) {
+  const store = stores.value.find(s => s.id === storeId)
+  return store ? store.name : '---'
+}
+
+async function fetchStores() {
+  try {
+    const res = await authFetch('http://localhost:8000/admin/stores')
+    const data = await res.json()
+    stores.value = data.stores || []
+  } catch (e) {
+    stores.value = []
+  }
+}
+
 async function fetchUsers() {
   try {
     const res = await authFetch('http://localhost:8000/admin/users')
@@ -74,18 +111,31 @@ async function fetchUsers() {
   }
 }
 
+onMounted(() => {
+  fetchUsers()
+  fetchStores()
+})
+
 async function addUser() {
   error.value = ''
   try {
     const res = await authFetch('http://localhost:8000/admin/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: newUsername.value, password: newPassword.value, role: newRole.value })
+      body: JSON.stringify({
+        username: newUsername.value,
+        password: newPassword.value,
+        role: newRole.value,
+        store_id: newStoreId.value || null,
+        permissoes: JSON.stringify(newPermissoes.value)
+      })
     })
     if (res.ok) {
       newUsername.value = ''
       newPassword.value = ''
       newRole.value = 'operador'
+      newStoreId.value = ''
+      newPermissoes.value = []
       fetchUsers()
     } else {
       const data = await res.json()
@@ -163,8 +213,6 @@ async function deleteUser(user) {
     error.value = 'Erro ao remover usuário.'
   }
 }
-
-onMounted(fetchUsers)
 </script>
 
 <style scoped>
@@ -198,22 +246,16 @@ onMounted(fetchUsers)
 }
 .user-manager form {
   display: flex;
+  flex-direction: column;
   gap: 8px;
   margin-bottom: 18px;
 }
-.user-manager input {
-  flex: 1;
-  padding: 8px 10px;
-  border: 2px solid #FF6600;
-  border-radius: 6px;
-  font-size: 1rem;
-}
+.user-manager input,
 .user-manager select {
   padding: 8px 10px;
   border: 2px solid #FF6600;
   border-radius: 6px;
   font-size: 1rem;
-  background: #fff;
 }
 .user-manager button {
   background: #FF6600;
@@ -260,5 +302,11 @@ onMounted(fetchUsers)
   color: #c00;
   margin-bottom: 10px;
   font-size: 0.98rem;
+}
+.permissoes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
 }
 </style>

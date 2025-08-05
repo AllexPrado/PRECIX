@@ -64,6 +64,14 @@ def init_db():
     if 'role' not in admin_columns:
         logging.info("[DB] Adicionando coluna 'role' na tabela admin_users")
         cur.execute("ALTER TABLE admin_users ADD COLUMN role TEXT DEFAULT 'admin'")
+    # MIGRAÇÃO: Garante que a coluna 'store_id' existe
+    if 'store_id' not in admin_columns:
+        logging.info("[DB] Adicionando coluna 'store_id' na tabela admin_users")
+        cur.execute("ALTER TABLE admin_users ADD COLUMN store_id INTEGER")
+    # MIGRAÇÃO: Garante que a coluna 'permissoes' existe
+    if 'permissoes' not in admin_columns:
+        logging.info("[DB] Adicionando coluna 'permissoes' na tabela admin_users")
+        cur.execute("ALTER TABLE admin_users ADD COLUMN permissoes TEXT")
     # Loga usuários admin existentes
     cur.execute('SELECT * FROM admin_users')
     logging.info(f"[DB] Usuários admin existentes ao iniciar: {cur.fetchall()}")
@@ -388,3 +396,45 @@ def get_all_agents_status():
     rows = cur.fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+def get_all_users():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM admin_users')
+    rows = cur.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def add_user(username: str, password: str, role: str = 'operador', store_id: int = None, permissoes: str = None):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('INSERT INTO admin_users (username, password, role, store_id, permissoes) VALUES (?, ?, ?, ?, ?)',
+                (username, password, role, store_id, permissoes))
+    conn.commit()
+    conn.close()
+
+def update_user(username: str, password: str = None, role: str = None, store_id: int = None, permissoes: str = None):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Busca valores atuais
+    cur.execute('SELECT password, role, store_id, permissoes FROM admin_users WHERE username = ?', (username,))
+    row = cur.fetchone()
+    current_password = row['password'] if row else None
+    current_role = row['role'] if row else None
+    current_store_id = row['store_id'] if row else None
+    current_permissoes = row['permissoes'] if row else None
+    password = password if password else current_password
+    role = role if role else current_role
+    store_id = store_id if store_id is not None else current_store_id
+    permissoes = permissoes if permissoes is not None else current_permissoes
+    cur.execute('UPDATE admin_users SET password = ?, role = ?, store_id = ?, permissoes = ? WHERE username = ?',
+                (password, role, store_id, permissoes, username))
+    conn.commit()
+    conn.close()
+
+def delete_user(username: str):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('DELETE FROM admin_users WHERE username = ?', (username,))
+    conn.commit()
+    conn.close()

@@ -12,13 +12,13 @@
         </div>
       </header>
       <nav class="dashboard-nav">
-        <button @click="goToBannerManager" class="nav-btn">Banners</button>
-        <button @click="goToStoreManager" class="nav-btn">Lojas</button>
-        <button @click="goToDeviceManager" class="nav-btn">Equipamentos</button>
-        <button @click="goToAuditLog" class="nav-btn">Auditoria</button>
-        <button @click="goToIALogView" class="nav-btn">Central de IAs</button>
-        <button @click="goToUserManager" class="nav-btn">Usuários</button>
-        <button @click="goToAgentManager" class="nav-btn">Agentes Locais</button>
+        <button v-if="userRole === 'admin' || userPermissoes.includes('banners')" @click="goToBannerManager" class="nav-btn">Banners</button>
+        <button v-if="userRole === 'admin' || userPermissoes.includes('lojas')" @click="goToStoreManager" class="nav-btn">Lojas</button>
+        <button v-if="userRole === 'admin' || userPermissoes.includes('equipamentos')" @click="goToDeviceManager" class="nav-btn">Equipamentos</button>
+        <button v-if="userRole === 'admin' || userPermissoes.includes('auditoria')" @click="goToAuditLog" class="nav-btn">Auditoria</button>
+        <button v-if="userRole === 'admin' || userPermissoes.includes('central_ia')" @click="goToIALogView" class="nav-btn">Central de IAs</button>
+        <button v-if="userRole === 'admin' || userPermissoes.includes('usuarios')" @click="goToUserManager" class="nav-btn">Usuários</button>
+        <button v-if="userRole === 'admin' || userPermissoes.includes('agentes')" @click="goToAgentManager" class="nav-btn">Agentes Locais</button>
       </nav>
       <main class="dashboard-main">
         <section class="status">
@@ -50,7 +50,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { removeToken } from '../auth.js'
+import { removeToken, getUserRole, getToken } from '../auth.js'
 
 const router = useRouter()
 const productsCount = ref(0)
@@ -59,6 +59,32 @@ const restoreFile = ref(null)
 const restoreMsg = ref('')
 const restoreMsgColor = ref('green')
 const showModal = ref(false)
+const userRole = ref('admin')
+const userPermissoes = ref([])
+const userStoreId = ref(null)
+
+function parseJwt(token) {
+  try {
+    const base64Url = token.split('.')[1]
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
+    return JSON.parse(decodeURIComponent(atob(base64).split('').map(function(c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+    }).join('')))
+  } catch (e) {
+    return null
+  }
+}
+
+function loadUserInfo() {
+  const token = getToken()
+  if (!token) return
+  const payload = parseJwt(token)
+  userRole.value = payload.role || 'admin'
+  userPermissoes.value = payload.permissoes || []
+  userStoreId.value = payload.store_id || null
+}
+
+loadUserInfo()
 
 // Buscar status do sistema do backend
 async function fetchStatus() {
