@@ -76,12 +76,17 @@ function parseJwt(token) {
 }
 
 function loadUserInfo() {
-  const token = getToken()
-  if (!token) return
-  const payload = parseJwt(token)
-  userRole.value = payload.role || 'admin'
-  userPermissoes.value = payload.permissoes || []
-  userStoreId.value = payload.store_id || null
+  const token = getToken();
+  if (!token) return;
+  const payload = parseJwt(token);
+  userRole.value = payload.role || 'admin';
+  // Lê permissoes e store_id do localStorage
+  try {
+    userPermissoes.value = JSON.parse(localStorage.getItem('permissoes')) || [];
+  } catch {
+    userPermissoes.value = [];
+  }
+  userStoreId.value = localStorage.getItem('store_id') || null;
 }
 
 loadUserInfo()
@@ -124,7 +129,9 @@ function goToAgentManager() {
   router.push('/agents')
 }
 function logout() {
-  removeToken()
+  removeToken();
+  localStorage.removeItem('permissoes');
+  localStorage.removeItem('store_id');
   router.push('/')
 }
 async function downloadBackup() {

@@ -1,36 +1,53 @@
 <template>
   <div class="user-manager">
     <button class="back-btn" @click="goToDashboard">Voltar ao Painel</button>
-    <h2>Usuários Administradores</h2>
-    <form v-if="userRole === 'admin'" @submit.prevent="addUser">
-      <input v-model="newUsername" placeholder="Novo usuário" required />
-      <input v-model="newPassword" type="password" placeholder="Senha" required />
-      <select v-model="newRole">
-        <option value="admin">Administrador</option>
-        <option value="operador">Operador</option>
-      </select>
-      <select v-model="newStoreId">
-        <option value="">Selecione a loja</option>
-        <option v-for="store in stores" :key="store.id" :value="store.id">{{ store.name }}</option>
-      </select>
-      <div class="permissoes">
-        <label v-for="perm in permissoesDisponiveis" :key="perm.value">
-          <input type="checkbox" v-model="newPermissoes" :value="perm.value" /> {{ perm.label }}
-        </label>
+    <h2>Gestão de Usuários do Sistema</h2>
+    <button class="add-user-btn" @click="showUserModal = true">Novo Usuário</button>
+    <!-- Modal de cadastro/edição de usuário -->
+    <div v-if="showUserModal" class="dialog">
+      <div class="dialog-content">
+        <form @submit.prevent="addUser">
+          <input v-model="newUsername" placeholder="Novo usuário" required />
+          <input v-model="newPassword" type="password" placeholder="Senha" required />
+          <select v-model="newRole">
+            <option value="admin">Administrador</option>
+            <option value="operador">Operador</option>
+          </select>
+          <select v-model="newStoreId">
+            <option value="">Selecione a loja</option>
+            <option v-for="store in stores" :key="store.id" :value="store.id">
+              {{ store.code ? store.code + ' - ' : '' }}{{ store.name }}
+            </option>
+          </select>
+          <div class="permissoes">
+            <label v-for="perm in permissoesDisponiveis" :key="perm.value">
+              <input type="checkbox" v-model="newPermissoes" :value="perm.value" /> {{ perm.label }}
+            </label>
+          </div>
+          <div class="modal-btns">
+            <button type="submit">Adicionar</button>
+            <button type="button" @click="closeUserModal">Cancelar</button>
+          </div>
+        </form>
       </div>
-      <button type="submit">Adicionar</button>
-    </form>
+    </div>
     <div v-if="error" class="error-msg">{{ error }}</div>
     <ul class="user-list">
       <li v-for="user in users" :key="user.username">
-        <span>{{ user.username }} <small>({{ user.role || 'admin' }})</small></span>
-        <span v-if="user.store_id"> | Loja: {{ getStoreName(user.store_id) }}</span>
-        <span v-if="user.permissoes"> | Permissões: {{ user.permissoes }}</span>
-        <button v-if="userRole === 'admin'" @click="showChangePassword(user.username)">Alterar Senha</button>
-        <button v-if="userRole === 'admin'" @click="showChangeRole(user)" :disabled="user.username === 'admin'">Alterar Perfil</button>
-        <button v-if="userRole === 'admin'" @click="deleteUser(user.username)" :disabled="user.username === 'admin'">Remover</button>
+        <div class="user-info">
+          <span class="user-main">{{ user.username }}</span>
+          <span class="user-role">({{ user.role || 'admin' }})</span>
+          <span v-if="user.store_id" class="user-store">| Loja: {{ getStoreName(user.store_id) }}</span>
+          <span v-if="user.permissoes" class="user-perms">| Permissões: {{ user.permissoes }}</span>
+        </div>
+        <div class="user-btns">
+          <button v-if="userRole === 'admin'" @click="showChangePassword(user.username)">Alterar Senha</button>
+          <button v-if="userRole === 'admin'" @click="showChangeRole(user)" :disabled="user.username === 'admin'">Alterar Perfil</button>
+          <button v-if="userRole === 'admin'" @click="deleteUser(user.username)" :disabled="user.username === 'admin'">Remover</button>
+        </div>
       </li>
     </ul>
+    <!-- ...existing dialogs for senha/perfil... -->
     <div v-if="showPasswordDialog" class="dialog">
       <div class="dialog-content">
         <h3>Alterar senha de {{ selectedUser }}</h3>
@@ -46,8 +63,15 @@
           <option value="admin">Administrador</option>
           <option value="operador">Operador</option>
         </select>
-        <button @click="changeRole">Salvar</button>
-        <button @click="showRoleDialog = false">Cancelar</button>
+        <div class="permissoes" style="margin-top:10px;">
+          <label v-for="perm in permissoesDisponiveis" :key="perm.value">
+            <input type="checkbox" v-model="selectedUserRolePerms" :value="perm.value" /> {{ perm.label }}
+          </label>
+        </div>
+        <div class="modal-btns">
+          <button @click="changeRole">Salvar</button>
+          <button @click="showRoleDialog = false">Cancelar</button>
+        </div>
       </div>
     </div>
   </div>
@@ -81,6 +105,8 @@ const selectedUser = ref('')
 const selectedUserRole = ref({ username: '', role: 'operador' })
 const newPasswordDialog = ref('')
 const userRole = ref(getUserRole())
+const showUserModal = ref(false)
+const selectedUserRolePerms = ref([])
 
 function goToDashboard() {
   router.push('/dashboard')
@@ -95,7 +121,8 @@ async function fetchStores() {
   try {
     const res = await authFetch('http://localhost:8000/admin/stores')
     const data = await res.json()
-    stores.value = data.stores || []
+    // Aceita tanto {stores: [...]} quanto array simples
+    stores.value = Array.isArray(data) ? data : (data.stores || [])
   } catch (e) {
     stores.value = []
   }
@@ -131,11 +158,7 @@ async function addUser() {
       })
     })
     if (res.ok) {
-      newUsername.value = ''
-      newPassword.value = ''
-      newRole.value = 'operador'
-      newStoreId.value = ''
-      newPermissoes.value = []
+      closeUserModal()
       fetchUsers()
     } else {
       const data = await res.json()
@@ -154,6 +177,14 @@ function showChangePassword(user) {
 
 function showChangeRole(user) {
   selectedUserRole.value = { ...user }
+  // Permissões podem estar como string JSON ou array
+  let perms = []
+  if (typeof user.permissoes === 'string') {
+    try { perms = JSON.parse(user.permissoes) } catch { perms = [] }
+  } else if (Array.isArray(user.permissoes)) {
+    perms = user.permissoes
+  }
+  selectedUserRolePerms.value = perms
   showRoleDialog.value = true
 }
 
@@ -179,10 +210,14 @@ async function changePassword() {
 async function changeRole() {
   error.value = ''
   try {
+    const body = {
+      role: selectedUserRole.value.role,
+      permissoes: selectedUserRolePerms.value // envia como array puro
+    }
     const res = await authFetch(`http://localhost:8000/admin/users/${selectedUserRole.value.username}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: selectedUserRole.value.role })
+      body: JSON.stringify(body)
     })
     if (res.ok) {
       showRoleDialog.value = false
@@ -190,9 +225,11 @@ async function changeRole() {
     } else {
       const data = await res.json()
       error.value = data.detail || 'Erro ao alterar perfil.'
+      alert('Erro ao salvar permissões: ' + error.value)
     }
   } catch (e) {
     error.value = 'Erro ao alterar perfil.'
+    alert('Erro ao salvar permissões: ' + e)
   }
 }
 
@@ -213,16 +250,28 @@ async function deleteUser(user) {
     error.value = 'Erro ao remover usuário.'
   }
 }
+
+function closeUserModal() {
+  showUserModal.value = false
+  newUsername.value = ''
+  newPassword.value = ''
+  newRole.value = 'operador'
+  newStoreId.value = ''
+  newPermissoes.value = []
+}
 </script>
 
 <style scoped>
 .user-manager {
-  max-width: 420px;
+  max-width: 540px;
+  min-width: 340px;
   margin: 40px auto;
   background: #fff;
   border-radius: 14px;
   box-shadow: 0 4px 24px #ff66001a;
   padding: 32px 24px 24px 24px;
+  /* Garante que nada saia do card */
+  overflow: hidden;
 }
 .back-btn {
   background: #fff7ef;
@@ -243,6 +292,17 @@ async function deleteUser(user) {
   color: #FF6600;
   margin-bottom: 18px;
   font-size: 1.3rem;
+}
+.add-user-btn {
+  background: #FF6600;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 18px;
+  cursor: pointer;
 }
 .user-manager form {
   display: flex;
@@ -279,9 +339,40 @@ async function deleteUser(user) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
-  padding-bottom: 6px;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
   border-bottom: 1px solid #eee;
+  gap: 12px;
+  /* Garante que os botões não ultrapassem o card */
+  flex-wrap: wrap;
+}
+.user-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  flex: 1;
+}
+.user-main {
+  font-size: 1.13rem;
+  font-weight: 700;
+  color: #222;
+  margin-bottom: 2px;
+}
+.user-role, .user-store, .user-perms {
+  font-size: 0.98rem;
+  color: #666;
+  margin-right: 6px;
+}
+.user-btns {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.user-btns button {
+  min-width: 90px;
+  font-size: 0.98rem;
+  padding: 7px 10px;
+  white-space: nowrap;
 }
 .dialog {
   position: fixed;
@@ -308,5 +399,10 @@ async function deleteUser(user) {
   flex-direction: column;
   gap: 4px;
   margin-top: 8px;
+}
+.modal-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
 }
 </style>

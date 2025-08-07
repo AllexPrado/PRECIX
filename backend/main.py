@@ -38,6 +38,11 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         raise HTTPException(status_code=401, detail="Token inválido ou expirado")
     return username
 
+@app.get('/admin/status')
+def admin_status():
+    status = get_system_status()
+    return JSONResponse(content=status)
+
 # Endpoint para servir favicon.ico
 @app.get('/favicon.ico')
 def favicon():
@@ -386,8 +391,26 @@ async def admin_login(request: Request):
     conn.close()
     if user and authenticate_admin(username, password):
         role = user['role'] if 'role' in user.keys() else 'admin'
+        store_id = user['store_id'] if 'store_id' in user.keys() else None
+        permissoes = user['permissoes'] if 'permissoes' in user.keys() else None
+        # Converte permissoes de string JSON para array, se necessário
+        if permissoes:
+            try:
+                permissoes = json.loads(permissoes)
+            except Exception:
+                permissoes = []
+        else:
+            permissoes = []
         access_token = create_access_token({"sub": username, "role": role})
-        return {"success": True, "access_token": access_token, "token_type": "bearer", "role": role}
+        return {
+            "success": True,
+            "access_token": access_token,
+            "token_type": "bearer",
+            "role": role,
+            "store_id": store_id,
+            "permissoes": permissoes,
+            "username": username
+        }
     else:
         return JSONResponse(status_code=401, content={"success": False, "message": "Usuário ou senha inválidos"})
 
@@ -404,12 +427,30 @@ def require_admin(credentials: HTTPAuthorizationCredentials = Depends(security))
     except Exception:
         raise HTTPException(status_code=401, detail='Token inválido ou expirado')
 
+# --- Endpoints de administração de usuários admin ---
+from fastapi import Body
+
 @app.get('/admin/users')
 def list_admin_users(current_user: str = Depends(require_admin)):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('SELECT username, role FROM admin_users')
-    users = [{"username": row['username'], "role": row['role'] if 'role' in row.keys() else 'admin'} for row in cur.fetchall()]
+    cur.execute('SELECT username, role, store_id, permissoes FROM admin_users')
+    users = []
+    for row in cur.fetchall():
+        permissoes = row['permissoes'] if 'permissoes' in row.keys() else None
+        if permissoes:
+            try:
+                permissoes = json.loads(permissoes)
+            except Exception:
+                permissoes = []
+        else:
+            permissoes = []
+        users.append({
+            'username': row['username'],
+            'role': row['role'] if 'role' in row.keys() else 'admin',
+            'store_id': row['store_id'] if 'store_id' in row.keys() else None,
+            'permissoes': permissoes
+        })
     conn.close()
     return {'users': users}
 
@@ -440,18 +481,33 @@ def update_admin_user(username: str, data: dict = Body(...), current_user: str =
     from database import hash_password
     password = data.get('password')
     role = data.get('role')
-    if not password and not role:
+    permissoes = data.get('permissoes')
+    # Garante que permissoes seja string JSON para o banco
+    if permissoes is not None and not isinstance(permissoes, str):
+        permissoes = json.dumps(permissoes)
+    if not password and not role and permissoes is None:
         raise HTTPException(status_code=400, detail='Nada para atualizar')
     conn = get_db_connection()
     cur = conn.cursor()
-    if password and role:
+    # Atualiza todos os campos enviados
+    if password and role and permissoes is not None:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, role = ?, permissoes = ? WHERE username = ?', (hashed, role, permissoes, username))
+    elif password and role:
         hashed = hash_password(password)
         cur.execute('UPDATE admin_users SET password = ?, role = ? WHERE username = ?', (hashed, role, username))
+    elif password and permissoes is not None:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, permissoes = ? WHERE username = ?', (hashed, permissoes, username))
+    elif role and permissoes is not None:
+        cur.execute('UPDATE admin_users SET role = ?, permissoes = ? WHERE username = ?', (role, permissoes, username))
     elif password:
         hashed = hash_password(password)
         cur.execute('UPDATE admin_users SET password = ? WHERE username = ?', (hashed, username))
     elif role:
         cur.execute('UPDATE admin_users SET role = ? WHERE username = ?', (role, username))
+    elif permissoes is not None:
+        cur.execute('UPDATE admin_users SET permissoes = ? WHERE username = ?', (permissoes, username))
     if cur.rowcount == 0:
         conn.close()
         raise HTTPException(status_code=404, detail='Usuário não encontrado')
@@ -588,26 +644,42 @@ def api_get_device_audit_logs(device_id: int, limit: int = 20):
 from fastapi import Body
 
 @app.get('/admin/users')
-def list_admin_users():
+def list_admin_users(current_user: str = Depends(require_admin)):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('SELECT username FROM admin_users')
-    users = [row['username'] for row in cur.fetchall()]
+    cur.execute('SELECT username, role, store_id, permissoes FROM admin_users')
+    users = []
+    for row in cur.fetchall():
+        permissoes = row['permissoes'] if 'permissoes' in row.keys() else None
+        if permissoes:
+            try:
+                permissoes = json.loads(permissoes)
+            except Exception:
+                permissoes = []
+        else:
+            permissoes = []
+        users.append({
+            'username': row['username'],
+            'role': row['role'] if 'role' in row.keys() else 'admin',
+            'store_id': row['store_id'] if 'store_id' in row.keys() else None,
+            'permissoes': permissoes
+        })
     conn.close()
     return {'users': users}
 
 @app.post('/admin/users')
-def create_admin_user_endpoint(data: dict = Body(...)):
+def create_admin_user_endpoint(data: dict = Body(...), current_user: str = Depends(require_admin)):
     from database import hash_password
     username = data.get('username')
     password = data.get('password')
+    role = data.get('role', 'admin')
     if not username or not password:
         raise HTTPException(status_code=400, detail='Usuário e senha obrigatórios')
     hashed = hash_password(password)
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        cur.execute('INSERT INTO admin_users (username, password) VALUES (?, ?)', (username, hashed))
+        cur.execute('INSERT INTO admin_users (username, password, role) VALUES (?, ?, ?)', (username, hashed, role))
         conn.commit()
     except Exception as e:
         conn.close()
@@ -618,22 +690,37 @@ def create_admin_user_endpoint(data: dict = Body(...)):
     return {'success': True, 'message': 'Usuário criado com sucesso'}
 
 @app.put('/admin/users/{username}')
-def update_admin_user(username: str, data: dict = Body(...)):
+def update_admin_user(username: str, data: dict = Body(...), current_user: str = Depends(require_admin)):
     from database import hash_password
     password = data.get('password')
     role = data.get('role')
-    if not password and not role:
+    permissoes = data.get('permissoes')
+    # Garante que permissoes seja string JSON para o banco
+    if permissoes is not None and not isinstance(permissoes, str):
+        permissoes = json.dumps(permissoes)
+    if not password and not role and permissoes is None:
         raise HTTPException(status_code=400, detail='Nada para atualizar')
     conn = get_db_connection()
     cur = conn.cursor()
-    if password and role:
+    # Atualiza todos os campos enviados
+    if password and role and permissoes is not None:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, role = ?, permissoes = ? WHERE username = ?', (hashed, role, permissoes, username))
+    elif password and role:
         hashed = hash_password(password)
         cur.execute('UPDATE admin_users SET password = ?, role = ? WHERE username = ?', (hashed, role, username))
+    elif password and permissoes is not None:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, permissoes = ? WHERE username = ?', (hashed, permissoes, username))
+    elif role and permissoes is not None:
+        cur.execute('UPDATE admin_users SET role = ?, permissoes = ? WHERE username = ?', (role, permissoes, username))
     elif password:
         hashed = hash_password(password)
         cur.execute('UPDATE admin_users SET password = ? WHERE username = ?', (hashed, username))
     elif role:
         cur.execute('UPDATE admin_users SET role = ? WHERE username = ?', (role, username))
+    elif permissoes is not None:
+        cur.execute('UPDATE admin_users SET permissoes = ? WHERE username = ?', (permissoes, username))
     if cur.rowcount == 0:
         conn.close()
         raise HTTPException(status_code=404, detail='Usuário não encontrado')
@@ -642,7 +729,7 @@ def update_admin_user(username: str, data: dict = Body(...)):
     return {'success': True, 'message': 'Usuário atualizado com sucesso'}
 
 @app.delete('/admin/users/{username}')
-def delete_admin_user(username: str):
+def delete_admin_user(username: str, current_user: str = Depends(require_admin)):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('DELETE FROM admin_users WHERE username = ?', (username,))
@@ -653,459 +740,877 @@ def delete_admin_user(username: str):
     conn.close()
     return {'success': True, 'message': 'Usuário removido com sucesso'}
 
-# Monitoramento de identificadores duplicados de dispositivos
-def ia_autonomous_check_duplicate_device_identifiers():
+# Endpoint para buscar produto pelo código de barras
+@app.get('/product/{barcode}')
+def get_product(barcode: str):
+    product = get_product_by_barcode(barcode)
+    if not product:
+        raise HTTPException(status_code=404, detail='Produto não encontrado')
+    return product
+
+
+# Serve o frontend (build) se existir, mas não impede execução separada
+def mount_frontend_if_exists():
+    FRONTEND_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist'))
+    if os.path.exists(FRONTEND_PATH):
+        logging.info(f"Montando frontend na pasta: {FRONTEND_PATH}")
+        mount_frontend(app, FRONTEND_PATH)
+    else:
+        logging.warning(f"Pasta {FRONTEND_PATH} não encontrada. Certifique-se de que o build do frontend foi gerado corretamente.")
+
+mount_frontend_if_exists()
+
+# Endpoints de lojas
+@app.get('/admin/stores')
+def api_get_stores():
+    return get_all_stores()
+
+@app.post('/admin/stores')
+async def api_add_store(request: Request):
+    data = await request.json()
+    name = data.get('name')
+    if not name:
+        return {"success": False, "message": "Nome da loja obrigatório."}
+    add_store(name)
+    return {"success": True}
+
+@app.put('/admin/stores/{store_id}')
+def api_update_store(store_id: int, name: str, status: str):
+    update_store(store_id, name, status)
+    return {"success": True}
+
+@app.delete('/admin/stores/{store_id}')
+def api_delete_store(store_id: int):
+    delete_store(store_id)
+    return {"success": True}
+
+# Endpoints de equipamentos
+@app.get('/admin/devices')
+def api_get_devices():
+    return get_all_devices()
+
+@app.post('/admin/devices')
+async def api_add_device(request: Request):
+    data = await request.json()
+    store_id = data.get('store_id')
+    name = data.get('name')
+    identifier = data.get('identifier')
+    if not store_id or not name or not identifier:
+        return {"success": False, "message": "Todos os campos são obrigatórios."}
+    # Adiciona dispositivo já com o identifier correto
+    add_device(store_id, name, identifier=identifier)
+    notify_ai_agent('device_added', {'store_id': store_id, 'name': name, 'identifier': identifier})
+    return {"success": True}
+
+@app.put('/admin/devices/{device_id}')
+def api_update_device(device_id: int, name: str, status: str, last_sync: str = None, online: int = None):
+    update_device(device_id, name, status, last_sync, online)
+    return {"success": True}
+
+@app.delete('/admin/devices/{device_id}')
+def api_delete_device(device_id: int):
+    delete_device(device_id)
+    return {"success": True}
+
+# Endpoint heartbeat: equipamento envia ping para marcar online
+@app.post('/device/heartbeat/{identifier}')
+def device_heartbeat(identifier: str):
+    # Busca o device pelo identificador (UUID)
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('SELECT identifier, COUNT(*) as qtd FROM devices WHERE identifier IS NOT NULL GROUP BY identifier HAVING qtd > 1')
-    duplicates = cur.fetchall()
-    for dup in duplicates:
-        log_ia_autonomous_action('duplicate_device_identifier', 'warning', {'identifier': dup['identifier'], 'count': dup['qtd']})
-        notify_ai_agent('duplicate_device_identifier', {'identifier': dup['identifier'], 'count': dup['qtd']})
+    cur.execute('SELECT id FROM devices WHERE identifier = ?', (identifier,))
+    row = cur.fetchone()
     conn.close()
-    return len(duplicates)
+    if not row:
+        # Tenta buscar por identifier ignorando case e espaços
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT id FROM devices WHERE TRIM(LOWER(identifier)) = ?', (identifier.strip().lower(),))
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            raise HTTPException(status_code=404, detail='Dispositivo não encontrado')
+    # Corrigido: passa identifier para set_device_online
+    set_device_online(identifier)
+    notify_ai_agent('device_heartbeat', {'identifier': identifier})
+    return {"success": True}
 
-# Atualizar função de execução das automações autônomas
-def ia_autonomous_execute_all():
-    offline_count = ia_autonomous_check_devices()
-    ia_autonomous_cleanup_logs()
-    fixed_products = ia_autonomous_fix_product_data()
-    fixed_outliers = ia_autonomous_fix_outlier_prices()
-    duplicate_ids = ia_autonomous_check_duplicate_device_identifiers()
-    log_ia_autonomous_action('autonomous_execute', 'success', {
-        'offline_devices': offline_count,
-        'fixed_products': fixed_products,
-        'fixed_outlier_prices': fixed_outliers,
-        'duplicate_device_identifiers': duplicate_ids
-    })
+# Endpoint para exportar produtos para .txt
+@app.get('/admin/export-txt')
+def export_txt():
+    txt_path = export_products_to_txt()
+    notify_ai_agent('export', {'file': txt_path})
+    return FileResponse(txt_path, media_type='text/plain', filename='produtos.txt')
 
-@app.get('/api/produtos')
-def api_produtos():
-    return get_all_products()
+# Endpoints de auditoria
+@app.get('/admin/audit-logs')
+def api_get_audit_logs(limit: int = 50):
+    """Retorna logs de auditoria gerais do sistema"""
+    return get_audit_logs(limit)
 
-@app.get('/api/ping')
-def api_ping():
-    return {"status": "ok"}
+@app.get('/admin/devices/{device_id}/audit-logs')
+def api_get_device_audit_logs(device_id: int, limit: int = 20):
+    """Retorna logs de auditoria específicos de um dispositivo"""
+    return get_device_audit_logs(device_id, limit)
 
-# --- Gerenciamento Centralizado dos Agentes Locais ---
-AGENTS_STATUS = {}
-AGENTS_LOGS = {}
+# --- Endpoints de administração de usuários admin ---
+from fastapi import Body
 
-@app.post('/admin/agents/status')
-def update_agent_status(data: dict = Body(...)):
-    agent_id = data.get('agent_id')
-    status = data.get('status')
-    info = data.get('info', {})
-    loja_codigo = data.get('loja_codigo')
-    loja_nome = data.get('loja_nome')
-    ip = data.get('ip')
-    if not agent_id or not status:
-        raise HTTPException(status_code=400, detail='agent_id e status obrigatórios')
-    agent_status = {'status': status, 'info': info, 'timestamp': datetime.now().isoformat()}
-    if loja_codigo:
-        agent_status['loja_codigo'] = loja_codigo
-    if loja_nome:
-        agent_status['loja_nome'] = loja_nome
-    AGENTS_STATUS[agent_id] = agent_status
-    # Persistência no banco
-    upsert_agent_status(
-        agent_id=agent_id,
-        loja_codigo=loja_codigo,
-        loja_nome=loja_nome,
-        status=status,
-        last_update=datetime.now().isoformat(),
-        ip=ip
-    )
-    return {'success': True}
-
-@app.post('/admin/agents/logs')
-def update_agent_logs(data: dict = Body(...)):
-    agent_id = data.get('agent_id')
-    logs = data.get('logs', [])
-    if not agent_id:
-        raise HTTPException(status_code=400, detail='agent_id obrigatório')
-    if agent_id not in AGENTS_LOGS:
-        AGENTS_LOGS[agent_id] = []
-    AGENTS_LOGS[agent_id].extend(logs)
-    return {'success': True}
-
-@app.get('/admin/agents')
-def list_agents():
-    # Lista todos os agentes persistidos no banco
-    agents = get_all_agents_status()
-    # Mantém compatibilidade: se algum agente só está em memória, inclui também
-    for k, v in AGENTS_STATUS.items():
-        if not any(a['agent_id'] == k for a in agents):
-            agents.append({'agent_id': k, **v})
-    # Ajusta formato para frontend
-    return [
-        {'id': a.get('agent_id', a.get('id')), 'status': a.get('status'), 'loja_codigo': a.get('loja_codigo'), 'loja_nome': a.get('loja_nome'), 'last_update': a.get('last_update', a.get('timestamp')), **{k: v for k, v in a.items() if k not in ['agent_id', 'status', 'loja_codigo', 'loja_nome', 'last_update', 'timestamp', 'id']}}
-        for a in agents
-    ]
-
-@app.delete('/admin/agents/{agent_id}')
-def delete_agent(agent_id: str):
-    # Remove do banco
+@app.get('/admin/users')
+def list_admin_users(current_user: str = Depends(require_admin)):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('DELETE FROM agents_status WHERE agent_id = ?', (agent_id,))
+    cur.execute('SELECT username, role, store_id, permissoes FROM admin_users')
+    users = []
+    for row in cur.fetchall():
+        permissoes = row['permissoes'] if 'permissoes' in row.keys() else None
+        if permissoes:
+            try:
+                permissoes = json.loads(permissoes)
+            except Exception:
+                permissoes = []
+        else:
+            permissoes = []
+        users.append({
+            'username': row['username'],
+            'role': row['role'] if 'role' in row.keys() else 'admin',
+            'store_id': row['store_id'] if 'store_id' in row.keys() else None,
+            'permissoes': permissoes
+        })
+    conn.close()
+    return {'users': users}
+
+@app.post('/admin/users')
+def create_admin_user_endpoint(data: dict = Body(...), current_user: str = Depends(require_admin)):
+    from database import hash_password
+    username = data.get('username')
+    password = data.get('password')
+    role = data.get('role', 'admin')
+    if not username or not password:
+        raise HTTPException(status_code=400, detail='Usuário e senha obrigatórios')
+    hashed = hash_password(password)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('INSERT INTO admin_users (username, password, role) VALUES (?, ?, ?)', (username, hashed, role))
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        if 'UNIQUE constraint failed' in str(e):
+            raise HTTPException(status_code=409, detail='Usuário já existe')
+        raise HTTPException(status_code=500, detail='Erro ao criar usuário')
+    conn.close()
+    return {'success': True, 'message': 'Usuário criado com sucesso'}
+
+@app.put('/admin/users/{username}')
+def update_admin_user(username: str, data: dict = Body(...), current_user: str = Depends(require_admin)):
+    from database import hash_password
+    password = data.get('password')
+    role = data.get('role')
+    permissoes = data.get('permissoes')
+    # Garante que permissoes seja string JSON para o banco
+    if permissoes is not None and not isinstance(permissoes, str):
+        permissoes = json.dumps(permissoes)
+    if not password and not role and permissoes is None:
+        raise HTTPException(status_code=400, detail='Nada para atualizar')
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Atualiza todos os campos enviados
+    if password and role and permissoes is not None:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, role = ?, permissoes = ? WHERE username = ?', (hashed, role, permissoes, username))
+    elif password and role:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, role = ? WHERE username = ?', (hashed, role, username))
+    elif password and permissoes is not None:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, permissoes = ? WHERE username = ?', (hashed, permissoes, username))
+    elif role and permissoes is not None:
+        cur.execute('UPDATE admin_users SET role = ?, permissoes = ? WHERE username = ?', (role, permissoes, username))
+    elif password:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ? WHERE username = ?', (hashed, username))
+    elif role:
+        cur.execute('UPDATE admin_users SET role = ? WHERE username = ?', (role, username))
+    elif permissoes is not None:
+        cur.execute('UPDATE admin_users SET permissoes = ? WHERE username = ?', (permissoes, username))
+    if cur.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail='Usuário não encontrado')
     conn.commit()
     conn.close()
-    # Remove da memória (opcional)
-    AGENTS_STATUS.pop(agent_id, None)
-    AGENTS_LOGS.pop(agent_id, None)
-    return {'success': True}
+    return {'success': True, 'message': 'Usuário atualizado com sucesso'}
 
-@app.get('/admin/agents/status')
-def get_agents_status():
-    """Retorna o status de todos os agentes locais."""
-    try:
-        agents = get_all_agents_status()
-        return {"success": True, "agents": agents}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+@app.delete('/admin/users/{username}')
+def delete_admin_user(username: str, current_user: str = Depends(require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('DELETE FROM admin_users WHERE username = ?', (username,))
+    if cur.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail='Usuário não encontrado')
+    conn.commit()
+    conn.close()
+    return {'success': True, 'message': 'Usuário removido com sucesso'}
 
-from fastapi import Request
+# Endpoint para buscar produto pelo código de barras
+@app.get('/product/{barcode}')
+def get_product(barcode: str):
+    product = get_product_by_barcode(barcode)
+    if not product:
+        raise HTTPException(status_code=404, detail='Produto não encontrado')
+    return product
 
-@app.post('/admin/ia-automation/execute')
-async def ia_automation_execute(request: Request):
-    data = await request.json()
-    action = data.get('action')
-    params = data.get('params', {})
-    if not action:
-        return {"success": False, "message": "Ação não especificada."}
-    # Aciona IA (exemplo: notify_ai_agent)
-    try:
-        from ai_agent_integration import notify_ai_agent
-        ia_response = notify_ai_agent('automation_execute', {"action": action, "params": params})
-        log_automation(action)
-        return {"success": True, "message": f"Automação '{action}' executada.", "ia_response": ia_response}
-    except Exception as e:
-        return {"success": False, "message": f"Erro ao executar automação: {e}"}
 
-@app.post('/admin/ia-chat')
-async def ia_chat(request: Request):
-    data = await request.json()
-    message = data.get('message')
-    history = data.get('history', [])
-    if not message:
-        return JSONResponse({"error": "Mensagem não informada."}, status_code=400)
-    # Enriquecer contexto para a IA
-    try:
-        # Buscar contexto do sistema
-        status = get_system_status()
-        automations = [
-            {"name": "atualizar_precos", "desc": "Atualiza os preços dos produtos automaticamente."},
-            {"name": "gerar_relatorio", "desc": "Gera relatórios inteligentes de vendas e estoque."},
-            {"name": "otimizar_estoque", "desc": "Sugere otimizações de estoque com base em IA."},
-            {"name": "executar_todas_automacoes_autonomas", "desc": "Executa todas as automações autônomas do sistema."}
-        ]
-        # Último incidente/anomalia
-        OPTIMIZATION_LOG = os.path.join(os.path.dirname(__file__), 'logs', 'optimization_suggestions.log')
-        last_incident = None
-        if os.path.exists(OPTIMIZATION_LOG):
-            with open(OPTIMIZATION_LOG, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-            if lines:
-                last_incident = json.loads(lines[-1])
-        # Montar contexto para IA
-        system_context = {
-            "system_status": status,
-            "available_automations": automations,
-            "latest_incident": last_incident
-        }
-        agno_prompt = {
-            "event_type": "chat",
-            "details": {
-                "message": message,
-                "history": history,
-                "system_context": system_context,
-                "instructions": "Responda de forma natural, humanizada, clara e contextualizada. Use o contexto do sistema para agregar valor real ao usuário. Se possível, sugira ações, explique resultados e seja proativo."
-            }
-        }
-        agno_resp = requests.post(
-            "http://localhost:8080/event",
-            json=agno_prompt,
-            timeout=15
-        )
-        if agno_resp.status_code == 200:
-            agno_data = agno_resp.json()
-            resposta = agno_data.get("response")
-            if not resposta or resposta.strip() in ["Desculpe, não sei responder.", "Não entendi.", "", None]:
-                resposta = "Desculpe, não consegui entender sua solicitação. Poderia reformular ou ser mais específico?"
-            return {"reply": resposta}
-        else:
-            return {"reply": "Sem resposta da IA (Agno não respondeu corretamente)."}
-    except requests.exceptions.ConnectionError:
-        return {"reply": "Erro: Não foi possível conectar ao servidor Agno (IA)."}
-    except Exception as e:
-        return {"reply": f"Erro interno: {e}"}
-
-@app.get('/admin/status')
-def admin_status():
-    return {"status": "ok", "message": "Admin status endpoint is working."}
-
-@app.get('/health')
-def health():
-    return {"status": "ok", "message": "Health endpoint is working."}
-
-@app.get("/admin/ia-automation/list")
-def list_automations():
-    automations = [
-        {"name": "atualizar_precos", "desc": "Atualiza os preços dos produtos automaticamente.", "status": "pronto"},
-        {"name": "gerar_relatorio", "desc": "Gera relatórios inteligentes de vendas e estoque.", "status": "pronto"},
-        {"name": "otimizar_estoque", "desc": "Sugere otimizações de estoque com base em IA.", "status": "pronto"}
-    ]
-    return {"automations": automations}
-
-@app.get("/admin/ia-logs/list")
-def list_ia_logs():
-    import os
-    log_dir = os.path.join(os.path.dirname(__file__), "logs")
-    if not os.path.exists(log_dir):
-        return {"logs": []}
-    files = [f for f in os.listdir(log_dir) if f.endswith(".log")]
-    return {"logs": files}
-
-from fastapi import Query
-
-@app.get("/admin/ia-logs/content")
-def get_log_content(file: str = Query(...)):
-    import os
-    log_dir = os.path.join(os.path.dirname(__file__), "logs")
-    file_path = os.path.join(log_dir, file)
-    if not os.path.exists(file_path):
-        return {"error": "Arquivo de log não encontrado."}
-    with open(file_path, encoding="utf-8") as f:
-        content = f.read()
-    return {"file": file, "content": content}
-
-@app.get('/admin/ia-get-system-status')
-def ia_get_system_status():
-    status = get_system_status()
-    return status
-
-@app.get('/admin/ia-get-latest-incident')
-def ia_get_latest_incident():
-    # Busca última sugestão/anomalia relevante
-    OPTIMIZATION_LOG = os.path.join(os.path.dirname(__file__), 'logs', 'optimization_suggestions.log')
-    if not os.path.exists(OPTIMIZATION_LOG):
-        return {"incident": None}
-    with open(OPTIMIZATION_LOG, 'r', encoding='utf-8') as f:
-        lines = f.readlines()
-    if not lines:
-        return {"incident": None}
-    last = json.loads(lines[-1])
-    return {"incident": last}
-
-@app.get('/admin/ia-get-automations')
-def ia_get_automations():
-    automations = [
-        {"name": "atualizar_precos", "desc": "Atualiza os preços dos produtos automaticamente."},
-        {"name": "gerar_relatorio", "desc": "Gera relatórios inteligentes de vendas e estoque."},
-        {"name": "otimizar_estoque", "desc": "Sugere otimizações de estoque com base em IA."},
-        {"name": "executar_todas_automacoes_autonomas", "desc": "Executa todas as automações autônomas do sistema."}
-    ]
-    return {"automations": automations}
-
-@app.post('/admin/ia-execute-automation')
-def ia_execute_automation(data: dict = Body(...)):
-    action = data.get('action')
-    if not action:
-        return {"success": False, "message": "Ação não especificada."}
-    # Reaproveita endpoint já existente
-    from ai_agent_integration import notify_ai_agent
-    try:
-        ia_response = notify_ai_agent('automation_execute', {"action": action})
-        log_automation(action)
-        return {"success": True, "message": f"Automação '{action}' executada.", "ia_response": ia_response}
-    except Exception as e:
-        return {"success": False, "message": f"Erro ao executar automação: {e}"}
-
-@app.post('/admin/ia-automation/execute-autonomous')
-def execute_autonomous_automation(data: dict = Body(...)):
-    action = data.get('action')
-    if action == 'ia_autonomous_check_devices':
-        result = ia_autonomous_check_devices()
-        return {"success": True, "message": f"Dispositivos offline verificados: {result}"}
-    elif action == 'ia_autonomous_cleanup_logs':
-        result = ia_autonomous_cleanup_logs()
-        return {"success": True, "message": "Limpeza de logs executada."}
-    elif action == 'ia_autonomous_fix_product_data':
-        result = ia_autonomous_fix_product_data()
-        return {"success": True, "message": "Correção de dados de produtos executada."}
-    elif action == 'ia_autonomous_fix_outlier_prices':
-        result = ia_autonomous_fix_outlier_prices()
-        return {"success": True, "message": "Correção de preços fora do padrão executada."}
-    elif action == 'ia_autonomous_check_duplicate_device_identifiers':
-        result = ia_autonomous_check_duplicate_device_identifiers()
-        return {"success": True, "message": f"Identificadores duplicados verificados: {result}"}
+# Serve o frontend (build) se existir, mas não impede execução separada
+def mount_frontend_if_exists():
+    FRONTEND_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist'))
+    if os.path.exists(FRONTEND_PATH):
+        logging.info(f"Montando frontend na pasta: {FRONTEND_PATH}")
+        mount_frontend(app, FRONTEND_PATH)
     else:
-        return {"success": False, "message": "Ação autônoma não reconhecida."}
+        logging.warning(f"Pasta {FRONTEND_PATH} não encontrada. Certifique-se de que o build do frontend foi gerado corretamente.")
 
-def log_automation(action, result=None, details=None):
-    """Registra a execução de uma automação no log do sistema."""
-    from datetime import datetime
-    log_entry = {
-        "timestamp": datetime.now().isoformat(),
-        "action": action,
-        "result": result,
-        "details": details
-    }
-    # Aqui você pode salvar em arquivo, banco de dados ou apenas print/log
-    print(f"[AUTOMATION LOG] {log_entry}")
-    # Exemplo: salvar em arquivo
-    try:
-        with open("automation.log", "a", encoding="utf-8") as f:
-            f.write(str(log_entry) + "\n")
-    except Exception as e:
-        print(f"Erro ao registrar automação: {e}")
+mount_frontend_if_exists()
 
-@app.post('/admin/ia-special/check-system-status')
-def ia_special_check_system_status():
-    status = get_system_status()
-    return {"success": True, "system_status": status}
+# Endpoints de lojas
+@app.get('/admin/stores')
+def api_get_stores():
+    return get_all_stores()
 
-@app.post('/admin/ia-special/check-endpoint-health')
-def ia_special_check_endpoint_health():
-    from fastapi.responses import JSONResponse
-    health = []
-    if os.path.exists(HEALTHCHECK_LOG):
-        with open(HEALTHCHECK_LOG, 'r', encoding='utf-8') as f:
-            health = [json.loads(l) for l in f.readlines()[-20:]]
-    return {"success": True, "healthchecks": health}
+@app.post('/admin/stores')
+async def api_add_store(request: Request):
+    data = await request.json()
+    name = data.get('name')
+    if not name:
+        return {"success": False, "message": "Nome da loja obrigatório."}
+    add_store(name)
+    return {"success": True}
 
-from starlette.middleware.base import BaseHTTPMiddleware
+@app.put('/admin/stores/{store_id}')
+def api_update_store(store_id: int, name: str, status: str):
+    update_store(store_id, name, status)
+    return {"success": True}
 
-class ErrorMonitorMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        response = await call_next(request)
-        # Monitorar apenas erros críticos (4xx/5xx)
-        if response.status_code >= 400:
+@app.delete('/admin/stores/{store_id}')
+def api_delete_store(store_id: int):
+    delete_store(store_id)
+    return {"success": True}
+
+# Endpoints de equipamentos
+@app.get('/admin/devices')
+def api_get_devices():
+    return get_all_devices()
+
+@app.post('/admin/devices')
+async def api_add_device(request: Request):
+    data = await request.json()
+    store_id = data.get('store_id')
+    name = data.get('name')
+    identifier = data.get('identifier')
+    if not store_id or not name or not identifier:
+        return {"success": False, "message": "Todos os campos são obrigatórios."}
+    # Adiciona dispositivo já com o identifier correto
+    add_device(store_id, name, identifier=identifier)
+    notify_ai_agent('device_added', {'store_id': store_id, 'name': name, 'identifier': identifier})
+    return {"success": True}
+
+@app.put('/admin/devices/{device_id}')
+def api_update_device(device_id: int, name: str, status: str, last_sync: str = None, online: int = None):
+    update_device(device_id, name, status, last_sync, online)
+    return {"success": True}
+
+@app.delete('/admin/devices/{device_id}')
+def api_delete_device(device_id: int):
+    delete_device(device_id)
+    return {"success": True}
+
+# Endpoint heartbeat: equipamento envia ping para marcar online
+@app.post('/device/heartbeat/{identifier}')
+def device_heartbeat(identifier: str):
+    # Busca o device pelo identificador (UUID)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT id FROM devices WHERE identifier = ?', (identifier,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        # Tenta buscar por identifier ignorando case e espaços
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT id FROM devices WHERE TRIM(LOWER(identifier)) = ?', (identifier.strip().lower(),))
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            raise HTTPException(status_code=404, detail='Dispositivo não encontrado')
+    # Corrigido: passa identifier para set_device_online
+    set_device_online(identifier)
+    notify_ai_agent('device_heartbeat', {'identifier': identifier})
+    return {"success": True}
+
+# Endpoint para exportar produtos para .txt
+@app.get('/admin/export-txt')
+def export_txt():
+    txt_path = export_products_to_txt()
+    notify_ai_agent('export', {'file': txt_path})
+    return FileResponse(txt_path, media_type='text/plain', filename='produtos.txt')
+
+# Endpoints de auditoria
+@app.get('/admin/audit-logs')
+def api_get_audit_logs(limit: int = 50):
+    """Retorna logs de auditoria gerais do sistema"""
+    return get_audit_logs(limit)
+
+@app.get('/admin/devices/{device_id}/audit-logs')
+def api_get_device_audit_logs(device_id: int, limit: int = 20):
+    """Retorna logs de auditoria específicos de um dispositivo"""
+    return get_device_audit_logs(device_id, limit)
+
+# --- Endpoints de administração de usuários admin ---
+from fastapi import Body
+
+@app.get('/admin/users')
+def list_admin_users(current_user: str = Depends(require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT username, role, store_id, permissoes FROM admin_users')
+    users = []
+    for row in cur.fetchall():
+        permissoes = row['permissoes'] if 'permissoes' in row.keys() else None
+        if permissoes:
             try:
-                import requests
-                # Tenta obter o corpo da resposta de forma segura
-                body = None
-                if hasattr(response, 'body') and response.body:
-                    body = response.body
-                else:
-                    body = str(response)
-                error_event = {
-                    "event_type": "error_detected",
-                    "details": {
-                        "path": request.url.path,
-                        "method": request.method,
-                        "status_code": response.status_code,
-                        "response": str(body)
-                    }
-                }
-                requests.post("http://localhost:8080/event", json=error_event, timeout=2)
-            except Exception as e:
-                logging.error(f"Erro ao enviar evento para Agno: {e}")
-        return response
-
-app.add_middleware(ErrorMonitorMiddleware)
-
-from fastapi import Depends
-
-@app.post('/admin/auto-fix')
-def auto_fix_endpoint(data: dict = Body(...), current_user: str = Depends(require_admin)):
-    """
-    Endpoint seguro para aplicar correções automáticas sugeridas pelos agentes especialistas.
-    Recebe instruções, patches ou scripts e aplica mudanças no código/configuração.
-    Todas as alterações são registradas para auditoria e rollback.
-    """
-    import logging
-    import os
-    import datetime
-    agent = data.get('agent', 'desconhecido')  # Identifica o agente especialista
-    patch = data.get('patch')
-    script = data.get('script')
-    file_path = data.get('file_path')
-    change_log = os.path.join(os.path.dirname(__file__), 'logs', 'auto_fix.log')
-    result = None
-    try:
-        if patch and file_path:
-            # Aplica patch diretamente no arquivo
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(patch)
-            result = f'Patch aplicado em {file_path}'
-        elif script:
-            # Executa script de ajuste
-            exec(script, globals())
-            result = 'Script executado com sucesso.'
+                permissoes = json.loads(permissoes)
+            except Exception:
+                permissoes = []
         else:
-            return {'success': False, 'message': 'Nada para corrigir.'}
-        # Log da alteração incluindo agente
-        with open(change_log, 'a', encoding='utf-8') as logf:
-            logf.write(f"[{datetime.datetime.now().isoformat()}] {current_user} (agente: {agent}): {result}\n")
-        return {'success': True, 'message': result}
-    except Exception as e:
-        logging.error(f'Erro na autocorreção: {e}')
-        return {'success': False, 'message': f'Erro na autocorreção: {e}'}
+            permissoes = []
+        users.append({
+            'username': row['username'],
+            'role': row['role'] if 'role' in row.keys() else 'admin',
+            'store_id': row['store_id'] if 'store_id' in row.keys() else None,
+            'permissoes': permissoes
+        })
+   
+    conn.close()
+    return {'users': users}
 
-# --- Bloco de integração dos agentes IA e orquestrador Agno ---
-import requests
-
-AGENTS = [
-    'backend',
-    'frontend',
-    'admin',
-    'sync',
-    'scripts',
-    'local'
-]
-
-AUTO_FIX_URL = 'http://127.0.0.1:8000/admin/auto-fix'
-
-# Função utilitária para agentes especialistas enviarem correção
-def agent_send_auto_fix(agent, patch=None, script=None, file_path=None, token=None):
-    payload = {
-        'agent': agent,
-        'patch': patch,
-        'script': script,
-        'file_path': file_path
-    }
-    headers = {'Authorization': f'Bearer {token}'} if token else {}
+@app.post('/admin/users')
+def create_admin_user_endpoint(data: dict = Body(...), current_user: str = Depends(require_admin)):
+    from database import hash_password
+    username = data.get('username')
+    password = data.get('password')
+    role = data.get('role', 'admin')
+    if not username or not password:
+        raise HTTPException(status_code=400, detail='Usuário e senha obrigatórios')
+    hashed = hash_password(password)
+    conn = get_db_connection()
+    cur = conn.cursor()
     try:
-        resp = requests.post(AUTO_FIX_URL, json=payload, headers=headers, timeout=10)
-        return resp.json()
+        cur.execute('INSERT INTO admin_users (username, password, role) VALUES (?, ?, ?)', (username, hashed, role))
+        conn.commit()
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        conn.close()
+        if 'UNIQUE constraint failed' in str(e):
+            raise HTTPException(status_code=409, detail='Usuário já existe')
+        raise HTTPException(status_code=500, detail='Erro ao criar usuário')
+    conn.close()
+    return {'success': True, 'message': 'Usuário criado com sucesso'}
 
-# Orquestrador Agno: recebe evento, decide qual agente atua e dispara correção
-# Exemplo simplificado: Agno recebe evento de erro e delega para agente adequado
+@app.put('/admin/users/{username}')
+def update_admin_user(username: str, data: dict = Body(...), current_user: str = Depends(require_admin)):
+    from database import hash_password
+    password = data.get('password')
+    role = data.get('role')
+    permissoes = data.get('permissoes')
+    # Garante que permissoes seja string JSON para o banco
+    if permissoes is not None and not isinstance(permissoes, str):
+        permissoes = json.dumps(permissoes)
+    if not password and not role and permissoes is None:
+        raise HTTPException(status_code=400, detail='Nada para atualizar')
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Atualiza todos os campos enviados
+    if password and role and permissoes is not None:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, role = ?, permissoes = ? WHERE username = ?', (hashed, role, permissoes, username))
+    elif password and role:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, role = ? WHERE username = ?', (hashed, role, username))
+    elif password and permissoes is not None:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, permissoes = ? WHERE username = ?', (hashed, permissoes, username))
+    elif role and permissoes is not None:
+        cur.execute('UPDATE admin_users SET role = ?, permissoes = ? WHERE username = ?', (role, permissoes, username))
+    elif password:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ? WHERE username = ?', (hashed, username))
+    elif role:
+        cur.execute('UPDATE admin_users SET role = ? WHERE username = ?', (role, username))
+    elif permissoes is not None:
+        cur.execute('UPDATE admin_users SET permissoes = ? WHERE username = ?', (permissoes, username))
+    if cur.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail='Usuário não encontrado')
+    conn.commit()
+    conn.close()
+    return {'success': True, 'message': 'Usuário atualizado com sucesso'}
 
-def agno_orchestrate_auto_fix(event, token=None):
-    """
-    Recebe evento de erro, analisa e delega correção ao agente especialista.
-    """
-    # Exemplo: decisão baseada no path do erro
-    path = event.get('details', {}).get('path', '')
-    if '/admin/' in path:
-        agent = 'admin'
-    elif '/product/' in path:
-        agent = 'backend'
-    elif '/device/' in path:
-        agent = 'sync'
+@app.delete('/admin/users/{username}')
+def delete_admin_user(username: str, current_user: str = Depends(require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('DELETE FROM admin_users WHERE username = ?', (username,))
+    if cur.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail='Usuário não encontrado')
+    conn.commit()
+    conn.close()
+    return {'success': True, 'message': 'Usuário removido com sucesso'}
+
+# Endpoint para buscar produto pelo código de barras
+@app.get('/product/{barcode}')
+def get_product(barcode: str):
+    product = get_product_by_barcode(barcode)
+    if not product:
+        raise HTTPException(status_code=404, detail='Produto não encontrado')
+    return product
+
+
+# Serve o frontend (build) se existir, mas não impede execução separada
+def mount_frontend_if_exists():
+    FRONTEND_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist'))
+    if os.path.exists(FRONTEND_PATH):
+        logging.info(f"Montando frontend na pasta: {FRONTEND_PATH}")
+        mount_frontend(app, FRONTEND_PATH)
     else:
-        agent = 'local'
-    # Exemplo de patch/script gerado (simulação)
-    patch = event.get('suggested_patch')
-    script = event.get('suggested_script')
-    file_path = event.get('file_path')
-    result = agent_send_auto_fix(agent, patch=patch, script=script, file_path=file_path, token=token)
-    # Loga decisão do Agno
-    with open(os.path.join(os.path.dirname(__file__), 'logs', 'agno_orchestrator.log'), 'a', encoding='utf-8') as logf:
-        logf.write(f"[{datetime.now().isoformat()}] Agno delegou para agente '{agent}': {result}\n")
-    return result
+        logging.warning(f"Pasta {FRONTEND_PATH} não encontrada. Certifique-se de que o build do frontend foi gerado corretamente.")
 
-# Exemplo de uso:
-# evento = {
-#     'details': {'path': '/admin/users', 'method': 'POST', 'status_code': 500},
-#     'suggested_patch': "...código corrigido...",
-#     'file_path': 'd:/Sonda/Precix/backend/main.py'
-# }
-# token = 'TOKEN_ADMIN_JWT'
-# agno_orchestrate_auto_fix(evento, token)
-# --- Fim do bloco de integração dos agentes IA ---
+mount_frontend_if_exists()
+
+# Endpoints de lojas
+@app.get('/admin/stores')
+def api_get_stores():
+    return get_all_stores()
+
+@app.post('/admin/stores')
+async def api_add_store(request: Request):
+    data = await request.json()
+    name = data.get('name')
+    if not name:
+        return {"success": False, "message": "Nome da loja obrigatório."}
+    add_store(name)
+    return {"success": True}
+
+@app.put('/admin/stores/{store_id}')
+def api_update_store(store_id: int, name: str, status: str):
+    update_store(store_id, name, status)
+    return {"success": True}
+
+@app.delete('/admin/stores/{store_id}')
+def api_delete_store(store_id: int):
+    delete_store(store_id)
+    return {"success": True}
+
+# Endpoints de equipamentos
+@app.get('/admin/devices')
+def api_get_devices():
+    return get_all_devices()
+
+@app.post('/admin/devices')
+async def api_add_device(request: Request):
+    data = await request.json()
+    store_id = data.get('store_id')
+    name = data.get('name')
+    identifier = data.get('identifier')
+    if not store_id or not name or not identifier:
+        return {"success": False, "message": "Todos os campos são obrigatórios."}
+    # Adiciona dispositivo já com o identifier correto
+    add_device(store_id, name, identifier=identifier)
+    notify_ai_agent('device_added', {'store_id': store_id, 'name': name, 'identifier': identifier})
+    return {"success": True}
+
+@app.put('/admin/devices/{device_id}')
+def api_update_device(device_id: int, name: str, status: str, last_sync: str = None, online: int = None):
+    update_device(device_id, name, status, last_sync, online)
+    return {"success": True}
+
+@app.delete('/admin/devices/{device_id}')
+def api_delete_device(device_id: int):
+    delete_device(device_id)
+    return {"success": True}
+
+# Endpoint heartbeat: equipamento envia ping para marcar online
+@app.post('/device/heartbeat/{identifier}')
+def device_heartbeat(identifier: str):
+    # Busca o device pelo identificador (UUID)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT id FROM devices WHERE identifier = ?', (identifier,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        # Tenta buscar por identifier ignorando case e espaços
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT id FROM devices WHERE TRIM(LOWER(identifier)) = ?', (identifier.strip().lower(),))
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            raise HTTPException(status_code=404, detail='Dispositivo não encontrado')
+    # Corrigido: passa identifier para set_device_online
+    set_device_online(identifier)
+    notify_ai_agent('device_heartbeat', {'identifier': identifier})
+    return {"success": True}
+
+# Endpoint para exportar produtos para .txt
+@app.get('/admin/export-txt')
+def export_txt():
+    txt_path = export_products_to_txt()
+    notify_ai_agent('export', {'file': txt_path})
+    return FileResponse(txt_path, media_type='text/plain', filename='produtos.txt')
+
+# Endpoints de auditoria
+@app.get('/admin/audit-logs')
+def api_get_audit_logs(limit: int = 50):
+    """Retorna logs de auditoria gerais do sistema"""
+    return get_audit_logs(limit)
+
+@app.get('/admin/devices/{device_id}/audit-logs')
+def api_get_device_audit_logs(device_id: int, limit: int = 20):
+    """Retorna logs de auditoria específicos de um dispositivo"""
+    return get_device_audit_logs(device_id, limit)
+
+# --- Endpoints de administração de usuários admin ---
+from fastapi import Body
+
+@app.get('/admin/users')
+def list_admin_users(current_user: str = Depends(require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT username, role, store_id, permissoes FROM admin_users')
+    users = []
+    for row in cur.fetchall():
+        permissoes = row['permissoes'] if 'permissoes' in row.keys() else None
+        if permissoes:
+            try:
+                permissoes = json.loads(permissoes)
+            except Exception:
+                permissoes = []
+        else:
+            permissoes = []
+        users.append({
+            'username': row['username'],
+            'role': row['role'] if 'role' in row.keys() else 'admin',
+            'store_id': row['store_id'] if 'store_id' in row.keys() else None,
+            'permissoes': permissoes
+        })
+   
+    conn.close()
+    return {'users': users}
+
+@app.post('/admin/users')
+def create_admin_user_endpoint(data: dict = Body(...), current_user: str = Depends(require_admin)):
+    from database import hash_password
+    username = data.get('username')
+    password = data.get('password')
+    role = data.get('role', 'admin')
+    if not username or not password:
+        raise HTTPException(status_code=400, detail='Usuário e senha obrigatórios')
+    hashed = hash_password(password)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('INSERT INTO admin_users (username, password, role) VALUES (?, ?, ?)', (username, hashed, role))
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        if 'UNIQUE constraint failed' in str(e):
+            raise HTTPException(status_code=409, detail='Usuário já existe')
+        raise HTTPException(status_code=500, detail='Erro ao criar usuário')
+    conn.close()
+    return {'success': True, 'message': 'Usuário criado com sucesso'}
+
+@app.put('/admin/users/{username}')
+def update_admin_user(username: str, data: dict = Body(...), current_user: str = Depends(require_admin)):
+    from database import hash_password
+    password = data.get('password')
+    role = data.get('role')
+    permissoes = data.get('permissoes')
+    # Garante que permissoes seja string JSON para o banco
+    if permissoes is not None and not isinstance(permissoes, str):
+        permissoes = json.dumps(permissoes)
+    if not password and not role and permissoes is None:
+        raise HTTPException(status_code=400, detail='Nada para atualizar')
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Atualiza todos os campos enviados
+    if password and role and permissoes is not None:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, role = ?, permissoes = ? WHERE username = ?', (hashed, role, permissoes, username))
+    elif password and role:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, role = ? WHERE username = ?', (hashed, role, username))
+    elif password and permissoes is not None:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, permissoes = ? WHERE username = ?', (hashed, permissoes, username))
+    elif role and permissoes is not None:
+        cur.execute('UPDATE admin_users SET role = ?, permissoes = ? WHERE username = ?', (role, permissoes, username))
+    elif password:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ? WHERE username = ?', (hashed, username))
+    elif role:
+        cur.execute('UPDATE admin_users SET role = ? WHERE username = ?', (role, username))
+    elif permissoes is not None:
+        cur.execute('UPDATE admin_users SET permissoes = ? WHERE username = ?', (permissoes, username))
+    if cur.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail='Usuário não encontrado')
+    conn.commit()
+    conn.close()
+    return {'success': True, 'message': 'Usuário atualizado com sucesso'}
+
+@app.delete('/admin/users/{username}')
+def delete_admin_user(username: str, current_user: str = Depends(require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('DELETE FROM admin_users WHERE username = ?', (username,))
+    if cur.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail='Usuário não encontrado')
+    conn.commit()
+    conn.close()
+    return {'success': True, 'message': 'Usuário removido com sucesso'}
+
+# Endpoint para buscar produto pelo código de barras
+@app.get('/product/{barcode}')
+def get_product(barcode: str):
+    product = get_product_by_barcode(barcode)
+    if not product:
+        raise HTTPException(status_code=404, detail='Produto não encontrado')
+    return product
+
+
+# Serve o frontend (build) se existir, mas não impede execução separada
+def mount_frontend_if_exists():
+    FRONTEND_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist'))
+    if os.path.exists(FRONTEND_PATH):
+        logging.info(f"Montando frontend na pasta: {FRONTEND_PATH}")
+        mount_frontend(app, FRONTEND_PATH)
+    else:
+        logging.warning(f"Pasta {FRONTEND_PATH} não encontrada. Certifique-se de que o build do frontend foi gerado corretamente.")
+
+mount_frontend_if_exists()
+
+# Endpoints de lojas
+@app.get('/admin/stores')
+def api_get_stores():
+    return get_all_stores()
+
+@app.post('/admin/stores')
+async def api_add_store(request: Request):
+    data = await request.json()
+    name = data.get('name')
+    if not name:
+        return {"success": False, "message": "Nome da loja obrigatório."}
+    add_store(name)
+    return {"success": True}
+
+@app.put('/admin/stores/{store_id}')
+def api_update_store(store_id: int, name: str, status: str):
+    update_store(store_id, name, status)
+    return {"success": True}
+
+@app.delete('/admin/stores/{store_id}')
+def api_delete_store(store_id: int):
+    delete_store(store_id)
+    return {"success": True}
+
+# Endpoints de equipamentos
+@app.get('/admin/devices')
+def api_get_devices():
+    return get_all_devices()
+
+@app.post('/admin/devices')
+async def api_add_device(request: Request):
+    data = await request.json()
+    store_id = data.get('store_id')
+    name = data.get('name')
+    identifier = data.get('identifier')
+    if not store_id or not name or not identifier:
+        return {"success": False, "message": "Todos os campos são obrigatórios."}
+    # Adiciona dispositivo já com o identifier correto
+    add_device(store_id, name, identifier=identifier)
+    notify_ai_agent('device_added', {'store_id': store_id, 'name': name, 'identifier': identifier})
+    return {"success": True}
+
+@app.put('/admin/devices/{device_id}')
+def api_update_device(device_id: int, name: str, status: str, last_sync: str = None, online: int = None):
+    update_device(device_id, name, status, last_sync, online)
+    return {"success": True}
+
+@app.delete('/admin/devices/{device_id}')
+def api_delete_device(device_id: int):
+    delete_device(device_id)
+    return {"success": True}
+
+# Endpoint heartbeat: equipamento envia ping para marcar online
+@app.post('/device/heartbeat/{identifier}')
+def device_heartbeat(identifier: str):
+    # Busca o device pelo identificador (UUID)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT id FROM devices WHERE identifier = ?', (identifier,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        # Tenta buscar por identifier ignorando case e espaços
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT id FROM devices WHERE TRIM(LOWER(identifier)) = ?', (identifier.strip().lower(),))
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            raise HTTPException(status_code=404, detail='Dispositivo não encontrado')
+    # Corrigido: passa identifier para set_device_online
+    set_device_online(identifier)
+    notify_ai_agent('device_heartbeat', {'identifier': identifier})
+    return {"success": True}
+
+# Endpoint para exportar produtos para .txt
+@app.get('/admin/export-txt')
+def export_txt():
+    txt_path = export_products_to_txt()
+    notify_ai_agent('export', {'file': txt_path})
+    return FileResponse(txt_path, media_type='text/plain', filename='produtos.txt')
+
+# Endpoints de auditoria
+@app.get('/admin/audit-logs')
+def api_get_audit_logs(limit: int = 50):
+    """Retorna logs de auditoria gerais do sistema"""
+    return get_audit_logs(limit)
+
+@app.get('/admin/devices/{device_id}/audit-logs')
+def api_get_device_audit_logs(device_id: int, limit: int = 20):
+    """Retorna logs de auditoria específicos de um dispositivo"""
+    return get_device_audit_logs(device_id, limit)
+
+# --- Endpoints de administração de usuários admin ---
+from fastapi import Body
+
+@app.get('/admin/users')
+def list_admin_users(current_user: str = Depends(require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT username, role, store_id, permissoes FROM admin_users')
+    users = []
+    for row in cur.fetchall():
+        permissoes = row['permissoes'] if 'permissoes' in row.keys() else None
+        if permissoes:
+            try:
+                permissoes = json.loads(permissoes)
+            except Exception:
+                permissoes = []
+        else:
+            permissoes = []
+        users.append({
+            'username': row['username'],
+            'role': row['role'] if 'role' in row.keys() else 'admin',
+            'store_id': row['store_id'] if 'store_id' in row.keys() else None,
+            'permissoes': permissoes
+        })
+   
+    conn.close()
+    return {'users': users}
+
+@app.post('/admin/users')
+def create_admin_user_endpoint(data: dict = Body(...), current_user: str = Depends(require_admin)):
+    from database import hash_password
+    username = data.get('username')
+    password = data.get('password')
+    role = data.get('role', 'admin')
+    if not username or not password:
+        raise HTTPException(status_code=400, detail='Usuário e senha obrigatórios')
+    hashed = hash_password(password)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('INSERT INTO admin_users (username, password, role) VALUES (?, ?, ?)', (username, hashed, role))
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        if 'UNIQUE constraint failed' in str(e):
+            raise HTTPException(status_code=409, detail='Usuário já existe')
+        raise HTTPException(status_code=500, detail='Erro ao criar usuário')
+    conn.close()
+    return {'success': True, 'message': 'Usuário criado com sucesso'}
+
+@app.put('/admin/users/{username}')
+def update_admin_user(username: str, data: dict = Body(...), current_user: str = Depends(require_admin)):
+    from database import hash_password
+    password = data.get('password')
+    role = data.get('role')
+    permissoes = data.get('permissoes')
+    # Garante que permissoes seja string JSON para o banco
+    if permissoes is not None and not isinstance(permissoes, str):
+        permissoes = json.dumps(permissoes)
+    if not password and not role and permissoes is None:
+        raise HTTPException(status_code=400, detail='Nada para atualizar')
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Atualiza todos os campos enviados
+    if password and role and permissoes is not None:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, role = ?, permissoes = ? WHERE username = ?', (hashed, role, permissoes, username))
+    elif password and role:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, role = ? WHERE username = ?', (hashed, role, username))
+    elif password and permissoes is not None:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, permissoes = ? WHERE username = ?', (hashed, permissoes, username))
+    elif role and permissoes is not None:
+        cur.execute('UPDATE admin_users SET role = ?, permissoes = ? WHERE username = ?', (role, permissoes, username))
+    elif password:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ? WHERE username = ?', (hashed, username))
+    elif role:
+        cur.execute('UPDATE admin_users SET role = ? WHERE username = ?', (role, username))
+    elif permissoes is not None:
+        cur.execute('UPDATE admin_users SET permissoes = ? WHERE username = ?', (permissoes, username))
+    if cur.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail='Usuário não encontrado')
+    conn.commit()
+    conn.close()
+    return {'success': True, 'message': 'Usuário atualizado com sucesso'}
+
+@app.delete('/admin/users/{username}')
+def delete_admin_user(username: str, current_user: str = Depends(require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('DELETE FROM admin_users WHERE username = ?', (username,))
+    if cur.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail='Usuário não encontrado')
+    conn.commit()
+    conn.close()
+    return {'success': True, 'message': 'Usuário removido com sucesso'}
+
+# Endpoint para buscar produto pelo código de barras
+@app.get('/product/{barcode}')
+def get_product(barcode: str):
+    product = get_product_by_barcode(barcode)
+    if not product:
+        raise HTTPException(status_code=404, detail='Produto não encontrado')
+    return product
+
+
+# Serve o frontend (build) se existir, mas não impede execução separada
+def mount_frontend_if_exists():
+    FRONTEND_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist'))
+    if os.path.exists(FRONTEND_PATH):
+        logging.info(f"Montando frontend na pasta: {FRONTEND_PATH}")
+        mount_frontend(app, FRONTEND_PATH)
+    else:
+        logging.warning(f"Pasta {FRONTEND_PATH} não encontrada. Certifique-se de que o build do frontend foi gerado corretamente.")
+
+mount_frontend_if_exists()

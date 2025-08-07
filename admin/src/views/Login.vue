@@ -32,6 +32,9 @@ async function login() {
       const data = await response.json();
       if (data.success && data.access_token) {
         saveToken(data.access_token);
+        // Salva permissoes e store_id
+        localStorage.setItem('permissoes', JSON.stringify(data.permissoes || []));
+        localStorage.setItem('store_id', data.store_id || '');
         error.value = false;
         router.push('/dashboard');
       } else {
