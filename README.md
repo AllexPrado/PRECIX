@@ -28,12 +28,22 @@ Projeto completo para totens/terminais de consulta de preços em supermercados, 
 
 ---
 
+## Melhorias e funcionalidades (07/08/2025)
+- Gestão de usuários aprimorada: exibição e edição da loja vinculada ao usuário (campo store_id)
+- Modal de perfil permite alterar a loja do usuário facilmente
+- Barra de pesquisa e filtro por loja na tela de usuários (busca por nome, ID ou loja)
+- Operadores só visualizam equipamentos da própria loja e não podem editar/excluir
+- Envio de banners restrito à loja do usuário logado
+- Backend atualizado para aceitar e persistir o campo store_id nas operações de usuário
+- Ajustes visuais e de UX no painel admin e lista de equipamentos
+
 ## Funcionalidades já implementadas
 - Consulta de preços (frontend) com fallback offline
 - Sincronização automática e periódica do catálogo
-- Carrossel de banners (atualmente estático, pronto para integração dinâmica)
+- Carrossel de banners (dinâmico e restrito por loja)
 - Painel admin: login, dashboard, upload/listagem/exclusão de banners
-- Endpoints REST para produtos, banners, status e login
+- Gestão de usuários/admins com permissões e loja vinculada
+- Endpoints REST para produtos, banners, status, login e usuários
 - Scripts para importação de catálogo via .txt
 
 ---
@@ -72,12 +82,12 @@ Acesse: http://localhost:5174
 
 ---
 
-## Histórico do dia (14/07/2025)
-- Correção crítica no BannerManager.vue (admin)
-- Painel admin voltou a funcionar normalmente
-- Validação de todo o fluxo admin/backend/frontend
-- Definição do próximo passo: integração dinâmica dos banners
-- Projeto versionado e publicado neste repositório
+## Histórico do dia (07/08/2025)
+- Gestão de usuários com loja vinculada e edição de perfil
+- Filtro e pesquisa de usuários por nome, ID e loja
+- Permissões refinadas para operadores (visualização restrita de equipamentos)
+- Integração e persistência do campo store_id no backend e frontend
+- Melhorias visuais e de UX no admin
 
 ---
 

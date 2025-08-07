@@ -52,11 +52,12 @@
             Nunca conectado
           </span>
           <span v-if="device.identifier" class="badge-id">ID: {{ device.identifier }}</span>
-          <select v-model="device.status" @change="updateDevice(device)">
+          <select v-if="userRole === 'admin'" v-model="device.status" @change="updateDevice(device)">
             <option value="ativo">Ativo</option>
             <option value="inativo">Inativo</option>
           </select>
-          <button @click="deleteDevice(device.id)">Excluir</button>
+          <span v-else>{{ device.status === 'ativo' ? 'Ativo' : 'Inativo' }}</span>
+          <button v-if="userRole === 'admin'" @click="deleteDevice(device.id)">Excluir</button>
         </li>
       </ul>
     </div>
@@ -65,6 +66,7 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
+import { getUserRole } from '../auth.js'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 dayjs.extend(utc)
@@ -74,6 +76,8 @@ const stores = ref([])
 const newDevice = ref('')
 const newDeviceIdentifier = ref('')
 const selectedStore = ref('')
+const userRole = ref(getUserRole())
+const userStoreId = ref(localStorage.getItem('store_id'))
 
 // Filtros
 const filterName = ref('')
@@ -83,17 +87,20 @@ const filterIdentifier = ref('')
 
 // Computed para dispositivos filtrados
 const filteredDevices = computed(() => {
-  return devices.value.filter(device => {
+  let list = devices.value
+  // Se operador, filtra por loja do usuário (store_id é string)
+  if (userRole.value === 'operador' && userStoreId.value) {
+    list = list.filter(device => String(device.store_id) === String(userStoreId.value))
+  }
+  return list.filter(device => {
     // Filtro por nome
     if (filterName.value && !device.name.toLowerCase().includes(filterName.value.toLowerCase())) {
       return false
     }
-    
     // Filtro por loja
     if (filterStore.value && device.store_id !== filterStore.value) {
       return false
     }
-    
     // Filtro por status
     if (filterStatus.value) {
       if (filterStatus.value === 'online' && !device.online) return false
@@ -101,12 +108,10 @@ const filteredDevices = computed(() => {
       if (filterStatus.value === 'ativo' && device.status !== 'ativo') return false
       if (filterStatus.value === 'inativo' && device.status !== 'inativo') return false
     }
-    
     // Filtro por identificador
     if (filterIdentifier.value && device.identifier && !device.identifier.toLowerCase().includes(filterIdentifier.value.toLowerCase())) {
       return false
     }
-    
     return true
   })
 })
@@ -194,7 +199,8 @@ onMounted(() => {
   box-shadow: 0 8px 32px #ff66001a;
   padding: 36px 28px;
   min-width: 340px;
-  max-width: 540px;
+  max-width: 900px;
+  width: 100%;
 }
 header {
   display: flex;
@@ -206,6 +212,7 @@ form {
   display: flex;
   gap: 8px;
   margin-bottom: 18px;
+  flex-wrap: wrap;
 }
 .filters {
   background: #f8f9fa;
@@ -256,12 +263,16 @@ button {
 ul {
   list-style: none;
   padding: 0;
+  margin: 0;
 }
 li {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 12px;
+  margin-bottom: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 12px 8px;
 }
 .offline-info {
   font-size: 0.875em;

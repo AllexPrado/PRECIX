@@ -128,6 +128,9 @@ function goToUserManager() {
 function goToAgentManager() {
   router.push('/agents')
 }
+function goToDashboardHome() {
+  router.push('/dashboard')
+}
 function logout() {
   removeToken();
   localStorage.removeItem('permissoes');

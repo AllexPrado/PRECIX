@@ -54,6 +54,9 @@ export default {
       if (!fileInput.files.length) return;
       const formData = new FormData();
       formData.append('file', fileInput.files[0]);
+      // Adiciona o store_id do usuário logado
+      const storeId = localStorage.getItem('store_id');
+      if (storeId) formData.append('store_id', storeId);
       this.loading = true;
       this.error = '';
       try {

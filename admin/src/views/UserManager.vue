@@ -32,13 +32,20 @@
       </div>
     </div>
     <div v-if="error" class="error-msg">{{ error }}</div>
+    <!-- Barra de pesquisa e filtro por loja -->
+    <div class="user-filters" style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
+      <input v-model="userSearch" placeholder="Pesquisar por nome ou ID" style="flex:2;min-width:120px;" />
+      <select v-model="userFilterStore" style="flex:1;min-width:120px;">
+        <option value="">Todas as lojas</option>
+        <option v-for="store in stores" :key="store.id" :value="store.id">
+          {{ store.code ? store.code + ' - ' : '' }}{{ store.name }}
+        </option>
+      </select>
+    </div>
     <ul class="user-list">
-      <li v-for="user in users" :key="user.username">
+      <li v-for="user in filteredUsers" :key="user.username">
         <div class="user-info">
-          <span class="user-main">{{ user.username }}</span>
-          <span class="user-role">({{ user.role || 'admin' }})</span>
-          <span v-if="user.store_id" class="user-store">| Loja: {{ getStoreName(user.store_id) }}</span>
-          <span v-if="user.permissoes" class="user-perms">| Permissões: {{ user.permissoes }}</span>
+          <span class="user-main">{{ user.username }}<span v-if="user.store_id" class="user-store"> | Loja: {{ getStoreName(user.store_id) }}</span></span>
         </div>
         <div class="user-btns">
           <button v-if="userRole === 'admin'" @click="showChangePassword(user.username)">Alterar Senha</button>
@@ -63,6 +70,12 @@
           <option value="admin">Administrador</option>
           <option value="operador">Operador</option>
         </select>
+        <select v-model="selectedUserRole.store_id" style="margin-top:10px;">
+          <option value="">Selecione a loja</option>
+          <option v-for="store in stores" :key="store.id" :value="store.id">
+            {{ store.code ? store.code + ' - ' : '' }}{{ store.name }}
+          </option>
+        </select>
         <div class="permissoes" style="margin-top:10px;">
           <label v-for="perm in permissoesDisponiveis" :key="perm.value">
             <input type="checkbox" v-model="selectedUserRolePerms" :value="perm.value" /> {{ perm.label }}
@@ -78,7 +91,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { authFetch, getUserRole } from '../auth.js'
 
@@ -107,6 +120,20 @@ const newPasswordDialog = ref('')
 const userRole = ref(getUserRole())
 const showUserModal = ref(false)
 const selectedUserRolePerms = ref([])
+const userSearch = ref('')
+const userFilterStore = ref('')
+
+const filteredUsers = computed(() => {
+  return users.value.filter(user => {
+    if (userSearch.value && !(user.username.toLowerCase().includes(userSearch.value.toLowerCase()) || (user.id && String(user.id).includes(userSearch.value)))) {
+      return false
+    }
+    if (userFilterStore.value && user.store_id !== userFilterStore.value) {
+      return false
+    }
+    return true
+  })
+})
 
 function goToDashboard() {
   router.push('/dashboard')
@@ -212,6 +239,7 @@ async function changeRole() {
   try {
     const body = {
       role: selectedUserRole.value.role,
+      store_id: selectedUserRole.value.store_id ? String(selectedUserRole.value.store_id) : null,
       permissoes: selectedUserRolePerms.value // envia como array puro
     }
     const res = await authFetch(`http://localhost:8000/admin/users/${selectedUserRole.value.username}`, {
