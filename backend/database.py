@@ -79,6 +79,7 @@ def init_db():
     cur.execute('''
         CREATE TABLE IF NOT EXISTS stores (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            codigo TEXT UNIQUE NOT NULL,
             name TEXT NOT NULL,
             status TEXT DEFAULT 'ativo'
         )
@@ -213,7 +214,7 @@ def get_device_audit_logs(device_id: int, limit: int = 20):
 def get_all_stores():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('SELECT * FROM stores')
+    cur.execute('SELECT * FROM stores ORDER BY codigo')
     rows = cur.fetchall()
     conn.close()
     return [dict(row) for row in rows]
@@ -221,7 +222,15 @@ def get_all_stores():
 def add_store(name: str, status: str = 'ativo'):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('INSERT INTO stores (name, status) VALUES (?, ?)', (name, status))
+    # Novo: exige código
+    raise Exception('Use add_store_with_code(codigo, name, status)')
+
+def add_store_with_code(codigo: str, name: str, status: str = 'ativo'):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('INSERT INTO stores (codigo, name, status) VALUES (?, ?, ?)', (codigo, name, status))
+    conn.commit()
+    conn.close()
     conn.commit()
     conn.close()
 
@@ -229,6 +238,20 @@ def update_store(store_id: int, name: str, status: str):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('UPDATE stores SET name = ?, status = ? WHERE id = ?', (name, status, store_id))
+
+def update_store_code(store_id: int, codigo: str, name: str, status: str):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('UPDATE stores SET codigo = ?, name = ?, status = ? WHERE id = ?', (codigo, name, status, store_id))
+    conn.commit()
+    conn.close()
+def get_store_by_code(codigo: str):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM stores WHERE codigo = ?', (codigo,))
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
     conn.commit()
     conn.close()
 

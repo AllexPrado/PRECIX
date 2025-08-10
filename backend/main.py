@@ -51,6 +51,11 @@ def favicon():
         return FileResponse(file_path)
     raise HTTPException(status_code=404, detail='favicon not found')
 
+# Endpoint simples de healthcheck para monitoramento
+@app.get('/health')
+def health():
+    return {"status": "ok"}
+
 @app.on_event("startup")
 async def startup_event():
     # Inicializa o banco de dados e popula com dados de exemplo
@@ -573,19 +578,60 @@ mount_frontend_if_exists()
 def api_get_stores():
     return get_all_stores()
 
+
+# Novo endpoint: cadastro de loja com código
 @app.post('/admin/stores')
 async def api_add_store(request: Request):
     data = await request.json()
+    codigo = data.get('codigo')
     name = data.get('name')
-    if not name:
-        return {"success": False, "message": "Nome da loja obrigatório."}
-    add_store(name)
-    return {"success": True}
+    status = data.get('status', 'ativo')
+    if not codigo or not name:
+        return {"success": False, "message": "Código e nome da loja são obrigatórios."}
+    try:
+        from database import add_store_with_code
+        add_store_with_code(codigo, name, status)
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 
+# Novo endpoint: importação em massa de lojas
+@app.post('/admin/stores/import')
+async def api_import_stores(request: Request):
+    data = await request.json()
+    lojas = data.get('lojas')
+    if not lojas or not isinstance(lojas, list):
+        return {"success": False, "message": "Lista de lojas inválida."}
+    from database import add_store_with_code
+    count = 0
+    for loja in lojas:
+        codigo = loja.get('codigo')
+        name = loja.get('name')
+        status = loja.get('status', 'ativo')
+        if codigo and name:
+            try:
+                add_store_with_code(codigo, name, status)
+                count += 1
+            except Exception:
+                continue
+    return {"success": True, "imported": count}
+
+
+# Novo endpoint: edição de loja com código
 @app.put('/admin/stores/{store_id}')
-def api_update_store(store_id: int, name: str, status: str):
-    update_store(store_id, name, status)
-    return {"success": True}
+async def api_update_store(store_id: int, request: Request):
+    data = await request.json()
+    codigo = data.get('codigo')
+    name = data.get('name')
+    status = data.get('status', 'ativo')
+    if not codigo or not name:
+        return {"success": False, "message": "Código e nome obrigatórios."}
+    from database import update_store_code
+    try:
+        update_store_code(store_id, codigo, name, status)
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 
 @app.delete('/admin/stores/{store_id}')
 def api_delete_store(store_id: int):

@@ -5,14 +5,16 @@
         <h2>Gerenciar Lojas</h2>
         <button @click="$router.back()">&larr; Voltar</button>
       </header>
-      <form @submit.prevent="addStore">
+      <form @submit.prevent="addStore" class="store-form-flex">
+        <input v-model="newCodigo" placeholder="Código da loja" required style="max-width:90px" />
         <input v-model="newStore" placeholder="Nome da loja" required />
         <button type="submit">Adicionar Loja</button>
       </form>
       <div v-if="stores.length === 0" class="empty">Nenhuma loja cadastrada.</div>
       <ul>
         <li v-for="store in stores" :key="store.id">
-          <input v-model="store.name" @blur="updateStore(store)" />
+          <input v-model="store.codigo" @blur="updateStore(store)" placeholder="Código" style="max-width:90px" />
+          <input v-model="store.name" @blur="updateStore(store)" placeholder="Nome" />
           <select v-model="store.status" @change="updateStore(store)">
             <option value="ativo">Ativo</option>
             <option value="inativo">Inativo</option>
@@ -26,28 +28,42 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-
 const stores = ref([])
 const newStore = ref('')
+const newCodigo = ref('')
 
 async function fetchStores() {
-  const res = await fetch('http://localhost:8000/admin/stores')
-  stores.value = await res.json()
+  try {
+    const res = await fetch('http://localhost:8000/admin/stores')
+    const data = await res.json()
+    if (Array.isArray(data)) {
+      stores.value = data
+    } else {
+      stores.value = []
+    }
+  } catch (e) {
+    stores.value = []
+  }
 }
 
 async function addStore() {
-  if (!newStore.value.trim()) return
+  if (!newStore.value.trim() || !newCodigo.value.trim()) return
   await fetch('http://localhost:8000/admin/stores', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: newStore.value })
+    body: JSON.stringify({ codigo: newCodigo.value, name: newStore.value })
   })
   newStore.value = ''
+  newCodigo.value = ''
   await fetchStores()
 }
 
 async function updateStore(store) {
-  await fetch(`http://localhost:8000/admin/stores/${store.id}?name=${encodeURIComponent(store.name)}&status=${store.status}`, { method: 'PUT' })
+  await fetch(`http://localhost:8000/admin/stores/${store.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ codigo: store.codigo, name: store.name, status: store.status })
+  })
   await fetchStores()
 }
 
@@ -60,6 +76,11 @@ onMounted(fetchStores)
 </script>
 
 <style scoped>
+.store-form-flex {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
 .store-manager-bg {
   min-height: 100vh;
   background: #fff3e0;
