@@ -8,20 +8,26 @@
 - Ajuste do backend para permitir atualização do UUID e do store_id via painel admin.
 - Correção do endpoint de heartbeat para criar automaticamente um novo device caso o UUID não exista, associando à primeira loja existente.
 - Ajuste do update de device para aceitar tanto query string quanto JSON.
+- **Novo:** Ajuste da lógica de status online/offline para considerar o device offline após 30 segundos sem heartbeat (antes: 2 minutos).
+- **Novo:** Sincronização do frontend e backend para exibir o status em tempo real (30s) e mostrar o tempo em segundos na interface admin.
 
 ### 2. Problemas encontrados
 - Dispositivos criados automaticamente pelo heartbeat estavam sem loja associada, impedindo que aparecessem no painel e no endpoint `/device/store/{uuid}`.
 - Atualização do UUID pelo painel retornava 200 OK, mas não alterava corretamente o campo no banco.
 - O endpoint `/device/store/{uuid}` retornava 404 para devices sem loja associada.
+- **Novo:** O status online/offline demorava para atualizar (2 minutos), dificultando o monitoramento em tempo real.
 
 ### 3. Soluções aplicadas
 - O heartbeat agora associa o novo device à primeira loja existente no banco.
 - O update do UUID e do store_id foi corrigido para funcionar via painel admin.
 - O backend foi ajustado para aceitar updates tanto por query string quanto por JSON.
+- **Novo:** Backend (`database.py`) alterado para considerar online se o último heartbeat foi há menos de 30 segundos (`timedelta(seconds=30)`).
+- **Novo:** Frontend (`DeviceManager.vue`) alterado para exibir o tempo desde o último sinal em segundos e considerar offline após 30 segundos.
 
 ### 4. Pontos de atenção
 - Se não houver nenhuma loja cadastrada, o device criado automaticamente ficará sem associação e continuará não aparecendo no painel.
 - O fluxo de registro automático depende do correto funcionamento do heartbeat e da existência de pelo menos uma loja.
+- **Novo:** O status online/offline agora é muito mais sensível (30s). Certifique-se de que o heartbeat dos devices está sendo enviado nesse intervalo para evitar falsos positivos de offline.
 
 ## Próximos passos sugeridos
 1. Validar se o device criado automaticamente está realmente associado a uma loja e aparece no painel/admin.
@@ -29,11 +35,13 @@
 3. Implementar logs mais detalhados para facilitar o diagnóstico de problemas futuros.
 4. Realizar testes de ponta a ponta (registro, heartbeat, edição, banners).
 5. Se necessário, criar um endpoint para associar manualmente devices "órfãos" a uma loja.
+6. **Novo:** Monitorar se o status online/offline está refletindo corretamente em até 30 segundos após o último heartbeat.
 
 ## Observações finais
 - Todas as alterações foram salvas e documentadas.
 - O código está pronto para commit.
 - Caso o erro persista, revisar o fluxo de associação de loja ao device e garantir que o frontend está enviando corretamente os dados.
+- **Novo:** O status online/offline agora é atualizado em tempo real (30s) tanto no backend quanto no frontend.
 
 ---
 

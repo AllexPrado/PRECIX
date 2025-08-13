@@ -744,14 +744,27 @@ async def api_add_device(request: Request):
     return {"success": True}
 
 from fastapi import Request
+
+# Remove duplicatas do endpoint PUT /admin/devices/{device_id}
+from fastapi import Query
 @app.put('/admin/devices/{device_id}')
-async def api_update_device(device_id: int, request: Request, name: str = None, status: str = None, last_sync: str = None, online: int = None, identifier: str = None, store_id: int = None):
+async def api_update_device(
+    device_id: int,
+    request: Request,
+    name: str = Query(None),
+    status: str = Query(None),
+    last_sync: str = Query(None),
+    online: int = Query(None),
+    identifier: str = Query(None),
+    store_id: int = Query(None)
+):
     # Permite update tanto por query string quanto por JSON
     data = {}
     try:
         data = await request.json()
     except Exception:
-        pass
+        data = {}
+    # Prioriza JSON, mas aceita query string
     name = data.get('name', name)
     status = data.get('status', status)
     last_sync = data.get('last_sync', last_sync)
@@ -769,22 +782,7 @@ def api_delete_device(device_id: int):
 # Endpoint heartbeat: equipamento envia ping para marcar online
 @app.post('/device/heartbeat/{identifier}')
 def device_heartbeat(identifier: str):
-    # Busca o device pelo identificador (UUID)
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT id FROM devices WHERE identifier = ?', (identifier,))
-    row = cur.fetchone()
-    conn.close()
-    if not row:
-        # Tenta buscar por identifier ignorando case e espaços
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('SELECT id FROM devices WHERE TRIM(LOWER(identifier)) = ?', (identifier.strip().lower(),))
-        row = cur.fetchone()
-        conn.close()
-        if not row:
-            raise HTTPException(status_code=404, detail='Dispositivo não encontrado')
-    # Corrigido: passa identifier para set_device_online
+    # Sempre chama set_device_online, que já faz a busca e cria se necessário
     set_device_online(identifier)
     notify_ai_agent('device_heartbeat', {'identifier': identifier})
     return {"success": True}

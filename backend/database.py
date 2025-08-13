@@ -277,11 +277,11 @@ def get_all_devices():
     for row in rows:
         device = dict(row)
         last_sync = device.get('last_sync')
-        # Considera online se o último heartbeat (last_sync) foi há menos de 2 minutos
+        # Considera online se o último heartbeat (last_sync) foi há menos de 30 segundos
         if last_sync:
             try:
                 dt = datetime.fromisoformat(last_sync)
-                device['online'] = int((now - dt) < timedelta(minutes=2))
+                device['online'] = int((now - dt) < timedelta(seconds=30))
             except Exception:
                 device['online'] = 0
         else:
@@ -314,14 +314,28 @@ def update_device(device_id: int, name: str = None, status: str = None, last_syn
     current_status = row['status'] if row else ''
     current_store_id = row['store_id'] if row else None
     current_identifier = row['identifier'] if row else None
-    # Garante que identifier sempre existe
-    if 'identifier' not in locals():
+    # Permite atualizar identifier para vazio ou null explicitamente
+    if identifier == "null":
         identifier = None
-    # Usa os valores atuais se não forem passados
+    # Se for para atualizar o identifier, verifica unicidade (não pode duplicar)
+    if identifier not in (None, '', current_identifier):
+        conn_check = get_db_connection()
+        cur_check = conn_check.cursor()
+        cur_check.execute('SELECT id FROM devices WHERE identifier = ?', (identifier,))
+        found = cur_check.fetchone()
+        conn_check.close()
+        if found and found['id'] != device_id:
+            raise Exception(f"Já existe outro equipamento com o identificador {identifier}.")
+    # Nunca remove ou sobrescreve identifier de outro device
     name = name if name not in (None, '') else current_name
     status = status if status not in (None, '') else current_status
     store_id = store_id if store_id not in (None, '') else current_store_id
-    identifier = identifier if identifier not in (None, '') else current_identifier
+    if identifier is None:
+        identifier = current_identifier
+    elif identifier == '':
+        identifier = ''
+    else:
+        identifier = identifier
     if online is not None:
         cur.execute('UPDATE devices SET name = ?, status = ?, last_sync = ?, online = ?, store_id = ?, identifier = ? WHERE id = ?', (name, status, last_sync, online, store_id, identifier, device_id))
     else:
@@ -338,30 +352,38 @@ def set_device_online(identifier: str):
     now = datetime.utcnow().isoformat()
     if row:
         device_id = row['id']
-        # Atualiza apenas last_sync e online, preservando nome/status
+        # Atualiza apenas last_sync e online, preservando nome/status e identifier
         update_device(device_id, last_sync=now, online=1)
         logging.info(f"[HEARTBEAT] Device online: id={device_id}, identifier={identifier}")
     else:
-        # Cria automaticamente novo device com nome e store_id da primeira loja existente
-        logging.warning(f"[HEARTBEAT] Device NOT FOUND for identifier={identifier}. Criando novo device.")
-        default_name = f"Novo Equipamento {identifier[:8]}"
-        # Busca a primeira loja existente
-        cur.execute('SELECT id FROM stores ORDER BY id LIMIT 1')
-        store_row = cur.fetchone()
-        default_store_id = store_row['id'] if store_row else None
-        from .database import add_device
-        add_device(default_store_id, default_name, identifier=identifier, last_sync=now, online=1)
-    conn.close()
+        # Garante que não existe outro device com esse identifier (unicidade)
+        # Busca device com o identifier informado
+        cur.execute('SELECT id FROM devices WHERE identifier = ?', (identifier,))
+        row = cur.fetchone()
+        from datetime import datetime
+        now = datetime.utcnow().isoformat()
+        if row:
+            device_id = row['id']
+            # Só atualiza online e last_sync, nunca mexe no identifier
+            update_device(device_id, last_sync=now, online=1)
+            logging.info(f"[HEARTBEAT] Device online: id={device_id}, identifier={identifier}")
+        else:
+            # Não existe device com esse identifier, cria novo
+            logging.warning(f"[HEARTBEAT] Device NOT FOUND for identifier={identifier}. Criando novo device.")
+            default_name = f"Novo Equipamento {identifier[:8]}"
+            cur.execute('SELECT id FROM stores ORDER BY id LIMIT 1')
+            store_row = cur.fetchone()
+            default_store_id = store_row['id'] if store_row else None
+            from database import add_device
+            add_device(default_store_id, default_name, identifier=identifier, last_sync=now, online=1)
 
 def set_device_offline(device_id: int):
-    # Busca nome do device
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('SELECT name FROM devices WHERE id = ?', (device_id,))
     result = cur.fetchone()
     device_name = result['name'] if result else f'Device {device_id}'
     conn.close()
-    
     update_device(device_id, name='', status='', last_sync=None, online=0)
     add_audit_log(device_id, device_name, 'DEVICE_OFFLINE', 'Dispositivo ficou offline')
 

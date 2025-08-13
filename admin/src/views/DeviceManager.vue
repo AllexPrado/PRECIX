@@ -65,7 +65,7 @@
         <div v-if="filteredDevices.length === 0 && devices.length > 0" class="empty">Nenhum equipamento encontrado com os filtros aplicados.</div>
         <div v-else-if="devices.length === 0" class="empty">Nenhum equipamento cadastrado.</div>
         <ul class="device-list">
-          <li v-for="device in filteredDevices" :key="device.id" :class="{'offline-alert': !device.online && offlineMinutes(device) >= 2, 'device-item': true}">
+          <li v-for="device in filteredDevices" :key="device.id" :class="{'offline-alert': !device.online && offlineSeconds(device) >= 30, 'device-item': true}">
             <div class="device-col name">
               <span class="device-title">{{ device.name }}</span>
               <span v-if="device.identifier" class="badge-id">ID: {{ device.identifier }}</span>
@@ -82,7 +82,7 @@
             </div>
             <div class="device-col lastsync">
               <span class="device-label">Último sinal:</span>
-              <span v-if="device.last_sync">{{ formatLastHeartbeat(device.last_sync) }} ({{ offlineMinutes(device) }} min)</span>
+              <span v-if="device.last_sync">{{ formatLastHeartbeat(device.last_sync) }} ({{ offlineSeconds(device) }}s)</span>
               <span v-else>Nunca conectado</span>
             </div>
             <div class="device-col actions">
@@ -146,7 +146,8 @@ async function saveEditDevice() {
     const params = new URLSearchParams({
       name: editFields.value.name,
       status: editFields.value.status,
-      store_id: editFields.value.store_id
+      store_id: editFields.value.store_id,
+      identifier: editFields.value.identifier
     });
     if (editDevice.value.last_sync) params.append('last_sync', editDevice.value.last_sync);
     if (typeof editDevice.value.online !== 'undefined') params.append('online', String(editDevice.value.online));
@@ -242,11 +243,12 @@ function formatLastHeartbeat(ts) {
   return dayjs(ts).format('DD/MM/YYYY HH:mm:ss')
 }
 
-function offlineMinutes(device) {
-  if (!device.last_sync) return 999;
+
+function offlineSeconds(device) {
+  if (!device.last_sync) return 9999;
   const now = dayjs.utc();
   const last = dayjs(device.last_sync).utc();
-  return Math.round(now.diff(last, 'minute', true));
+  return Math.round(now.diff(last, 'second', true));
 }
 
 onMounted(() => {
