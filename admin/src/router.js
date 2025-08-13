@@ -9,6 +9,7 @@ import StoreManager from './views/StoreManager.vue'
 import DeviceManager from './views/DeviceManager.vue'
 import AuditLog from './views/AuditLog.vue'
 import UserManager from './views/UserManager.vue'
+import IntegrationConfig from './views/IntegrationConfig.vue' // Tela de configuração de integrações
 import { getToken, isTokenExpired, removeToken } from './auth.js'
 
 function getUserPermissoes() {
@@ -47,7 +48,8 @@ const routes = [
       { path: '/devices', component: DeviceManager },
       { path: '/audit', component: AuditLog },
       { path: '/users', component: UserManager },
-      { path: '/agents', component: AgentManager }
+  { path: '/agents', component: AgentManager },
+  { path: '/integracoes', component: IntegrationConfig } // Nova rota para integrações
     ]
   }
 ]

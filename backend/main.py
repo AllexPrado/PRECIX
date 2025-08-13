@@ -1,25 +1,44 @@
+
+# ==== INÍCIO DOS IMPORTS ÚNICOS ====
 import os
 import json
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Body
+import io
+import sys
+import shutil
+import threading
+import time
+import requests
+from datetime import datetime
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Body, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from database import get_product_by_barcode, init_db, populate_example_data, get_db_connection, authenticate_admin, get_system_status, export_products_to_txt, get_all_stores, add_store, update_store, delete_store, get_all_devices, add_device, update_device, delete_device, set_device_online, set_device_offline, add_audit_log, get_audit_logs, get_device_audit_logs, upsert_agent_status, get_all_agents_status
 from static_middleware import mount_frontend
-from fastapi.responses import FileResponse
-import shutil
 from ai_agent_integration import notify_ai_agent
 from ia_event_log import router as ia_event_router
 from auth_jwt import create_access_token, verify_access_token
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi import Depends
 from backup_restore import router as backup_restore_router
-from datetime import datetime
-import requests
-from fastapi.responses import JSONResponse
-import threading
-import time
 from device_store_router import router as device_store_router
+from importador_precos import importar_todos_precos
+from integration_config import create_integration_table, upsert_integration, get_integrations
+# ==== FIM DOS IMPORTS ÚNICOS ====
 
+# Inicializa tabela de integrações ao iniciar o backend
+create_integration_table()
 
+# Logs de importação
+_import_logs = []
+class ImportLogCatcher(io.StringIO):
+    def write(self, txt):
+        super().write(txt)
+        _import_logs.append(txt)
+        if len(_import_logs) > 100:
+            _import_logs.pop(0)
+_old_stdout = sys.stdout
+sys.stdout = ImportLogCatcher()
+
+# Diretório público do frontend
 FRONTEND_PUBLIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend', 'public'))
 
 # Criação única do app e inclusão dos routers
@@ -28,6 +47,48 @@ app.include_router(ia_event_router)
 app.include_router(backup_restore_router)
 app.include_router(device_store_router)
 security = HTTPBearer()
+
+# Endpoints de importação de preços
+@app.post('/admin/importar-precos')
+def acionar_importacao():
+    """
+    Aciona manualmente a rotina de importação de preços para todas as integrações ativas.
+    """
+    try:
+        importar_todos_precos()
+        return {"success": True, "message": "Importação executada."}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+@app.get('/admin/importar-precos/logs')
+def get_import_logs():
+    """
+    Retorna os últimos logs de importação de preços.
+    """
+    return {"logs": _import_logs[-50:]}
+
+# Endpoints de integração de preços
+@app.get('/admin/integracoes')
+def listar_integracoes(loja_id: int = Query(None)):
+    """
+    Lista integrações de preço cadastradas. Se loja_id for informado, filtra por loja.
+    """
+    return get_integrations(loja_id)
+
+@app.post('/admin/integracoes')
+def salvar_integracao(
+    loja_id: int = Body(None),
+    tipo: str = Body(...),
+    parametro1: str = Body(...),
+    parametro2: str = Body(None),
+    ativo: int = Body(1),
+    layout: str = Body(None)
+):
+    """
+    Adiciona ou atualiza uma integração de preço para uma loja ou global, incluindo layout do arquivo.
+    """
+    upsert_integration(loja_id, tipo, parametro1, parametro2, ativo, layout)
+    return {"success": True}
 
 @app.post('/admin/devices/register')
 async def register_device_by_store_code(request: Request):

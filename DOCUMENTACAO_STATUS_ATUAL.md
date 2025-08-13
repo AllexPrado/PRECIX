@@ -38,6 +38,40 @@
 6. **Novo:** Monitorar se o status online/offline está refletindo corretamente em até 30 segundos após o último heartbeat.
 
 ## Observações finais
+#
+# Histórico e Diagnóstico - 13/08/2025
+
+## Contexto
+Implementação e correção do sistema de gerenciamento de integrações de preços por loja, incluindo backend (FastAPI, SQLite) e frontend (Vue 3). O objetivo é garantir uma solução profissional, robusta e extensível, com tela de administração funcional e backend estável.
+
+## Problemas Encontrados
+- Erro 500 ao salvar integração: "sqlite3.OperationalError: table integration_configs has no column named layout".
+- Scripts de correção de schema (fix_integration_table.py e fix_integration_table_force.py) executados, mas erro persistiu.
+- Backend aparentemente usando products.db correto (d:\Sonda\Precix\sync\products.db), mas erro continuava.
+- Verificação manual via SQLiteOnline confirmou que a tabela integration_configs possui a coluna layout.
+- Suspeita de múltiplos arquivos products.db ou backend usando banco diferente do editado.
+
+## Diagnóstico
+- O script de força-migração garantiu a existência da coluna layout na tabela integration_configs.
+- O backend, mesmo assim, continuou reportando ausência da coluna, indicando possível uso de outro arquivo products.db ou instância antiga em cache.
+- Testes sugeridos: renomear o banco, reiniciar backend, buscar por múltiplos arquivos products.db no projeto.
+
+## Soluções Aplicadas
+- Execução dos scripts de migração de schema.
+- Verificação da estrutura da tabela via SQLiteOnline.
+- Orientação para garantir uso do banco correto e reinício do backend.
+
+## Próximos Passos
+1. Buscar por todos os arquivos products.db no projeto para garantir que não há duplicidade.
+2. Renomear d:\Sonda\Precix\sync\products.db e reiniciar o backend para confirmar se ele realmente usa esse arquivo.
+3. Se o backend criar um novo banco, migrar a tabela integration_configs (com layout) para o novo arquivo.
+4. Garantir que só há um backend rodando e sem cache.
+5. Após garantir o backend usando o banco correto, testar novamente o POST /admin/integracoes.
+6. Se persistir erro, coletar e analisar o novo log.
+7. Após validação, realizar commit das alterações no git.
+
+---
+_Documento gerado automaticamente pelo assistente em 13/08/2025._
 - Todas as alterações foram salvas e documentadas.
 - O código está pronto para commit.
 - Caso o erro persista, revisar o fluxo de associação de loja ao device e garantir que o frontend está enviando corretamente os dados.

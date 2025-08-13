@@ -39,6 +39,7 @@ const allNavItems = [
   { label: 'Central de IAs', route: '/ia-logs', icon: 'pi pi-comments', perm: 'central_ia' },
   { label: 'Usuários', route: '/users', icon: 'pi pi-users', perm: 'usuarios' },
   { label: 'Agentes Locais', route: '/agents', icon: 'pi pi-server', perm: 'agentes' },
+  { label: 'Integrações', route: '/integracoes', icon: 'pi pi-link', perm: 'integracoes' } // Novo item de menu para integrações
 ]
 
 function getUserPermissoes() {
