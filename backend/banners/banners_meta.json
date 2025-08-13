@@ -1,0 +1,27 @@
+{
+  "eu e ela.jpg": {
+    "store_id": "1003",
+    "all_stores": false,
+    "uploaded_by": "admin"
+  },
+  "test-banner.jpg": {
+    "store_id": null,
+    "all_stores": true,
+    "uploaded_by": "admin"
+  },
+  "Promocao-aniversario-Sonda.jpeg": {
+    "store_id": null,
+    "all_stores": true,
+    "uploaded_by": "admin"
+  },
+  "sonda-frutas.jpeg": {
+    "store_id": null,
+    "all_stores": true,
+    "uploaded_by": "admin"
+  },
+  "20200610 85704 20190701104420 20180809110616 tela_1adega.jpg": {
+    "store_id": "1003",
+    "all_stores": false,
+    "uploaded_by": "teste"
+  }
+}

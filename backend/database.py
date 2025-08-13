@@ -11,8 +11,9 @@ def get_system_status():
     cur = conn.cursor()
     cur.execute('SELECT COUNT(*) FROM products')
     total_products = cur.fetchone()[0]
-    # Última sincronização: para exemplo, retorna None (pode ser incrementado depois)
-    last_sync = None
+    # Última sincronização: pega o maior last_sync dos devices
+    cur.execute('SELECT MAX(last_sync) FROM devices WHERE last_sync IS NOT NULL')
+    last_sync = cur.fetchone()[0]
     conn.close()
     return {
         'total_products': total_products,
@@ -303,21 +304,28 @@ def add_device(store_id: int, name: str, status: str = 'ativo', last_sync: str =
     add_audit_log(device_id, name, 'DEVICE_CREATED', f'Dispositivo criado na loja ID {store_id}')
     return device_id
 
-def update_device(device_id: int, name: str = None, status: str = None, last_sync: str = None, online: int = None):
+def update_device(device_id: int, name: str = None, status: str = None, last_sync: str = None, online: int = None, store_id: int = None, identifier: str = None):
     conn = get_db_connection()
     cur = conn.cursor()
     # Busca valores atuais
-    cur.execute('SELECT name, status FROM devices WHERE id = ?', (device_id,))
+    cur.execute('SELECT name, status, store_id, identifier FROM devices WHERE id = ?', (device_id,))
     row = cur.fetchone()
     current_name = row['name'] if row else ''
     current_status = row['status'] if row else ''
+    current_store_id = row['store_id'] if row else None
+    current_identifier = row['identifier'] if row else None
+    # Garante que identifier sempre existe
+    if 'identifier' not in locals():
+        identifier = None
     # Usa os valores atuais se não forem passados
     name = name if name not in (None, '') else current_name
     status = status if status not in (None, '') else current_status
+    store_id = store_id if store_id not in (None, '') else current_store_id
+    identifier = identifier if identifier not in (None, '') else current_identifier
     if online is not None:
-        cur.execute('UPDATE devices SET name = ?, status = ?, last_sync = ?, online = ? WHERE id = ?', (name, status, last_sync, online, device_id))
+        cur.execute('UPDATE devices SET name = ?, status = ?, last_sync = ?, online = ?, store_id = ?, identifier = ? WHERE id = ?', (name, status, last_sync, online, store_id, identifier, device_id))
     else:
-        cur.execute('UPDATE devices SET name = ?, status = ?, last_sync = ? WHERE id = ?', (name, status, last_sync, device_id))
+        cur.execute('UPDATE devices SET name = ?, status = ?, last_sync = ?, store_id = ?, identifier = ? WHERE id = ?', (name, status, last_sync, store_id, identifier, device_id))
     conn.commit()
     conn.close()
 # Novo endpoint: atualizar status online (heartbeat)
@@ -326,18 +334,23 @@ def set_device_online(identifier: str):
     cur = conn.cursor()
     cur.execute('SELECT id FROM devices WHERE identifier = ?', (identifier,))
     row = cur.fetchone()
+    from datetime import datetime
+    now = datetime.utcnow().isoformat()
     if row:
         device_id = row['id']
         # Atualiza apenas last_sync e online, preservando nome/status
-        from datetime import datetime
-        now = datetime.utcnow().isoformat()
         update_device(device_id, last_sync=now, online=1)
         logging.info(f"[HEARTBEAT] Device online: id={device_id}, identifier={identifier}")
     else:
-        # Loga todos os identifiers para debug
-        cur.execute('SELECT id, identifier, name FROM devices')
-        all_devices = cur.fetchall()
-        logging.warning(f"[HEARTBEAT] Device NOT FOUND for identifier={identifier}. Devices in DB: {[dict(row) for row in all_devices]}")
+        # Cria automaticamente novo device com nome e store_id da primeira loja existente
+        logging.warning(f"[HEARTBEAT] Device NOT FOUND for identifier={identifier}. Criando novo device.")
+        default_name = f"Novo Equipamento {identifier[:8]}"
+        # Busca a primeira loja existente
+        cur.execute('SELECT id FROM stores ORDER BY id LIMIT 1')
+        store_row = cur.fetchone()
+        default_store_id = store_row['id'] if store_row else None
+        from .database import add_device
+        add_device(default_store_id, default_name, identifier=identifier, last_sync=now, online=1)
     conn.close()
 
 def set_device_offline(device_id: int):

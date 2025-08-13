@@ -1,5 +1,4 @@
-# Backup do main.py gerado automaticamente em 30/07/2025
-
+import os
 import json
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,7 +6,6 @@ from database import get_product_by_barcode, init_db, populate_example_data, get
 from static_middleware import mount_frontend
 from fastapi.responses import FileResponse
 import shutil
-import os
 from ai_agent_integration import notify_ai_agent
 from ia_event_log import router as ia_event_router
 from auth_jwt import create_access_token, verify_access_token
@@ -19,17 +17,38 @@ import requests
 from fastapi.responses import JSONResponse
 import threading
 import time
+from device_store_router import router as device_store_router
+
+
+FRONTEND_PUBLIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend', 'public'))
+
+# Criação única do app e inclusão dos routers
+app = FastAPI()
+app.include_router(ia_event_router)
+app.include_router(backup_restore_router)
+app.include_router(device_store_router)
+security = HTTPBearer()
+
+@app.post('/admin/devices/register')
+async def register_device_by_store_code(request: Request):
+    data = await request.json()
+    store_codigo = data.get('store_codigo')
+    name = data.get('name')
+    identifier = data.get('identifier')
+    if not store_codigo or not name or not identifier:
+        return {"success": False, "message": "Todos os campos são obrigatórios (store_codigo, name, identifier)."}
+    from database import get_store_by_code, add_device
+    store = get_store_by_code(str(store_codigo).strip())
+    if not store:
+        return {"success": False, "message": f"Loja com código {store_codigo} não encontrada."}
+    store_id = store['id']
+    add_device(store_id, name, identifier=identifier)
+    return {"success": True, "message": "Equipamento registrado com sucesso."}
+
 
 BANNERS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), 'banners'))
 os.makedirs(BANNERS_DIR, exist_ok=True)
 import logging
-FRONTEND_PUBLIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend', 'public'))
-
-app = FastAPI()
-app.include_router(ia_event_router)
-app.include_router(backup_restore_router)
-
-security = HTTPBearer()
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
@@ -39,8 +58,21 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     return username
 
 @app.get('/admin/status')
+@app.get('/admin/status')
 def admin_status():
     status = get_system_status()
+    # Determina status online: se existe pelo menos 1 device online
+    devices = get_all_devices()
+    online = any([d.get('online') for d in devices])
+    # Busca último backup
+    try:
+        from backup_restore import get_last_backup
+        backup = get_last_backup()
+        last_backup = backup['timestamp'] if backup and 'timestamp' in backup else None
+    except Exception:
+        last_backup = None
+    status['online'] = online
+    status['last_backup'] = last_backup
     return JSONResponse(content=status)
 
 # Endpoint para servir favicon.ico
@@ -56,9 +88,10 @@ def favicon():
 def health():
     return {"status": "ok"}
 
+
+# Inicializa o banco de dados e popula com dados de exemplo ao iniciar o app
 @app.on_event("startup")
-async def startup_event():
-    # Inicializa o banco de dados e popula com dados de exemplo
+def startup():
     init_db()
     populate_example_data()
 
@@ -76,11 +109,36 @@ async def notify_agent(request: Request):
     return JSONResponse(content=response)
 
 # Resto dos endpoints e lógica da aplicação... (continua com todo o conteúdo do main_backup_20250730.py, linha a linha, até o final)
-# Endpoint para listar banners
+
+# Endpoint para listar banners filtrando por loja
+from fastapi import Query
 @app.get('/admin/banners')
-def list_banners():
-    files = [f for f in os.listdir(BANNERS_DIR) if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp'))]
-    return [{"filename": f, "url": f"/admin/banners/{f}"} for f in files]
+def list_banners(store_id: str = Query(None)):
+    files = [f for f in os.listdir(BANNERS_DIR) if f.lower().endswith((".jpg", ".jpeg", ".png", ".gif", ".webp"))]
+    meta_path = os.path.join(BANNERS_DIR, 'banners_meta.json')
+    meta = {}
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, 'r', encoding='utf-8') as f:
+                meta = json.load(f)
+        except Exception:
+            meta = {}
+    filtered = []
+    import logging
+    logging.info(f"[BANNERS] list_banners chamado com store_id={store_id}")
+    for f in files:
+        m = meta.get(f, {})
+        # Padroniza store_id: sempre string, sem espaços
+        meta_store_id = str(m.get('store_id')).strip() if m.get('store_id') is not None else None
+        req_store_id = str(store_id).strip() if store_id is not None else None
+        all_stores_flag = bool(m.get('all_stores'))
+        logging.info(f"[BANNERS][DEBUG] Banner: {f} | meta_store_id: '{meta_store_id}' | req_store_id: '{req_store_id}' | all_stores: {all_stores_flag}")
+        if all_stores_flag:
+            filtered.append({"filename": f, "url": f"/admin/banners/{f}"})
+        elif req_store_id and meta_store_id and meta_store_id == req_store_id:
+            filtered.append({"filename": f, "url": f"/admin/banners/{f}"})
+    logging.info(f"[BANNERS] Retornando {len(filtered)} banners para store_id={store_id}")
+    return filtered
 
 # Endpoint para servir banner individual
 @app.get('/admin/banners/{filename}')
@@ -100,14 +158,65 @@ def delete_banner(filename: str):
     return {"success": False, "message": "Arquivo não encontrado."}
 
 # Endpoint para fazer upload de banner
+
+
+
+
 @app.post('/admin/banners/upload')
-async def upload_banner(file: UploadFile = File(...), username: str = Depends(get_current_user)):
+async def upload_banner(request: Request, username: str = Depends(get_current_user)):
+    import logging
+    form = await request.form()
+    file = form.get('file')
+    store_id = form.get('store_id')
+    all_stores = form.get('all_stores')
+    logging.info(f"[UPLOAD] username={username} file={getattr(file, 'filename', None)} store_id={store_id} all_stores={all_stores}")
+    # Validação: arquivo obrigatório
+    if not file or not hasattr(file, 'filename'):
+        logging.error("[UPLOAD] Falta arquivo de imagem.")
+        raise HTTPException(status_code=400, detail="Arquivo de imagem obrigatório.")
     file_ext = os.path.splitext(file.filename)[1].lower()
     if file_ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+        logging.error(f"[UPLOAD] Formato não suportado: {file_ext}")
         raise HTTPException(status_code=400, detail="Formato de arquivo não suportado.")
+    if not store_id and not all_stores:
+        logging.error("[UPLOAD] Falta store_id e all_stores.")
+        raise HTTPException(status_code=400, detail="É obrigatório informar a loja ou marcar 'todas as lojas'.")
+    # Salva arquivo
     file_path = os.path.join(BANNERS_DIR, file.filename)
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        logging.info(f"[UPLOAD] Arquivo salvo em {file_path}")
+    except Exception as e:
+        logging.error(f"[UPLOAD] Erro ao salvar arquivo: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao salvar arquivo.")
+    # Salva metadados do banner
+    meta_path = os.path.join(BANNERS_DIR, 'banners_meta.json')
+    try:
+        if os.path.exists(meta_path):
+            with open(meta_path, 'r', encoding='utf-8') as f:
+                meta = json.load(f)
+        else:
+            meta = {}
+    except Exception as e:
+        logging.error(f"[UPLOAD] Erro ao ler banners_meta.json: {e}")
+        meta = {}
+    # Padroniza store_id para string limpa
+    store_id_clean = str(store_id).strip() if store_id else None
+    all_stores_flag = str(all_stores).lower() in ['1', 'true', 'on', 'yes'] if all_stores is not None else False
+    logging.info(f"[UPLOAD][DEBUG] Salvando banner: {getattr(file, 'filename', None)} | store_id: '{store_id}' | store_id_clean: '{store_id_clean}' | all_stores: {all_stores_flag} | uploaded_by: {username}")
+    meta[file.filename] = {
+        'store_id': store_id_clean,
+        'all_stores': all_stores_flag,
+        'uploaded_by': username
+    }
+    try:
+        with open(meta_path, 'w', encoding='utf-8') as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2)
+        logging.info(f"[UPLOAD] Metadados salvos para {file.filename}")
+    except Exception as e:
+        logging.error(f"[UPLOAD] Erro ao salvar banners_meta.json: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao salvar metadados.")
     return {"success": True, "filename": file.filename}
 
 # Configuração básica de logs
@@ -407,12 +516,31 @@ async def admin_login(request: Request):
         else:
             permissoes = []
         access_token = create_access_token({"sub": username, "role": role})
+        # Busca o codigo da loja se houver store_id
+        store_codigo = None
+        if store_id:
+            from database import get_store_by_code
+            store = None
+            try:
+                store = get_store_by_code(store_id) if isinstance(store_id, str) and not store_id.isdigit() else None
+                if not store:
+                    # store_id pode ser int, buscar por id
+                    conn2 = get_db_connection()
+                    cur2 = conn2.cursor()
+                    cur2.execute('SELECT codigo FROM stores WHERE id = ?', (store_id,))
+                    row = cur2.fetchone()
+                    conn2.close()
+                    if row:
+                        store_codigo = row['codigo']
+            except Exception:
+                store_codigo = None
         return {
             "success": True,
             "access_token": access_token,
             "token_type": "bearer",
             "role": role,
             "store_id": store_id,
+            "store_codigo": store_codigo,
             "permissoes": permissoes,
             "username": username
         }
@@ -578,60 +706,19 @@ mount_frontend_if_exists()
 def api_get_stores():
     return get_all_stores()
 
-
-# Novo endpoint: cadastro de loja com código
 @app.post('/admin/stores')
 async def api_add_store(request: Request):
     data = await request.json()
-    codigo = data.get('codigo')
     name = data.get('name')
-    status = data.get('status', 'ativo')
-    if not codigo or not name:
-        return {"success": False, "message": "Código e nome da loja são obrigatórios."}
-    try:
-        from database import add_store_with_code
-        add_store_with_code(codigo, name, status)
-        return {"success": True}
-    except Exception as e:
-        return {"success": False, "message": str(e)}
+    if not name:
+        return {"success": False, "message": "Nome da loja obrigatório."}
+    add_store(name)
+    return {"success": True}
 
-# Novo endpoint: importação em massa de lojas
-@app.post('/admin/stores/import')
-async def api_import_stores(request: Request):
-    data = await request.json()
-    lojas = data.get('lojas')
-    if not lojas or not isinstance(lojas, list):
-        return {"success": False, "message": "Lista de lojas inválida."}
-    from database import add_store_with_code
-    count = 0
-    for loja in lojas:
-        codigo = loja.get('codigo')
-        name = loja.get('name')
-        status = loja.get('status', 'ativo')
-        if codigo and name:
-            try:
-                add_store_with_code(codigo, name, status)
-                count += 1
-            except Exception:
-                continue
-    return {"success": True, "imported": count}
-
-
-# Novo endpoint: edição de loja com código
 @app.put('/admin/stores/{store_id}')
-async def api_update_store(store_id: int, request: Request):
-    data = await request.json()
-    codigo = data.get('codigo')
-    name = data.get('name')
-    status = data.get('status', 'ativo')
-    if not codigo or not name:
-        return {"success": False, "message": "Código e nome obrigatórios."}
-    from database import update_store_code
-    try:
-        update_store_code(store_id, codigo, name, status)
-        return {"success": True}
-    except Exception as e:
-        return {"success": False, "message": str(e)}
+def api_update_store(store_id: int, name: str, status: str):
+    update_store(store_id, name, status)
+    return {"success": True}
 
 @app.delete('/admin/stores/{store_id}')
 def api_delete_store(store_id: int):
@@ -656,9 +743,22 @@ async def api_add_device(request: Request):
     notify_ai_agent('device_added', {'store_id': store_id, 'name': name, 'identifier': identifier})
     return {"success": True}
 
+from fastapi import Request
 @app.put('/admin/devices/{device_id}')
-def api_update_device(device_id: int, name: str, status: str, last_sync: str = None, online: int = None):
-    update_device(device_id, name, status, last_sync, online)
+async def api_update_device(device_id: int, request: Request, name: str = None, status: str = None, last_sync: str = None, online: int = None, identifier: str = None, store_id: int = None):
+    # Permite update tanto por query string quanto por JSON
+    data = {}
+    try:
+        data = await request.json()
+    except Exception:
+        pass
+    name = data.get('name', name)
+    status = data.get('status', status)
+    last_sync = data.get('last_sync', last_sync)
+    online = data.get('online', online)
+    identifier = data.get('identifier', identifier)
+    store_id = data.get('store_id', store_id)
+    update_device(device_id, name, status, last_sync, online, store_id=store_id, identifier=identifier)
     return {"success": True}
 
 @app.delete('/admin/devices/{device_id}')
@@ -731,6 +831,242 @@ def list_admin_users(current_user: str = Depends(require_admin)):
             'store_id': row['store_id'] if 'store_id' in row.keys() else None,
             'permissoes': permissoes
         })
+   
+    conn.close()
+    return {'users': users}
+
+@app.post('/admin/users')
+def create_admin_user_endpoint(data: dict = Body(...), current_user: str = Depends(require_admin)):
+    from database import hash_password
+    username = data.get('username')
+    password = data.get('password')
+    role = data.get('role', 'admin')
+    if not username or not password:
+        raise HTTPException(status_code=400, detail='Usuário e senha obrigatórios')
+    hashed = hash_password(password)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('INSERT INTO admin_users (username, password, role) VALUES (?, ?, ?)', (username, hashed, role))
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        if 'UNIQUE constraint failed' in str(e):
+            raise HTTPException(status_code=409, detail='Usuário já existe')
+        raise HTTPException(status_code=500, detail='Erro ao criar usuário')
+    conn.close()
+    return {'success': True, 'message': 'Usuário criado com sucesso'}
+
+@app.put('/admin/users/{username}')
+def update_admin_user(username: str, data: dict = Body(...), current_user: str = Depends(require_admin)):
+    from database import hash_password
+    password = data.get('password')
+    role = data.get('role')
+    permissoes = data.get('permissoes')
+    store_id = data.get('store_id')
+    # Garante que permissoes seja string JSON para o banco
+    if permissoes is not None and not isinstance(permissoes, str):
+        permissoes = json.dumps(permissoes)
+    if not password and not role and permissoes is None and store_id is None:
+        raise HTTPException(status_code=400, detail='Nada para atualizar')
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Atualiza todos os campos enviados
+    if password and role and permissoes is not None and store_id is not None:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, role = ?, permissoes = ?, store_id = ? WHERE username = ?', (hashed, role, permissoes, store_id, username))
+    elif password and role and store_id is not None:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, role = ?, store_id = ? WHERE username = ?', (hashed, role, store_id, username))
+    elif password and permissoes is not None and store_id is not None:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, permissoes = ?, store_id = ? WHERE username = ?', (hashed, permissoes, store_id, username))
+    elif role and permissoes is not None and store_id is not None:
+        cur.execute('UPDATE admin_users SET role = ?, permissoes = ?, store_id = ? WHERE username = ?', (role, permissoes, store_id, username))
+    elif password and store_id is not None:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, store_id = ? WHERE username = ?', (hashed, store_id, username))
+    elif role and store_id is not None:
+        cur.execute('UPDATE admin_users SET role = ?, store_id = ? WHERE username = ?', (role, store_id, username))
+    elif permissoes is not None and store_id is not None:
+        cur.execute('UPDATE admin_users SET permissoes = ?, store_id = ? WHERE username = ?', (permissoes, store_id, username))
+    elif store_id is not None:
+        cur.execute('UPDATE admin_users SET store_id = ? WHERE username = ?', (store_id, username))
+    elif password and role and permissoes is not None:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, role = ?, permissoes = ? WHERE username = ?', (hashed, role, permissoes, username))
+    elif password and role:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, role = ? WHERE username = ?', (hashed, role, username))
+    elif password and permissoes is not None:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ?, permissoes = ? WHERE username = ?', (hashed, permissoes, username))
+    elif role and permissoes is not None:
+        cur.execute('UPDATE admin_users SET role = ?, permissoes = ? WHERE username = ?', (role, permissoes, username))
+    elif password:
+        hashed = hash_password(password)
+        cur.execute('UPDATE admin_users SET password = ? WHERE username = ?', (hashed, username))
+    elif role:
+        cur.execute('UPDATE admin_users SET role = ? WHERE username = ?', (role, username))
+    elif permissoes is not None:
+        cur.execute('UPDATE admin_users SET permissoes = ? WHERE username = ?', (permissoes, username))
+    if cur.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail='Usuário não encontrado')
+    conn.commit()
+    conn.close()
+    return {'success': True, 'message': 'Usuário atualizado com sucesso'}
+
+@app.delete('/admin/users/{username}')
+def delete_admin_user(username: str, current_user: str = Depends(require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('DELETE FROM admin_users WHERE username = ?', (username,))
+    if cur.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail='Usuário não encontrado')
+    conn.commit()
+    conn.close()
+    return {'success': True, 'message': 'Usuário removido com sucesso'}
+
+# Endpoint para buscar produto pelo código de barras
+@app.get('/product/{barcode}')
+def get_product(barcode: str):
+    product = get_product_by_barcode(barcode)
+    if not product:
+        raise HTTPException(status_code=404, detail='Produto não encontrado')
+    return product
+
+
+# Serve o frontend (build) se existir, mas não impede execução separada
+def mount_frontend_if_exists():
+    FRONTEND_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist'))
+    if os.path.exists(FRONTEND_PATH):
+        logging.info(f"Montando frontend na pasta: {FRONTEND_PATH}")
+        mount_frontend(app, FRONTEND_PATH)
+    else:
+        logging.warning(f"Pasta {FRONTEND_PATH} não encontrada. Certifique-se de que o build do frontend foi gerado corretamente.")
+
+mount_frontend_if_exists()
+
+# Endpoints de lojas
+@app.get('/admin/stores')
+def api_get_stores():
+    return get_all_stores()
+
+@app.post('/admin/stores')
+async def api_add_store(request: Request):
+    data = await request.json()
+    name = data.get('name')
+    if not name:
+        return {"success": False, "message": "Nome da loja obrigatório."}
+    add_store(name)
+    return {"success": True}
+
+@app.put('/admin/stores/{store_id}')
+def api_update_store(store_id: int, name: str, status: str):
+    update_store(store_id, name, status)
+    return {"success": True}
+
+@app.delete('/admin/stores/{store_id}')
+def api_delete_store(store_id: int):
+    delete_store(store_id)
+    return {"success": True}
+
+# Endpoints de equipamentos
+@app.get('/admin/devices')
+def api_get_devices():
+    return get_all_devices()
+
+@app.post('/admin/devices')
+async def api_add_device(request: Request):
+    data = await request.json()
+    store_id = data.get('store_id')
+    name = data.get('name')
+    identifier = data.get('identifier')
+    if not store_id or not name or not identifier:
+        return {"success": False, "message": "Todos os campos são obrigatórios."}
+    # Adiciona dispositivo já com o identifier correto
+    add_device(store_id, name, identifier=identifier)
+    notify_ai_agent('device_added', {'store_id': store_id, 'name': name, 'identifier': identifier})
+    return {"success": True}
+
+@app.put('/admin/devices/{device_id}')
+def api_update_device(device_id: int, name: str, status: str, last_sync: str = None, online: int = None, identifier: str = None, store_id: int = None):
+    update_device(device_id, name, status, last_sync, online, store_id=store_id, identifier=identifier)
+    return {"success": True}
+
+@app.delete('/admin/devices/{device_id}')
+def api_delete_device(device_id: int):
+    delete_device(device_id)
+    return {"success": True}
+
+# Endpoint heartbeat: equipamento envia ping para marcar online
+@app.post('/device/heartbeat/{identifier}')
+def device_heartbeat(identifier: str):
+    # Busca o device pelo identificador (UUID)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT id FROM devices WHERE identifier = ?', (identifier,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        # Tenta buscar por identifier ignorando case e espaços
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT id FROM devices WHERE TRIM(LOWER(identifier)) = ?', (identifier.strip().lower(),))
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            raise HTTPException(status_code=404, detail='Dispositivo não encontrado')
+    # Corrigido: passa identifier para set_device_online
+    set_device_online(identifier)
+    notify_ai_agent('device_heartbeat', {'identifier': identifier})
+    return {"success": True}
+
+# Endpoint para exportar produtos para .txt
+@app.get('/admin/export-txt')
+def export_txt():
+    txt_path = export_products_to_txt()
+    notify_ai_agent('export', {'file': txt_path})
+    return FileResponse(txt_path, media_type='text/plain', filename='produtos.txt')
+
+# Endpoints de auditoria
+@app.get('/admin/audit-logs')
+def api_get_audit_logs(limit: int = 50):
+    """Retorna logs de auditoria gerais do sistema"""
+    return get_audit_logs(limit)
+
+@app.get('/admin/devices/{device_id}/audit-logs')
+def api_get_device_audit_logs(device_id: int, limit: int = 20):
+    """Retorna logs de auditoria específicos de um dispositivo"""
+    return get_device_audit_logs(device_id, limit)
+
+# --- Endpoints de administração de usuários admin ---
+from fastapi import Body
+
+@app.get('/admin/users')
+def list_admin_users(current_user: str = Depends(require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT username, role, store_id, permissoes FROM admin_users')
+    users = []
+    for row in cur.fetchall():
+        permissoes = row['permissoes'] if 'permissoes' in row.keys() else None
+        if permissoes:
+            try:
+                permissoes = json.loads(permissoes)
+            except Exception:
+                permissoes = []
+        else:
+            permissoes = []
+        users.append({
+            'username': row['username'],
+            'role': row['role'] if 'role' in row.keys() else 'admin',
+            'store_id': row['store_id'] if 'store_id' in row.keys() else None,
+            'permissoes': permissoes
+        })
+   
     conn.close()
     return {'users': users}
 
@@ -965,6 +1301,7 @@ def list_admin_users(current_user: str = Depends(require_admin)):
             'store_id': row['store_id'] if 'store_id' in row.keys() else None,
             'permissoes': permissoes
         })
+   
     conn.close()
     return {'users': users}
 
@@ -1551,3 +1888,96 @@ def mount_frontend_if_exists():
         logging.warning(f"Pasta {FRONTEND_PATH} não encontrada. Certifique-se de que o build do frontend foi gerado corretamente.")
 
 mount_frontend_if_exists()
+
+# Endpoints de lojas
+@app.get('/admin/stores')
+def api_get_stores():
+    return get_all_stores()
+
+@app.post('/admin/stores')
+async def api_add_store(request: Request):
+    data = await request.json()
+    name = data.get('name')
+    if not name:
+        return {"success": False, "message": "Nome da loja obrigatório."}
+    add_store(name)
+    return {"success": True}
+
+@app.put('/admin/stores/{store_id}')
+def api_update_store(store_id: int, name: str, status: str):
+    update_store(store_id, name, status)
+    return {"success": True}
+
+@app.delete('/admin/stores/{store_id}')
+def api_delete_store(store_id: int):
+    delete_store(store_id)
+    return {"success": True}
+
+# Endpoints de equipamentos
+@app.get('/admin/devices')
+def api_get_devices():
+    return get_all_devices()
+
+@app.post('/admin/devices')
+async def api_add_device(request: Request):
+    data = await request.json()
+    store_id = data.get('store_id')
+    name = data.get('name')
+    identifier = data.get('identifier')
+    if not store_id or not name or not identifier:
+        return {"success": False, "message": "Todos os campos são obrigatórios."}
+    # Adiciona dispositivo já com o identifier correto
+    add_device(store_id, name, identifier=identifier)
+    notify_ai_agent('device_added', {'store_id': store_id, 'name': name, 'identifier': identifier})
+    return {"success": True}
+
+@app.put('/admin/devices/{device_id}')
+def api_update_device(device_id: int, name: str, status: str, last_sync: str = None, online: int = None):
+    update_device(device_id, name, status, last_sync, online)
+    return {"success": True}
+
+@app.delete('/admin/devices/{device_id}')
+def api_delete_device(device_id: int):
+    delete_device(device_id)
+    return {"success": True}
+
+# Endpoint heartbeat: equipamento envia ping para marcar online
+@app.post('/device/heartbeat/{identifier}')
+def device_heartbeat(identifier: str):
+    # Busca o device pelo identificador (UUID)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT id FROM devices WHERE identifier = ?', (identifier,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        # Tenta buscar por identifier ignorando case e espaços
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT id FROM devices WHERE TRIM(LOWER(identifier)) = ?', (identifier.strip().lower(),))
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            raise HTTPException(status_code=404, detail='Dispositivo não encontrado')
+    # Corrigido: passa identifier para set_device_online
+    set_device_online(identifier)
+    notify_ai_agent('device_heartbeat', {'identifier': identifier})
+    return {"success": True}
+
+# Endpoint para exportar produtos para .txt
+@app.get('/admin/export-txt')
+def export_txt():
+    txt_path = export_products_to_txt()
+    notify_ai_agent('export', {'file': txt_path})
+    return FileResponse(txt_path, media_type='text/plain', filename='produtos.txt')
+
+# Endpoints de auditoria
+@app.get('/admin/audit-logs')
+def api_get_audit_logs(limit: int = 50):
+    """Retorna logs de auditoria gerais do sistema"""
+    return get_audit_logs(limit)
+
+@app.get('/admin/devices/{device_id}/audit-logs')
+def api_get_device_audit_logs(device_id: int, limit: int = 20):
+    """Retorna logs de auditoria específicos de um dispositivo"""
+    return get_device_audit_logs(device_id, limit)
