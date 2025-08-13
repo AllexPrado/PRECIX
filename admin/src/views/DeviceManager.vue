@@ -17,6 +17,9 @@
             <option value="inativo">Inativo</option>
           </select>
         </label>
+        <div v-if="editFeedback" :class="{'feedback-success': editFeedback.includes('sucesso'), 'feedback-error': editFeedback.includes('Erro')}" style="margin-bottom:8px;">
+          {{ editFeedback }}
+        </div>
         <div class="modal-actions">
           <button type="submit">Salvar</button>
           <button type="button" @click="closeEditModal">Cancelar</button>
@@ -61,23 +64,31 @@
         </div>
         <div v-if="filteredDevices.length === 0 && devices.length > 0" class="empty">Nenhum equipamento encontrado com os filtros aplicados.</div>
         <div v-else-if="devices.length === 0" class="empty">Nenhum equipamento cadastrado.</div>
-        <ul>
-          <li v-for="device in filteredDevices" :key="device.id" :class="{'offline-alert': !device.online && offlineMinutes(device) >= 2}">
-            <span>{{ device.name }}</span>
-            <span>Loja: {{ getStoreName(device.store_id) }}</span>
-            <span v-if="device.identifier" class="badge-id">ID: {{ device.identifier }}</span>
-            <span :style="{color: device.online ? 'green' : 'red', fontWeight: 'bold'}">
-              {{ device.online ? 'Online' : 'Offline' }}
-            </span>
-            <span v-if="device.last_sync">
-              Último sinal: {{ formatLastHeartbeat(device.last_sync) }} ({{ offlineMinutes(device) }} min)
-            </span>
-            <span v-else>
-              Nunca conectado
-            </span>
-            <span>{{ device.status === 'ativo' ? 'Ativo' : 'Inativo' }}</span>
-            <button v-if="userRole === 'admin'" @click="openEditModal(device)">Editar</button>
-            <button v-if="userRole === 'admin'" @click="deleteDevice(device.id)">Excluir</button>
+        <ul class="device-list">
+          <li v-for="device in filteredDevices" :key="device.id" :class="{'offline-alert': !device.online && offlineMinutes(device) >= 2, 'device-item': true}">
+            <div class="device-col name">
+              <span class="device-title">{{ device.name }}</span>
+              <span v-if="device.identifier" class="badge-id">ID: {{ device.identifier }}</span>
+            </div>
+            <div class="device-col loja">
+              <span class="device-label">Loja:</span> <span>{{ getStoreName(device.store_id) }}</span>
+            </div>
+            <div class="device-col status">
+              <span class="device-label">Status:</span>
+              <span :class="{'status-online': device.online, 'status-offline': !device.online}">
+                {{ device.online ? 'Online' : 'Offline' }}
+              </span>
+              <span class="device-label">| {{ device.status === 'ativo' ? 'Ativo' : 'Inativo' }}</span>
+            </div>
+            <div class="device-col lastsync">
+              <span class="device-label">Último sinal:</span>
+              <span v-if="device.last_sync">{{ formatLastHeartbeat(device.last_sync) }} ({{ offlineMinutes(device) }} min)</span>
+              <span v-else>Nunca conectado</span>
+            </div>
+            <div class="device-col actions">
+              <button v-if="userRole === 'admin'" @click="openEditModal(device)">Editar</button>
+              <button v-if="userRole === 'admin'" @click="deleteDevice(device.id)">Excluir</button>
+            </div>
           </li>
         </ul>
       </div>
@@ -110,6 +121,7 @@ const filterIdentifier = ref('')
 const showEditModal = ref(false)
 const editDevice = ref(null)
 const editFields = ref({ name: '', store_id: '', identifier: '', status: '' })
+const editFeedback = ref("");
 
 function openEditModal(device) {
   editDevice.value = device
@@ -128,20 +140,33 @@ function closeEditModal() {
 }
 
 async function saveEditDevice() {
-  if (!editDevice.value) return
-  await fetch(`http://localhost:8000/admin/devices/${editDevice.value.id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  if (!editDevice.value) return;
+  editFeedback.value = "";
+  try {
+    const params = new URLSearchParams({
       name: editFields.value.name,
-      store_id: editFields.value.store_id,
-      identifier: editFields.value.identifier,
       status: editFields.value.status,
-      online: editDevice.value.online
-    })
-  })
-  await fetchDevices()
-  closeEditModal()
+      store_id: editFields.value.store_id
+    });
+    if (editDevice.value.last_sync) params.append('last_sync', editDevice.value.last_sync);
+    if (typeof editDevice.value.online !== 'undefined') params.append('online', String(editDevice.value.online));
+    const resp = await fetch(`http://localhost:8000/admin/devices/${editDevice.value.id}?${params.toString()}`, {
+      method: 'PUT'
+    });
+    if (!resp.ok) {
+      const err = await resp.text();
+      editFeedback.value = `Erro ao salvar: ${err}`;
+      return;
+    }
+    await fetchDevices();
+    editFeedback.value = "Alterações salvas com sucesso!";
+    setTimeout(() => {
+      closeEditModal();
+      editFeedback.value = "";
+    }, 1200);
+  } catch (e) {
+    editFeedback.value = "Erro ao salvar alterações.";
+  }
 }
 
 const filteredDevices = computed(() => {
@@ -311,21 +336,45 @@ ul {
   padding: 0;
   margin: 0;
 }
-li {
-  display: flex;
+.device-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.device-item {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1.5fr 2fr 1fr;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 12px;
   background: #f8f9fa;
   border-radius: 8px;
   padding: 12px 8px;
+  box-shadow: 0 2px 8px #ff66001a;
 }
-.offline-info {
-  font-size: 0.875em;
-  color: #666;
-  margin-top: 4px;
+.device-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
-/* Alerta visual para offline prolongado */
+.device-title {
+  font-weight: bold;
+  font-size: 1.1em;
+  color: #333;
+}
+.device-label {
+  color: #888;
+  font-size: 0.92em;
+  margin-right: 2px;
+}
+.status-online {
+  color: green;
+  font-weight: bold;
+}
+.status-offline {
+  color: red;
+  font-weight: bold;
+}
 .offline-alert {
   background: #ffeaea;
   border-left: 4px solid #ff0000;
@@ -376,5 +425,22 @@ li {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
+}
+.edit-feedback {
+  margin-top: 12px;
+  padding: 8px;
+  border-radius: 6px;
+  font-weight: bold;
+  text-align: center;
+}
+.edit-feedback.success {
+  color: #155724;
+  background-color: #d4edda;
+  border: 1px solid #c3e6cb;
+}
+.edit-feedback.error {
+  color: #721c24;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
 }
 </style>

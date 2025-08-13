@@ -13,6 +13,7 @@
 </template>
 
 <script setup>
+
 import { ref, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 
@@ -20,13 +21,30 @@ const banners = ref([])
 const current = ref(0)
 let interval = null
 let idleTimer = null
+let pollingInterval = null
 const visible = ref(false)
 const isFullscreen = ref(false)
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
+function getStoreId() {
+  // Sempre busca o código da loja padronizado
+  let storeCodigo = localStorage.getItem('precix_store_codigo');
+  if (!storeCodigo || storeCodigo === 'null' || storeCodigo === 'undefined') {
+    // fallback: não retorna nada se não houver código válido
+    return null;
+  }
+  return String(storeCodigo).trim();
+}
+
 async function fetchBanners() {
   try {
-    const response = await axios.get(`${API_BASE}/admin/banners`)
+    const storeCode = getStoreId();
+    let response;
+    if (storeCode) {
+      response = await axios.get(`${API_BASE}/admin/banners`, { params: { store_id: storeCode } });
+    } else {
+      response = await axios.get(`${API_BASE}/admin/banners`);
+    }
     if (Array.isArray(response.data)) {
       banners.value = response.data.map(b => ({
         img: `${API_BASE}${b.url}`,
@@ -83,8 +101,11 @@ function resetIdleTimer() {
   }, 15000)
 }
 
+
 onMounted(async () => {
   await fetchBanners()
+  // Polling para banners a cada 30s
+  pollingInterval = setInterval(fetchBanners, 30000)
   resetIdleTimer()
   window.addEventListener('mousemove', resetIdleTimer, { passive: true })
   window.addEventListener('keydown', resetIdleTimer, { passive: true })
@@ -94,6 +115,7 @@ onMounted(async () => {
 onUnmounted(() => {
   if (interval) clearInterval(interval)
   if (idleTimer) clearTimeout(idleTimer)
+  if (pollingInterval) clearInterval(pollingInterval)
   window.removeEventListener('mousemove', resetIdleTimer)
   window.removeEventListener('keydown', resetIdleTimer)
   window.removeEventListener('touchstart', resetIdleTimer)

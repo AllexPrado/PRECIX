@@ -29,10 +29,8 @@ body {
   margin-bottom: 16px;
   text-shadow: 0 2px 8px #e0e7ff;
 }
+/* .back-btn global removido position absolute para não sobrepor logo */
 .back-btn {
-  position: absolute;
-  left: 24px;
-  top: 24px;
   background: #2d2d6a;
   color: #fff;
   border: none;

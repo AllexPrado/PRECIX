@@ -1,6 +1,6 @@
 <template>
   <div class="user-manager">
-    <button class="back-btn" @click="goToDashboard">Voltar ao Painel</button>
+
     <h2>Gestão de Usuários do Sistema</h2>
     <button class="add-user-btn" @click="showUserModal = true">Novo Usuário</button>
     <!-- Modal de cadastro/edição de usuário -->
@@ -293,7 +293,7 @@ function closeUserModal() {
 .user-manager {
   max-width: 540px;
   min-width: 340px;
-  margin: 40px auto;
+  margin: 72px auto 40px auto;
   background: #fff;
   border-radius: 14px;
   box-shadow: 0 4px 24px #ff66001a;
@@ -301,7 +301,12 @@ function closeUserModal() {
   /* Garante que nada saia do card */
   overflow: hidden;
 }
-.back-btn {
+.back-btn-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+.user-manager .back-btn {
   background: #fff7ef;
   color: #ff6600;
   border: 2px solid #ff6600;
@@ -313,7 +318,7 @@ function closeUserModal() {
   cursor: pointer;
   transition: background 0.2s;
 }
-.back-btn:hover {
+.user-manager .back-btn:hover {
   background: #ff66001a;
 }
 .user-manager h2 {

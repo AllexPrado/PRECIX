@@ -1,3 +1,43 @@
+# STATUS ATUAL - 13/08/2025
+
+## Resumo das ações realizadas
+
+### 1. Correções e melhorias no fluxo de dispositivos
+- Padronização do uso do campo `identifier` (UUID) para todos os fluxos (admin, operador, equipamento).
+- Correção do endpoint `/device/store/{uuid}` para buscar corretamente o device pelo UUID e retornar os dados da loja.
+- Ajuste do backend para permitir atualização do UUID e do store_id via painel admin.
+- Correção do endpoint de heartbeat para criar automaticamente um novo device caso o UUID não exista, associando à primeira loja existente.
+- Ajuste do update de device para aceitar tanto query string quanto JSON.
+
+### 2. Problemas encontrados
+- Dispositivos criados automaticamente pelo heartbeat estavam sem loja associada, impedindo que aparecessem no painel e no endpoint `/device/store/{uuid}`.
+- Atualização do UUID pelo painel retornava 200 OK, mas não alterava corretamente o campo no banco.
+- O endpoint `/device/store/{uuid}` retornava 404 para devices sem loja associada.
+
+### 3. Soluções aplicadas
+- O heartbeat agora associa o novo device à primeira loja existente no banco.
+- O update do UUID e do store_id foi corrigido para funcionar via painel admin.
+- O backend foi ajustado para aceitar updates tanto por query string quanto por JSON.
+
+### 4. Pontos de atenção
+- Se não houver nenhuma loja cadastrada, o device criado automaticamente ficará sem associação e continuará não aparecendo no painel.
+- O fluxo de registro automático depende do correto funcionamento do heartbeat e da existência de pelo menos uma loja.
+
+## Próximos passos sugeridos
+1. Validar se o device criado automaticamente está realmente associado a uma loja e aparece no painel/admin.
+2. Testar o update do UUID e do store_id pelo painel e garantir que o endpoint `/device/store/{uuid}` retorna os dados corretamente.
+3. Implementar logs mais detalhados para facilitar o diagnóstico de problemas futuros.
+4. Realizar testes de ponta a ponta (registro, heartbeat, edição, banners).
+5. Se necessário, criar um endpoint para associar manualmente devices "órfãos" a uma loja.
+
+## Observações finais
+- Todas as alterações foram salvas e documentadas.
+- O código está pronto para commit.
+- Caso o erro persista, revisar o fluxo de associação de loja ao device e garantir que o frontend está enviando corretamente os dados.
+
+---
+
+*Documentação gerada automaticamente por GitHub Copilot em 13/08/2025.*
 # Documentação: Status Atual do Sistema PRECIX
 
 ## Resumo das Implementações e Correções (28/07/2025)

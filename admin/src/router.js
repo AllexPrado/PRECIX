@@ -11,6 +11,29 @@ import AuditLog from './views/AuditLog.vue'
 import UserManager from './views/UserManager.vue'
 import { getToken, isTokenExpired, removeToken } from './auth.js'
 
+function getUserPermissoes() {
+  try {
+    const perms = JSON.parse(localStorage.getItem('permissoes') || '[]');
+    return Array.isArray(perms) ? perms : [];
+  } catch {
+    return [];
+  }
+}
+function getUserRole() {
+  try {
+    const token = localStorage.getItem('jwt_token');
+    if (!token) return 'admin';
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(decodeURIComponent(atob(base64).split('').map(function(c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+    }).join('')));
+    return payload && payload.role ? payload.role : 'admin';
+  } catch {
+    return 'admin';
+  }
+}
+
 const routes = [
   { path: '/', component: Login },
   {
@@ -36,15 +59,36 @@ const router = createRouter({
 
 const publicPaths = ['/', '/login']
 
+// Mapeamento de rota para permissão
+const routePermMap = {
+  '/dashboard': 'dashboard',
+  '/banners': 'banners',
+  '/stores': 'lojas',
+  '/devices': 'equipamentos',
+  '/audit': 'auditoria',
+  '/ia-logs': 'central_ia',
+  '/users': 'usuarios',
+  '/agents': 'agentes',
+};
+
 router.beforeEach((to, from, next) => {
   if (!publicPaths.includes(to.path)) {
     if (!getToken() || isTokenExpired()) {
-      removeToken()
-      next('/')
-      return
+      removeToken();
+      next('/');
+      return;
+    }
+    const userRole = getUserRole();
+    if (userRole !== 'admin') {
+      const permissoes = getUserPermissoes();
+      const perm = routePermMap[to.path];
+      if (perm && !permissoes.includes(perm)) {
+        next('/dashboard');
+        return;
+      }
     }
   }
-  next()
-})
+  next();
+});
 
 export default router

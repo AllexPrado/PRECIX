@@ -29,16 +29,50 @@ import { removeToken } from '../auth.js'
 const router = useRouter()
 const route = useRoute()
 
-const navItems = [
-  { label: 'Dashboard', route: '/dashboard', icon: 'pi pi-home' },
-  { label: 'Banners', route: '/banners', icon: 'pi pi-image' },
-  { label: 'Lojas', route: '/stores', icon: 'pi pi-building' },
-  { label: 'Equipamentos', route: '/devices', icon: 'pi pi-desktop' },
-  { label: 'Auditoria', route: '/audit', icon: 'pi pi-list' },
-  { label: 'Central de IAs', route: '/ia-logs', icon: 'pi pi-comments' },
-  { label: 'Usuários', route: '/users', icon: 'pi pi-users' },
-  { label: 'Agentes Locais', route: '/agents', icon: 'pi pi-server' },
+
+const allNavItems = [
+  { label: 'Dashboard', route: '/dashboard', icon: 'pi pi-home', perm: 'dashboard' },
+  { label: 'Banners', route: '/banners', icon: 'pi pi-image', perm: 'banners' },
+  { label: 'Lojas', route: '/stores', icon: 'pi pi-building', perm: 'lojas' },
+  { label: 'Equipamentos', route: '/devices', icon: 'pi pi-desktop', perm: 'equipamentos' },
+  { label: 'Auditoria', route: '/audit', icon: 'pi pi-list', perm: 'auditoria' },
+  { label: 'Central de IAs', route: '/ia-logs', icon: 'pi pi-comments', perm: 'central_ia' },
+  { label: 'Usuários', route: '/users', icon: 'pi pi-users', perm: 'usuarios' },
+  { label: 'Agentes Locais', route: '/agents', icon: 'pi pi-server', perm: 'agentes' },
 ]
+
+function getUserPermissoes() {
+  try {
+    const perms = JSON.parse(localStorage.getItem('permissoes') || '[]');
+    return Array.isArray(perms) ? perms : [];
+  } catch {
+    return [];
+  }
+}
+function getUserRole() {
+  try {
+    const token = localStorage.getItem('jwt_token');
+    if (!token) return 'admin';
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(decodeURIComponent(atob(base64).split('').map(function(c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+    }).join('')));
+    return payload && payload.role ? payload.role : 'admin';
+  } catch {
+    return 'admin';
+  }
+}
+
+const userPerms = getUserPermissoes();
+const userRole = getUserRole();
+
+const navItems = allNavItems.filter(item => {
+  // Admin vê tudo
+  if (userRole === 'admin') return true;
+  // Operador/gestor só vê o que tem permissão
+  return userPerms.includes(item.perm);
+});
 
 function navigate(path) {
   router.push(path)

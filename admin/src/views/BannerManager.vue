@@ -7,6 +7,10 @@
       </header>
       <form class="bm-form" @submit.prevent="uploadBanner">
         <input type="file" accept="image/*" ref="fileInput" class="bm-file" />
+        <select v-if="canChooseStore" v-model="selectedStoreId" class="bm-store-select">
+          <option value="all">Todas as lojas</option>
+          <option v-for="store in stores" :key="store.id" :value="String(store.codigo)">{{ store.codigo ? store.codigo + ' - ' : '' }}{{ store.name }}</option>
+        </select>
         <button type="submit" class="bm-upload">Enviar Banner</button>
       </form>
       <div v-if="loading" class="bm-loading">Carregando...</div>
@@ -33,15 +37,82 @@ export default {
       banners: [],
       loading: false,
       error: '',
-      backendUrl: 'http://localhost:8000', // ajuste se necessário
+      backendUrl: import.meta.env.VITE_API_URL || window.location.origin.replace(':5174', ':8000'),
+      stores: [],
+      selectedStoreId: '',
+      canChooseStore: false,
     };
   },
+  created() {
+    this.initUserRole();
+  },
+  watch: {
+    selectedStoreId() {
+      this.fetchBanners();
+    }
+  },
   methods: {
+    initUserRole() {
+      // Determina se pode escolher loja
+      const role = this.getUserRole();
+      this.canChooseStore = (role === 'admin' || role === 'gestor_admin');
+      if (this.canChooseStore) {
+        this.fetchStores();
+        this.selectedStoreId = 'all';
+      } else {
+        // Sempre usa o código padronizado
+        this.selectedStoreId = localStorage.getItem('precix_store_codigo') || '';
+      }
+    },
+    getUserRole() {
+      try {
+        const token = localStorage.getItem('jwt_token');
+        if (!token) return 'admin';
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const payload = JSON.parse(decodeURIComponent(atob(base64).split('').map(function(c) {
+          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+        }).join('')));
+        return payload && payload.role ? payload.role : 'admin';
+      } catch {
+        return 'admin';
+      }
+    },
+    async fetchStores() {
+      try {
+        const res = await authFetch('http://localhost:8000/admin/stores');
+        const data = await res.json();
+        // Padroniza o campo de código da loja para string
+        this.stores = (Array.isArray(data) ? data : (data.stores || [])).map(store => ({
+          ...store,
+          codigo: String(store.codigo)
+        }));
+      } catch (e) {
+        this.stores = [];
+      }
+    },
     async fetchBanners() {
       this.loading = true;
       this.error = '';
       try {
-        const res = await fetch(`${this.backendUrl}/admin/banners`);
+        let url = `${this.backendUrl}/admin/banners`;
+        // Para admin/gestor: usa selectedStoreId; para operador: sempre envia store_id do localStorage
+        let storeIdParam = '';
+        if (this.canChooseStore) {
+          if (this.selectedStoreId && this.selectedStoreId !== 'all') {
+            storeIdParam = String(this.selectedStoreId);
+          }
+        } else {
+          // Operador: sempre pega do localStorage padronizado
+          let storeCodigo = localStorage.getItem('precix_store_codigo');
+          if (storeCodigo && storeCodigo !== 'null' && storeCodigo !== 'undefined') {
+            storeIdParam = String(storeCodigo);
+          }
+        }
+        if (storeIdParam) {
+          url += `?store_id=${storeIdParam}`;
+        }
+        const res = await fetch(url);
         const data = await res.json();
         this.banners = data;
       } catch (e) {
@@ -54,14 +125,36 @@ export default {
       if (!fileInput.files.length) return;
       const formData = new FormData();
       formData.append('file', fileInput.files[0]);
-      // Adiciona o store_id do usuário logado
-      const storeId = localStorage.getItem('store_id');
-      if (storeId) formData.append('store_id', storeId);
+      // Lógica de envio conforme perfil
+      if (this.canChooseStore) {
+        if (this.selectedStoreId && this.selectedStoreId !== 'all') {
+          formData.append('store_id', String(this.selectedStoreId));
+        } else if (this.selectedStoreId === 'all') {
+          formData.append('all_stores', '1');
+        } else {
+          this.error = 'Selecione uma loja válida.';
+          this.loading = false;
+          return;
+        }
+      } else {
+        // Operador: sempre exige store_id válido (usa o código padronizado)
+        let storeCodigo = localStorage.getItem('precix_store_codigo');
+        if (!storeCodigo || storeCodigo === 'null' || storeCodigo === 'undefined') {
+          this.error = 'Não foi possível identificar a loja do operador. Faça login novamente.';
+          this.loading = false;
+          return;
+        }
+        formData.append('store_id', String(storeCodigo));
+      }
       this.loading = true;
       this.error = '';
       try {
-        const res = await authFetch(`${this.backendUrl}/admin/banners/upload`, {
+        // Garante envio do JWT manualmente se necessário
+        const token = localStorage.getItem('jwt_token');
+        const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+        const res = await fetch(`${this.backendUrl}/admin/banners/upload`, {
           method: 'POST',
+          headers,
           body: formData,
         });
         const result = await res.json();

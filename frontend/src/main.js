@@ -30,38 +30,34 @@ async function ensureDeviceUUID() {
   return uuid;
 }
 
-// Função para registrar dispositivo no backend
-async function registerDeviceIfNeeded(deviceId) {
-  // Só tenta registrar se estiver online
+
+// Função para buscar a loja vinculada ao UUID do dispositivo
+async function fetchStoreByDeviceUUID(deviceId) {
   if (!navigator.onLine) return;
-  
   try {
     const API_BASE = import.meta.env.VITE_API_URL || 'http://192.168.18.7:8000';
-    // Verifica se já existe no backend
-    const res = await fetch(`${API_BASE}/admin/devices`);
-    const devices = await res.json();
-    if (!devices.find(d => d.identifier === deviceId)) {
-      // Registrar novo dispositivo
-      await fetch(`${API_BASE}/admin/devices`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          store_id: 1, // Ajuste para a loja correta
-          name: navigator.userAgent,
-          identifier: deviceId
-        })
-      });
+    const resp = await fetch(`${API_BASE}/device/store/${deviceId}`);
+    if (resp.ok) {
+      const data = await resp.json();
+      // Compatibilidade: aceita tanto store_code quanto store_codigo
+      const codigo = data.store_code || data.store_codigo;
+      if (data && codigo) {
+        localStorage.setItem('precix_store_codigo', codigo);
+        localStorage.setItem('precix_store_nome', data.store_name);
+        return codigo;
+      } else {
+        alert('Este equipamento não está vinculado a uma loja. Solicite ao administrador.');
+      }
     }
   } catch (e) {
-    // Exibe erro no console para debug
-    console.warn('Erro ao registrar dispositivo:', e);
+    console.warn('Erro ao buscar loja vinculada ao dispositivo:', e);
   }
 }
 
 let DEVICE_ID;
 ensureDeviceUUID().then(async id => {
   DEVICE_ID = id;
-  await registerDeviceIfNeeded(DEVICE_ID);
+  await fetchStoreByDeviceUUID(DEVICE_ID);
   // Heartbeat: só envia se DEVICE_ID estiver definido e não for ambiente admin/PC
   function sendHeartbeat() {
     if (DEVICE_ID && DEVICE_ID !== 'admin' && DEVICE_ID !== 'pc' && navigator.onLine) {
@@ -86,5 +82,33 @@ if ('serviceWorker' in navigator) {
   });
 }
 */
+
+
+// --- PING PERIÓDICO PARA DETECTAR RETORNO DO FRONTEND ---
+// Só executa em ambiente de dispositivo (não admin/pc)
+if (typeof window !== 'undefined') {
+  let wasOffline = false;
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://192.168.18.7:8000';
+  // Função para checar se o frontend está acessível
+  async function checkFrontendOnline() {
+    try {
+      // Tenta buscar um arquivo estático do frontend
+      const res = await fetch('/index.html', { cache: 'no-store' });
+      if (res.ok) {
+        if (wasOffline) {
+          // Se estava offline e voltou, força reload
+          window.location.reload();
+        }
+        wasOffline = false;
+      } else {
+        wasOffline = true;
+      }
+    } catch (e) {
+      wasOffline = true;
+    }
+  }
+  // Checa a cada 10 segundos
+  setInterval(checkFrontendOnline, 10000);
+}
 
 createApp(App).mount('#app')
