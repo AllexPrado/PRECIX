@@ -27,6 +27,7 @@
             <td><input type="checkbox" :checked="!!config.ativo" disabled /></td>
             <td>
               <button class="edit-btn" @click="editConfig(config)">Editar</button>
+              <button class="delete-btn" @click="deleteConfig(config)">Excluir</button>
             </td>
           </tr>
         </tbody>
@@ -111,6 +112,17 @@
 </template>
 
 <script setup>
+// Função para excluir integração
+async function deleteConfig(config) {
+  if (!confirm(`Deseja realmente excluir esta integração?`)) return;
+  try {
+    await axios.delete(`http://localhost:8000/admin/integracoes/${config.id}`);
+    feedback.value = { success: true, message: 'Integração excluída com sucesso!' };
+    await fetchConfigs();
+  } catch {
+    feedback.value = { success: false, message: 'Erro ao excluir integração.' };
+  }
+}
 // Tela de configuração de integrações de preço
 // Permite cadastrar, editar e visualizar integrações por loja ou global
 // Cores e layout seguem padrão do cliente
@@ -219,6 +231,18 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.delete-btn {
+  background: #c62828;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  margin: 2px;
+  cursor: pointer;
+}
+.delete-btn:hover {
+  background: #8e0000;
+}
 /* Layout principal */
 .integration-config-bg {
   min-height: 100vh;
