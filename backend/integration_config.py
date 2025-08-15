@@ -1,3 +1,13 @@
+from typing import Optional
+# Atualiza uma configuração de integração pelo id
+def update_integration_by_id(id_: int, loja_id: Optional[int], tipo: str, parametro1: str, parametro2: str, ativo: int = 1, layout: Optional[str] = None):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute('''
+        UPDATE integration_configs SET loja_id=?, tipo=?, parametro1=?, parametro2=?, layout=?, ativo=? WHERE id=?
+    ''', (loja_id, tipo, parametro1, parametro2, layout, ativo, id_))
+    conn.commit()
+    conn.close()
 # Remove uma configuração de integração por ID
 def delete_integration(integration_id: int):
     conn = sqlite3.connect(DB_PATH)
