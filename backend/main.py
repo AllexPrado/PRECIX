@@ -2040,3 +2040,15 @@ def api_get_audit_logs(limit: int = 50):
 def api_get_device_audit_logs(device_id: int, limit: int = 20):
     """Retorna logs de auditoria específicos de um dispositivo"""
     return get_device_audit_logs(device_id, limit)
+
+@app.delete('/admin/agents/{agent_id}')
+def delete_agent(agent_id: str):
+    from database import get_db_connection
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('DELETE FROM agents_status WHERE agent_id = ?', (agent_id,))
+    conn.commit()
+    conn.close()
+    AGENTS_STATUS.pop(agent_id, None)
+    AGENTS_LOGS.pop(agent_id, None)
+    return {'success': True}

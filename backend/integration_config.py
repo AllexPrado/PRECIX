@@ -1,3 +1,10 @@
+# Remove uma configuração de integração por ID
+def delete_integration(integration_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute('DELETE FROM integration_configs WHERE id = ?', (integration_id,))
+    conn.commit()
+    conn.close()
 """
 Módulo: integration_config.py
 ----------------------------
@@ -46,7 +53,7 @@ Todas as funções são comentadas para facilitar manutenção e integração fu
 import sqlite3
 from typing import Optional, List, Dict
 
-DB_PATH = 'products.db'  # Caminho do banco de dados principal
+DB_PATH = r'd:\Sonda\Precix\sync\products.db'  # Caminho do banco de dados principal
 
 # Criação da tabela de integrações, se não existir
 def create_integration_table():
