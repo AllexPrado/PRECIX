@@ -56,39 +56,106 @@ class LojaWidget(QWidget):
         self.add_buttons()
 
     def load_lojas(self):
+        # Exibe todas as lojas vinculadas no config.json
         try:
             with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
                 config = json.load(f)
-            lojas = config.get('lojas', [])
+            lojas_vinculadas = config.get('lojas_vinculadas', [])
         except Exception:
-            lojas = []
-        self.table.setRowCount(len(lojas))
+            lojas_vinculadas = []
+        self.table.setRowCount(len(lojas_vinculadas))
         self.table.setColumnCount(2)
         self.table.setHorizontalHeaderLabels(['Código', 'Nome'])
-        for i, loja in enumerate(lojas):
-            self.table.setItem(i, 0, QTableWidgetItem(str(loja['codigo'])))
-            self.table.setItem(i, 1, QTableWidgetItem(loja['nome']))
+        for i, loja in enumerate(lojas_vinculadas):
+            self.table.setItem(i, 0, QTableWidgetItem(str(loja.get('codigo', ''))))
+            self.table.setItem(i, 1, QTableWidgetItem(loja.get('name', '')))
 
     def add_form(self):
         self.form_layout = QHBoxLayout()
-        self.codigo_input = QLineEdit()
-        self.codigo_input.setPlaceholderText('Código da loja')
-        self.nome_input = QLineEdit()
-        self.nome_input.setPlaceholderText('Nome da loja')
-        self.form_layout.addWidget(QLabel('Nova Loja:'))
-        self.form_layout.addWidget(self.codigo_input)
-        self.form_layout.addWidget(self.nome_input)
+        self.lojas_combo = QComboBox()
+        self.lojas_combo.setEditable(False)
+        self.refresh_lojas_backend()
+        self.form_layout.addWidget(QLabel('Vincular Loja:'))
+        self.form_layout.addWidget(self.lojas_combo)
         self.layout.addLayout(self.form_layout)
+        self.set_combo_to_vinculada()
+
+    def set_combo_to_vinculada(self):
+        # Não seleciona automaticamente, pois pode haver múltiplas lojas
+        pass
+
+    def refresh_lojas_backend(self):
+        self.lojas_combo.clear()
+        try:
+            response = requests.get('http://localhost:8000/admin/stores', timeout=5)
+            if response.status_code == 200:
+                lojas = response.json()
+                for loja in lojas:
+                    display = f"{loja.get('codigo', loja.get('id'))} - {loja.get('name')}"
+                    self.lojas_combo.addItem(display, loja)
+            else:
+                self.lojas_combo.addItem('Erro ao buscar lojas', None)
+        except Exception:
+            self.lojas_combo.addItem('Falha de conexão', None)
+        self.set_combo_to_vinculada()
 
     def add_buttons(self):
         self.btn_layout = QHBoxLayout()
-        self.add_btn = QPushButton('Adicionar')
-        self.add_btn.clicked.connect(self.adicionar_loja)
-        self.btn_layout.addWidget(self.add_btn)
-        self.refresh_btn = QPushButton('Atualizar')
-        self.refresh_btn.clicked.connect(self.load_lojas)
+        self.vincular_btn = QPushButton('Adicionar Loja Vinculada')
+        self.vincular_btn.clicked.connect(self.vincular_loja)
+        self.btn_layout.addWidget(self.vincular_btn)
+        self.remover_btn = QPushButton('Remover Loja Selecionada')
+        self.remover_btn.clicked.connect(self.remover_loja_vinculada)
+        self.btn_layout.addWidget(self.remover_btn)
+        self.refresh_btn = QPushButton('Atualizar Lista de Lojas')
+        self.refresh_btn.clicked.connect(self.refresh_lojas_backend)
         self.btn_layout.addWidget(self.refresh_btn)
         self.layout.addLayout(self.btn_layout)
+
+    def vincular_loja(self):
+        idx = self.lojas_combo.currentIndex()
+        loja = self.lojas_combo.itemData(idx)
+        if not loja:
+            QMessageBox.warning(self, 'Erro', 'Selecione uma loja válida!')
+            return
+        try:
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            else:
+                config = {}
+            lojas_vinculadas = config.get('lojas_vinculadas', [])
+            # Não duplicar
+            if any(l.get('codigo') == loja.get('codigo') for l in lojas_vinculadas):
+                QMessageBox.warning(self, 'Aviso', 'Esta loja já está vinculada!')
+                return
+            lojas_vinculadas.append(loja)
+            config['lojas_vinculadas'] = lojas_vinculadas
+            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2)
+            self.load_lojas()
+            QMessageBox.information(self, 'Sucesso', 'Loja vinculada com sucesso!')
+        except Exception as e:
+            QMessageBox.critical(self, 'Erro', f'Falha ao vincular loja: {str(e)}')
+
+    def remover_loja_vinculada(self):
+        row = self.table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, 'Erro', 'Selecione uma loja na tabela para remover!')
+            return
+        try:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            lojas_vinculadas = config.get('lojas_vinculadas', [])
+            if row < len(lojas_vinculadas):
+                lojas_vinculadas.pop(row)
+                config['lojas_vinculadas'] = lojas_vinculadas
+                with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, indent=2)
+                self.load_lojas()
+                QMessageBox.information(self, 'Sucesso', 'Loja removida!')
+        except Exception as e:
+            QMessageBox.critical(self, 'Erro', f'Falha ao remover loja: {str(e)}')
 
     def adicionar_loja(self):
         codigo = self.codigo_input.text().strip()
@@ -573,12 +640,32 @@ class AutomacaoWidget(QWidget):
         self.status_output.setText(config['automacao_status'])
 
 class EquipamentosWidget(QWidget):
+    def preencher_formulario(self, row):
+        try:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            equipamentos = config.get('equipamentos', [])
+            if row < len(equipamentos):
+                eq = equipamentos[row]
+                self.ip_input.setText(str(eq.get('ip', '')))
+                self.porta_input.setText(str(eq.get('porta', '')))
+                self.desc_input.setText(eq.get('descricao', ''))
+                # Seleciona a loja vinculada no ComboBox
+                loja_codigo = eq.get('loja', None)
+                for i in range(self.loja_combo.count()):
+                    loja = self.loja_combo.itemData(i)
+                    if loja and loja.get('codigo') == loja_codigo:
+                        self.loja_combo.setCurrentIndex(i)
+                        break
+        except Exception:
+            pass
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
         self.table = QTableWidget()
         self.layout.addWidget(self.table)
+        self.table.cellClicked.connect(self.preencher_formulario)
         self.load_equipamentos()
         self.add_form()
         self.add_buttons()
@@ -607,21 +694,58 @@ class EquipamentosWidget(QWidget):
         self.porta_input.setPlaceholderText('Porta')
         self.desc_input = QLineEdit()
         self.desc_input.setPlaceholderText('Descrição')
-        self.loja_input = QLineEdit()
-        self.loja_input.setPlaceholderText('Código da loja')
+        # ComboBox para escolher loja vinculada
+        self.loja_combo = QComboBox()
+        self.atualizar_lojas_combo()
         self.form_layout.addWidget(QLabel('Novo Equipamento:'))
         self.form_layout.addWidget(self.ip_input)
         self.form_layout.addWidget(self.porta_input)
         self.form_layout.addWidget(self.desc_input)
-        self.form_layout.addWidget(self.loja_input)
+        self.form_layout.addWidget(QLabel('Loja vinculada:'))
+        self.form_layout.addWidget(self.loja_combo)
         self.layout.addLayout(self.form_layout)
+
+    def atualizar_lojas_combo(self):
+        self.loja_combo.clear()
+        try:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            lojas_vinculadas = config.get('lojas_vinculadas', [])
+            for loja in lojas_vinculadas:
+                display = f"{loja.get('codigo', loja.get('id'))} - {loja.get('name')}"
+                self.loja_combo.addItem(display, loja)
+        except Exception:
+            self.loja_combo.addItem('Nenhuma loja vinculada', None)
+
+    def atualizar_loja_vinculada(self):
+        # Busca a loja selecionada na aba de lojas
+        main_window = self.parentWidget()
+        while main_window and not hasattr(main_window, 'loja_tab'):
+            main_window = main_window.parentWidget()
+        loja_nome = '-'
+        loja_codigo = '-'
+        if main_window and hasattr(main_window, 'loja_tab'):
+            loja_widget = main_window.loja_tab
+            if hasattr(loja_widget, 'lojas_combo'):
+                idx = loja_widget.lojas_combo.currentIndex()
+                loja = loja_widget.lojas_combo.itemData(idx)
+                if loja:
+                    loja_nome = loja.get('name', '-')
+                    loja_codigo = loja.get('codigo', '-')
+        self.loja_label.setText(f"{loja_codigo} - {loja_nome}")
 
     def add_buttons(self):
         self.btn_layout = QHBoxLayout()
         self.add_btn = QPushButton('Adicionar')
         self.add_btn.clicked.connect(self.adicionar_equipamento)
         self.btn_layout.addWidget(self.add_btn)
-        self.refresh_btn = QPushButton('Atualizar')
+        self.edit_btn = QPushButton('Atualizar')
+        self.edit_btn.clicked.connect(self.editar_equipamento)
+        self.btn_layout.addWidget(self.edit_btn)
+        self.remove_btn = QPushButton('Remover')
+        self.remove_btn.clicked.connect(self.remover_equipamento)
+        self.btn_layout.addWidget(self.remove_btn)
+        self.refresh_btn = QPushButton('Recarregar Lista')
         self.refresh_btn.clicked.connect(self.load_equipamentos)
         self.btn_layout.addWidget(self.refresh_btn)
         self.layout.addLayout(self.btn_layout)
@@ -630,9 +754,11 @@ class EquipamentosWidget(QWidget):
         ip = self.ip_input.text().strip()
         porta = self.porta_input.text().strip()
         desc = self.desc_input.text().strip()
-        loja = self.loja_input.text().strip()
-        if not ip or not porta or not desc or not loja:
-            QMessageBox.warning(self, 'Erro', 'Preencha todos os campos!')
+        idx = self.loja_combo.currentIndex()
+        loja = self.loja_combo.itemData(idx)
+        loja_codigo = loja.get('codigo') if loja else None
+        if not ip or not porta or not desc or not loja_codigo:
+            QMessageBox.warning(self, 'Erro', 'Preencha todos os campos e selecione uma loja!')
             return
         try:
             if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
@@ -645,14 +771,13 @@ class EquipamentosWidget(QWidget):
                 config = {"lojas": [], "equipamentos": []}
             if "equipamentos" not in config:
                 config["equipamentos"] = []
-            config["equipamentos"].append({"ip": ip, "porta": int(porta), "descricao": desc, "loja": loja})
+            config["equipamentos"].append({"ip": ip, "porta": int(porta), "descricao": desc, "loja": loja_codigo})
             with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2)
             self.load_equipamentos()
             self.ip_input.clear()
             self.porta_input.clear()
             self.desc_input.clear()
-            self.loja_input.clear()
             QMessageBox.information(self, 'Sucesso', 'Equipamento cadastrado!')
         except Exception as e:
             QMessageBox.critical(self, 'Erro', f'Falha ao cadastrar equipamento: {str(e)}')
@@ -684,16 +809,18 @@ class EquipamentosWidget(QWidget):
         ip = self.ip_input.text().strip()
         porta = self.porta_input.text().strip()
         desc = self.desc_input.text().strip()
-        loja = self.loja_input.text().strip()
-        if not ip or not porta or not desc or not loja:
-            QMessageBox.warning(self, 'Erro', 'Preencha todos os campos para editar!')
+        idx = self.loja_combo.currentIndex()
+        loja = self.loja_combo.itemData(idx)
+        loja_codigo = loja.get('codigo') if loja else None
+        if not ip or not porta or not desc or not loja_codigo:
+            QMessageBox.warning(self, 'Erro', 'Preencha todos os campos e selecione uma loja!')
             return
         try:
             with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
                 config = json.load(f)
             equipamentos = config.get('equipamentos', [])
             if row < len(equipamentos):
-                equipamentos[row] = {"ip": ip, "porta": int(porta), "descricao": desc, "loja": loja}
+                equipamentos[row] = {"ip": ip, "porta": int(porta), "descricao": desc, "loja": loja_codigo}
                 config['equipamentos'] = equipamentos
                 with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
                     json.dump(config, f, indent=2)
