@@ -1,3 +1,100 @@
+# Funções CRUD para lojas
+def editar_loja(codigo, novo_nome):
+    config = load_config()
+    lojas = config.get('lojas', [])
+    for loja in lojas:
+        if loja.get('codigo') == codigo:
+            loja['nome'] = novo_nome
+            logging.info(f"Loja editada: {codigo} -> {novo_nome}")
+            break
+    else:
+        logging.warning(f"Loja não encontrada para edição: {codigo}")
+    config['lojas'] = lojas
+    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2)
+
+def excluir_loja(codigo):
+    config = load_config()
+    lojas = config.get('lojas', [])
+    novas_lojas = [l for l in lojas if l.get('codigo') != codigo]
+    if len(novas_lojas) < len(lojas):
+        logging.info(f"Loja excluída: {codigo}")
+    else:
+        logging.warning(f"Loja não encontrada para exclusão: {codigo}")
+    config['lojas'] = novas_lojas
+    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2)
+
+# Funções CRUD para equipamentos
+def editar_equipamento(ip, porta, novo_ip=None, nova_porta=None, nova_descricao=None):
+    config = load_config()
+    equipamentos = config.get('equipamentos', [])
+    for eq in equipamentos:
+        if eq.get('ip') == ip and str(eq.get('porta')) == str(porta):
+            if novo_ip:
+                eq['ip'] = novo_ip
+            if nova_porta:
+                eq['porta'] = nova_porta
+            if nova_descricao:
+                eq['descricao'] = nova_descricao
+            logging.info(f"Equipamento editado: {ip}:{porta} -> {eq}")
+            break
+    else:
+        logging.warning(f"Equipamento não encontrado para edição: {ip}:{porta}")
+    config['equipamentos'] = equipamentos
+    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2)
+
+def excluir_equipamento(ip, porta):
+    config = load_config()
+    equipamentos = config.get('equipamentos', [])
+    novos_equip = [eq for eq in equipamentos if not (eq.get('ip') == ip and str(eq.get('porta')) == str(porta))]
+    if len(novos_equip) < len(equipamentos):
+        logging.info(f"Equipamento excluído: {ip}:{porta}")
+    else:
+        logging.warning(f"Equipamento não encontrado para exclusão: {ip}:{porta}")
+    config['equipamentos'] = novos_equip
+    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2)
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "-"
+
+# Caminho do arquivo de status no backend
+AGENTS_STATUS_PATH = r'd:\Sonda\Precix\backend\agents_status.json'
+
+def salvar_status_agente():
+    status = {
+        "id": str(uuid.uuid4()),
+        "identifier": socket.gethostname(),
+        "nome": "Agente Local",
+        "loja": "",
+        "ip": get_local_ip(),
+        "ultima_atualizacao": datetime.now().strftime("%d/%m/%Y, %H:%M:%S")
+    }
+    try:
+        with open(AGENTS_STATUS_PATH, 'w', encoding='utf-8') as f:
+            json.dump([status], f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logging.error(f"Erro ao salvar status do agente: {e}")
+
+# Exemplo de uso: salve o status a cada 10 segundos em thread separada
+def iniciar_status_heartbeat():
+    import threading
+    def loop():
+        while True:
+            salvar_status_agente()
+            time.sleep(10)
+    t = threading.Thread(target=loop, daemon=True)
+    t.start()
+
+# No início do main, chame iniciar_status_heartbeat()
 """
 Agente Local PRECIX - Integração de Equipamentos Legados
 
@@ -302,4 +399,5 @@ def main():
 
 if __name__ == "__main__":
     # Garante que só roda como serviço
+    iniciar_status_heartbeat()
     main()
