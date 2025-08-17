@@ -230,6 +230,30 @@ class LojaWidget(QWidget):
             QMessageBox.critical(self, 'Erro', f'Falha ao editar loja: {str(e)}')
 
 class ConfiguracaoArquivoWidget(QWidget):
+    def processar_arquivo_entrada_automatico(self):
+        # Rotina automática chamada pelo timer
+        pasta_entrada = self.input_dir_path.text().strip()
+        if not pasta_entrada:
+            return
+        # Exemplo: processa o arquivo mais recente na pasta de entrada
+        try:
+            arquivos = [f for f in os.listdir(pasta_entrada) if f.lower().endswith('.txt')]
+            if not arquivos:
+                return
+            arquivos.sort(key=lambda x: os.path.getmtime(os.path.join(pasta_entrada, x)), reverse=True)
+            arquivo_cliente = os.path.join(pasta_entrada, arquivos[0])
+            # Aqui você pode implementar a lógica de leitura e conversão do arquivo do cliente
+            # Exemplo: copiar para o local de saída configurado
+            with open(arquivo_cliente, 'r', encoding='utf-8') as f:
+                conteudo = f.read()
+            # Salva no local de saída
+            saida = self.path_input.text().strip() or os.getcwd()
+            arquivo_saida = os.path.join(saida, 'pricetab.txt')
+            with open(arquivo_saida, 'w', encoding='utf-8') as f:
+                f.write(conteudo)
+            # Opcional: atualizar status, logs, equipamentos, etc.
+        except Exception as e:
+            print('Erro ao processar arquivo de entrada automático:', e)
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout()
@@ -243,6 +267,19 @@ class ConfiguracaoArquivoWidget(QWidget):
         header.addWidget(header_title)
         header.addStretch()
         self.layout.addLayout(header)
+
+        # Pasta de entrada do cliente
+        self.input_dir_label = QLabel('Pasta de entrada do arquivo do cliente:')
+        self.input_dir_path = QLineEdit()
+        self.input_dir_btn = QPushButton('Selecionar pasta de entrada')
+        self.input_dir_btn.clicked.connect(self.selecionar_pasta_entrada)
+        self.layout.addWidget(self.input_dir_label)
+        self.layout.addWidget(self.input_dir_path)
+        self.layout.addWidget(self.input_dir_btn)
+        # Botão para processar/importar arquivo do cliente manualmente
+        self.processar_btn = QPushButton('Processar arquivo de entrada do cliente')
+        self.processar_btn.clicked.connect(self.processar_arquivo_entrada)
+        self.layout.addWidget(self.processar_btn)
         # Separador
         self.sep_label = QLabel('Separador do arquivo:')
         self.sep_combo = QComboBox()
@@ -315,6 +352,7 @@ class ConfiguracaoArquivoWidget(QWidget):
             self.sep_combo.setCurrentText(config.get('arquivo_separador', ';'))
             self.sep_custom.setText(config.get('arquivo_separador_custom', ''))
             self.path_input.setText(config.get('arquivo_local', ''))
+            self.input_dir_path.setText(config.get('arquivo_entrada', ''))
             self.barcode_cb.setChecked('barcode' in config.get('arquivo_campos', ['barcode', 'name', 'price']))
             self.name_cb.setChecked('name' in config.get('arquivo_campos', ['barcode', 'name', 'price']))
             self.price_cb.setChecked('price' in config.get('arquivo_campos', ['barcode', 'name', 'price']))
@@ -327,6 +365,11 @@ class ConfiguracaoArquivoWidget(QWidget):
         pasta = QFileDialog.getExistingDirectory(self, 'Selecionar pasta')
         if pasta:
             self.path_input.setText(pasta)
+
+    def selecionar_pasta_entrada(self):
+        pasta = QFileDialog.getExistingDirectory(self, 'Selecionar pasta de entrada')
+        if pasta:
+            self.input_dir_path.setText(pasta)
 
     def gerar_arquivo_teste(self):
         sep = self.get_separador()
@@ -383,13 +426,65 @@ class ConfiguracaoArquivoWidget(QWidget):
         config['arquivo_separador_custom'] = self.sep_custom.text().strip()
         config['arquivo_campos'] = campos
         config['arquivo_local'] = path
+        config['arquivo_entrada'] = self.input_dir_path.text().strip()
         config['ia_ativo'] = ia_ativo
         config['arquivo_layout'] = layout
         with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2)
         QMessageBox.information(self, 'Configuração', 'Configuração do arquivo salva com sucesso!')
 
+    def processar_arquivo_entrada(self):
+        from PyQt5.QtWidgets import QMessageBox
+        pasta_entrada = self.input_dir_path.text().strip()
+        if not pasta_entrada:
+            QMessageBox.warning(self, 'Atenção', 'Selecione a pasta de entrada do arquivo do cliente.')
+            return
+        # TODO: Implementar processamento real do arquivo do cliente
+        QMessageBox.information(self, 'Processamento', 'Processamento manual do arquivo do cliente iniciado (rotina a ser implementada).')
+
 class IntegracaoPrecixWidget(QWidget):
+    def testar_conexao(self):
+        porta = self.porta_input.text().strip() or '8000'
+        timeout = int(self.timeout_input.text().strip() or '10')
+        modo = self.modo_combo.currentText()
+        api_externa = self.api_input.text().strip()
+        status_msg = ''
+        try:
+            # Testa API externa se preenchida, senão testa local
+            if api_externa:
+                url = api_externa
+            else:
+                url = f'http://localhost:{porta}/health'
+            r = requests.get(url, timeout=timeout)
+            if r.status_code in (200, 201, 204):
+                status_msg = 'Conexão OK'
+            else:
+                try:
+                    content = r.text[:200]
+                except Exception:
+                    content = ''
+                status_msg = f'Erro: {r.status_code} - {content}'
+        except Exception as e:
+            status_msg = f'Falha: {str(e)[:60]}'
+        self.status_output.setText(status_msg)
+        try:
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            else:
+                config = {}
+        except Exception:
+            config = {}
+        config['porta_local'] = porta
+        config['timeout'] = timeout
+        config['modo_operacao'] = modo
+        config['api_externa'] = api_externa
+        config['status_conexao'] = status_msg
+        from datetime import datetime
+        config['ultima_sync'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2)
+        self.ultima_output.setText(config['ultima_sync'])
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout()
@@ -414,6 +509,12 @@ class IntegracaoPrecixWidget(QWidget):
         self.modo_combo.addItems(['Produção', 'Homologação'])
         self.layout.addWidget(self.modo_label)
         self.layout.addWidget(self.modo_combo)
+        # API externa
+        self.api_label = QLabel('URL da API externa (opcional):')
+        self.api_input = QLineEdit()
+        self.api_input.setPlaceholderText('https://api.cliente.com.br/endpoint')
+        self.layout.addWidget(self.api_label)
+        self.layout.addWidget(self.api_input)
         # Status conexão
         self.status_label = QLabel('Status da conexão:')
         self.status_output = QLabel('-')
@@ -429,34 +530,18 @@ class IntegracaoPrecixWidget(QWidget):
         self.teste_btn.setStyleSheet('background:#0078d7;color:white;font-weight:bold;height:32px;')
         self.teste_btn.clicked.connect(self.testar_conexao)
         self.layout.addWidget(self.teste_btn)
+        # Botão salvar
+        self.salvar_btn = QPushButton('Salvar Configuração')
+        self.salvar_btn.setStyleSheet('background:#0078d7;color:white;font-weight:bold;height:32px;')
+        self.salvar_btn.clicked.connect(self.salvar_config)
+        self.layout.addWidget(self.salvar_btn)
         self.carregar_config()
-    def carregar_config(self):
-        try:
-            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
-                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-            else:
-                config = {}
-            self.porta_input.setText(str(config.get('porta_local', '8000')))
-            self.timeout_input.setText(str(config.get('timeout', '10')))
-            self.modo_combo.setCurrentText(config.get('modo_operacao', 'Produção'))
-            self.status_output.setText(config.get('status_conexao', '-'))
-            self.ultima_output.setText(config.get('ultima_sync', '-'))
-        except Exception:
-            pass
-    def testar_conexao(self):
+
+    def salvar_config(self):
         porta = self.porta_input.text().strip() or '8000'
         timeout = int(self.timeout_input.text().strip() or '10')
         modo = self.modo_combo.currentText()
-        try:
-            url = f'http://localhost:{porta}/api/ping'
-            r = requests.get(url, timeout=timeout)
-            if r.status_code == 200:
-                self.status_output.setText('Conexão OK')
-            else:
-                self.status_output.setText(f'Erro: {r.status_code}')
-        except Exception as e:
-            self.status_output.setText(f'Falha: {str(e)[:60]}')
+        api_externa = self.api_input.text().strip()
         try:
             if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
                 with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
@@ -468,12 +553,15 @@ class IntegracaoPrecixWidget(QWidget):
         config['porta_local'] = porta
         config['timeout'] = timeout
         config['modo_operacao'] = modo
-        config['status_conexao'] = self.status_output.text()
+        config['api_externa'] = api_externa
         from datetime import datetime
         config['ultima_sync'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2)
         self.ultima_output.setText(config['ultima_sync'])
+        self.status_output.setText('Configuração salva!')
+    def carregar_config(self):
+        pass
 
 class EnvioWidget(QWidget):
     def __init__(self):
@@ -614,10 +702,10 @@ class AutomacaoWidget(QWidget):
             if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
                 with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
                     config = json.load(f)
-            else:
-                config = {}
-            config['automacao_intervalo'] = intervalo
-            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                self.modo_combo.setCurrentText(config.get('modo_operacao', 'Produção'))
+                self.status_output.setText(config.get('status_conexao', '-'))
+                self.ultima_output.setText(config.get('ultima_sync', '-'))
+                self.api_input.setText(config.get('api_externa', ''))
                 json.dump(config, f, indent=2)
             self.status_output.setText('Configuração salva!')
         except Exception as e:
@@ -696,7 +784,6 @@ class EquipamentosWidget(QWidget):
         self.desc_input.setPlaceholderText('Descrição')
         # ComboBox para escolher loja vinculada
         self.loja_combo = QComboBox()
-        self.atualizar_lojas_combo()
         self.form_layout.addWidget(QLabel('Novo Equipamento:'))
         self.form_layout.addWidget(self.ip_input)
         self.form_layout.addWidget(self.porta_input)
@@ -704,6 +791,24 @@ class EquipamentosWidget(QWidget):
         self.form_layout.addWidget(QLabel('Loja vinculada:'))
         self.form_layout.addWidget(self.loja_combo)
         self.layout.addLayout(self.form_layout)
+        self.atualizar_lojas_combo()
+
+    def atualizar_lojas_combo(self):
+        self.loja_combo.clear()
+        try:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            lojas_vinculadas = config.get('lojas_vinculadas', [])
+            for loja in lojas_vinculadas:
+                display = f"{loja.get('codigo', loja.get('id'))} - {loja.get('name')}"
+                self.loja_combo.addItem(display, loja)
+        except Exception:
+            self.loja_combo.addItem('Nenhuma loja vinculada', None)
+
+    def showEvent(self, event):
+        # Sempre atualizar o ComboBox ao exibir o widget
+        self.atualizar_lojas_combo()
+        super().showEvent(event)
 
     def atualizar_lojas_combo(self):
         self.loja_combo.clear()
@@ -922,6 +1027,24 @@ class EquipamentosGUI(QWidget):
         # Aba de automação
         self.automacao_tab = AutomacaoWidget()
         self.tabs.addTab(self.automacao_tab, 'Automação')
+
+        # Timer para automação de processamento do arquivo do cliente
+        from PyQt5.QtCore import QTimer
+        self.timer_entrada = QTimer(self)
+        self.timer_entrada.timeout.connect(self.processar_entrada_automatica)
+        self.iniciar_timer_entrada()
+
+    def iniciar_timer_entrada(self):
+        try:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            intervalo = int(config.get('automacao_intervalo', 30))
+        except Exception:
+            intervalo = 30
+        self.timer_entrada.start(intervalo * 60 * 1000)  # minutos para ms333333
+
+    def processar_entrada_automatica(self):
+        self.config_tab.processar_arquivo_entrada_automatico()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
