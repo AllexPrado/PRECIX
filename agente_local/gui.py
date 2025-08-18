@@ -230,30 +230,6 @@ class LojaWidget(QWidget):
             QMessageBox.critical(self, 'Erro', f'Falha ao editar loja: {str(e)}')
 
 class ConfiguracaoArquivoWidget(QWidget):
-    def processar_arquivo_entrada_automatico(self):
-        # Rotina automática chamada pelo timer
-        pasta_entrada = self.input_dir_path.text().strip()
-        if not pasta_entrada:
-            return
-        # Exemplo: processa o arquivo mais recente na pasta de entrada
-        try:
-            arquivos = [f for f in os.listdir(pasta_entrada) if f.lower().endswith('.txt')]
-            if not arquivos:
-                return
-            arquivos.sort(key=lambda x: os.path.getmtime(os.path.join(pasta_entrada, x)), reverse=True)
-            arquivo_cliente = os.path.join(pasta_entrada, arquivos[0])
-            # Aqui você pode implementar a lógica de leitura e conversão do arquivo do cliente
-            # Exemplo: copiar para o local de saída configurado
-            with open(arquivo_cliente, 'r', encoding='utf-8') as f:
-                conteudo = f.read()
-            # Salva no local de saída
-            saida = self.path_input.text().strip() or os.getcwd()
-            arquivo_saida = os.path.join(saida, 'pricetab.txt')
-            with open(arquivo_saida, 'w', encoding='utf-8') as f:
-                f.write(conteudo)
-            # Opcional: atualizar status, logs, equipamentos, etc.
-        except Exception as e:
-            print('Erro ao processar arquivo de entrada automático:', e)
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout()
@@ -268,14 +244,14 @@ class ConfiguracaoArquivoWidget(QWidget):
         header.addStretch()
         self.layout.addLayout(header)
 
-        # Pasta de entrada do cliente
-        self.input_dir_label = QLabel('Pasta de entrada do arquivo do cliente:')
-        self.input_dir_path = QLineEdit()
-        self.input_dir_btn = QPushButton('Selecionar pasta de entrada')
-        self.input_dir_btn.clicked.connect(self.selecionar_pasta_entrada)
-        self.layout.addWidget(self.input_dir_label)
-        self.layout.addWidget(self.input_dir_path)
-        self.layout.addWidget(self.input_dir_btn)
+        # Arquivo de entrada do cliente (ou pasta)
+        self.input_file_label = QLabel('Arquivo de entrada do cliente (ou pasta):')
+        self.input_file_path = QLineEdit()
+        self.input_file_btn = QPushButton('Selecionar arquivo de entrada')
+        self.input_file_btn.clicked.connect(self.selecionar_arquivo_entrada)
+        self.layout.addWidget(self.input_file_label)
+        self.layout.addWidget(self.input_file_path)
+        self.layout.addWidget(self.input_file_btn)
         # Botão para processar/importar arquivo do cliente manualmente
         self.processar_btn = QPushButton('Processar arquivo de entrada do cliente')
         self.processar_btn.clicked.connect(self.processar_arquivo_entrada)
@@ -298,8 +274,8 @@ class ConfiguracaoArquivoWidget(QWidget):
         # Local de geração
         self.path_label = QLabel('Local de geração do arquivo:')
         self.path_input = QLineEdit()
-        self.path_btn = QPushButton('Selecionar pasta')
-        self.path_btn.clicked.connect(self.selecionar_pasta)
+        self.path_btn = QPushButton('Selecionar arquivo de saída')
+        self.path_btn.clicked.connect(self.selecionar_arquivo_saida)
         self.layout.addWidget(self.path_label)
         self.layout.addWidget(self.path_input)
         self.layout.addWidget(self.path_btn)
@@ -342,6 +318,11 @@ class ConfiguracaoArquivoWidget(QWidget):
             QTabWidget::pane { border: 1px solid #ccc; }
         ''')
 
+    def selecionar_arquivo_entrada(self):
+        arquivo, _ = QFileDialog.getOpenFileName(self, 'Selecionar arquivo de entrada', '', 'Arquivos de texto (*.txt);;Todos os arquivos (*)')
+        if arquivo:
+            self.input_file_path.setText(arquivo)
+
     def carregar_config(self):
         try:
             if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
@@ -352,7 +333,7 @@ class ConfiguracaoArquivoWidget(QWidget):
             self.sep_combo.setCurrentText(config.get('arquivo_separador', ';'))
             self.sep_custom.setText(config.get('arquivo_separador_custom', ''))
             self.path_input.setText(config.get('arquivo_local', ''))
-            self.input_dir_path.setText(config.get('arquivo_entrada', ''))
+            self.input_file_path.setText(config.get('arquivo_entrada', ''))
             self.barcode_cb.setChecked('barcode' in config.get('arquivo_campos', ['barcode', 'name', 'price']))
             self.name_cb.setChecked('name' in config.get('arquivo_campos', ['barcode', 'name', 'price']))
             self.price_cb.setChecked('price' in config.get('arquivo_campos', ['barcode', 'name', 'price']))
@@ -366,16 +347,102 @@ class ConfiguracaoArquivoWidget(QWidget):
         if pasta:
             self.path_input.setText(pasta)
 
-    def selecionar_pasta_entrada(self):
-        pasta = QFileDialog.getExistingDirectory(self, 'Selecionar pasta de entrada')
-        if pasta:
-            self.input_dir_path.setText(pasta)
+    def selecionar_arquivo_saida(self):
+        arquivo, _ = QFileDialog.getSaveFileName(self, 'Selecionar arquivo de saída', '', 'Arquivos de texto (*.txt);;Todos os arquivos (*)')
+        if arquivo:
+            self.path_input.setText(arquivo)
+
+    def salvar_config(self):
+        sep = self.get_separador()
+        campos = self.get_campos()
+        path = self.path_input.text().strip() or os.getcwd()
+        ia_ativo = self.ia_cb.isChecked()
+        layout = self.layout_input.text().strip() or 'barcode;name;price'
+        try:
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            else:
+                config = {"lojas": [], "equipamentos": []}
+        except Exception:
+            config = {"lojas": [], "equipamentos": []}
+        config['arquivo_separador'] = sep
+        config['arquivo_separador_custom'] = self.sep_custom.text().strip()
+        config['arquivo_campos'] = campos
+        config['arquivo_local'] = path
+        config['arquivo_entrada'] = self.input_file_path.text().strip()
+        config['ia_ativo'] = ia_ativo
+        config['arquivo_layout'] = layout
+        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2)
+        QMessageBox.information(self, 'Configuração', 'Configuração do arquivo salva com sucesso!')
+
+    def processar_arquivo_entrada_automatico(self):
+        # Rotina automática chamada pelo timer
+        entrada = self.input_file_path.text().strip()
+        if not entrada:
+            return
+        try:
+            if os.path.isdir(entrada):
+                arquivos = [f for f in os.listdir(entrada) if f.lower().endswith('.txt')]
+                if not arquivos:
+                    return
+                arquivos.sort(key=lambda x: os.path.getmtime(os.path.join(entrada, x)), reverse=True)
+                arquivo_cliente = os.path.join(entrada, arquivos[0])
+            else:
+                arquivo_cliente = entrada
+            with open(arquivo_cliente, 'r', encoding='utf-8') as f:
+                conteudo = f.read()
+            saida = self.path_input.text().strip() or os.getcwd()
+            # Se o usuário já forneceu um arquivo, usa direto; se for pasta, adiciona pricetab.txt
+            if os.path.isdir(saida):
+                arquivo_saida = os.path.join(saida, 'pricetab.txt')
+            else:
+                arquivo_saida = saida
+            with open(arquivo_saida, 'w', encoding='utf-8') as f:
+                f.write(conteudo)
+        except Exception as e:
+            print('Erro ao processar arquivo de entrada automático:', e)
+
+    def processar_arquivo_entrada(self):
+        from PyQt5.QtWidgets import QMessageBox
+        entrada = self.input_file_path.text().strip()
+        if not entrada:
+            QMessageBox.warning(self, 'Atenção', 'Selecione o arquivo ou pasta de entrada do cliente.')
+            return
+        try:
+            if os.path.isdir(entrada):
+                arquivos = [f for f in os.listdir(entrada) if f.lower().endswith('.txt')]
+                if not arquivos:
+                    QMessageBox.warning(self, 'Atenção', 'Nenhum arquivo .txt encontrado na pasta.')
+                    return
+                arquivos.sort(key=lambda x: os.path.getmtime(os.path.join(entrada, x)), reverse=True)
+                arquivo_cliente = os.path.join(entrada, arquivos[0])
+            else:
+                arquivo_cliente = entrada
+            with open(arquivo_cliente, 'r', encoding='utf-8') as f:
+                conteudo = f.read()
+            saida = self.path_input.text().strip() or os.getcwd()
+            # Se o usuário já forneceu um arquivo, usa direto; se for pasta, adiciona pricetab.txt
+            if os.path.isdir(saida):
+                arquivo_saida = os.path.join(saida, 'pricetab.txt')
+            else:
+                arquivo_saida = saida
+            with open(arquivo_saida, 'w', encoding='utf-8') as f:
+                f.write(conteudo)
+            QMessageBox.information(self, 'Processamento', f'Arquivo processado e salvo em: {arquivo_saida}')
+        except Exception as e:
+            QMessageBox.critical(self, 'Erro', f'Falha ao processar arquivo: {str(e)}')
 
     def gerar_arquivo_teste(self):
         sep = self.get_separador()
         campos = self.get_campos()
-        path = self.path_input.text() or '.'
-        filename = os.path.join(path, 'pricetab.txt')  # Corrigido para pricetab.txt
+        path = self.path_input.text().strip() or '.'
+        # Se o usuário já forneceu um arquivo, usa direto; se for pasta, adiciona pricetab.txt
+        if os.path.isdir(path):
+            filename = os.path.join(path, 'pricetab.txt')
+        else:
+            filename = path
         produtos = [
             {'barcode': '123', 'name': 'Produto A', 'price': 10.5},
             {'barcode': '456', 'name': 'Produto B', 'price': 20.0}
@@ -407,40 +474,6 @@ class ConfiguracaoArquivoWidget(QWidget):
         if self.price_cb.isChecked():
             campos.append('price')
         return campos
-
-    def salvar_config(self):
-        sep = self.get_separador()
-        campos = self.get_campos()
-        path = self.path_input.text().strip() or os.getcwd()
-        ia_ativo = self.ia_cb.isChecked()
-        layout = self.layout_input.text().strip() or 'barcode;name;price'
-        try:
-            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
-                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-            else:
-                config = {"lojas": [], "equipamentos": []}
-        except Exception:
-            config = {"lojas": [], "equipamentos": []}
-        config['arquivo_separador'] = sep
-        config['arquivo_separador_custom'] = self.sep_custom.text().strip()
-        config['arquivo_campos'] = campos
-        config['arquivo_local'] = path
-        config['arquivo_entrada'] = self.input_dir_path.text().strip()
-        config['ia_ativo'] = ia_ativo
-        config['arquivo_layout'] = layout
-        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2)
-        QMessageBox.information(self, 'Configuração', 'Configuração do arquivo salva com sucesso!')
-
-    def processar_arquivo_entrada(self):
-        from PyQt5.QtWidgets import QMessageBox
-        pasta_entrada = self.input_dir_path.text().strip()
-        if not pasta_entrada:
-            QMessageBox.warning(self, 'Atenção', 'Selecione a pasta de entrada do arquivo do cliente.')
-            return
-        # TODO: Implementar processamento real do arquivo do cliente
-        QMessageBox.information(self, 'Processamento', 'Processamento manual do arquivo do cliente iniciado (rotina a ser implementada).')
 
 class IntegracaoPrecixWidget(QWidget):
     def testar_conexao(self):
@@ -561,7 +594,20 @@ class IntegracaoPrecixWidget(QWidget):
         self.ultima_output.setText(config['ultima_sync'])
         self.status_output.setText('Configuração salva!')
     def carregar_config(self):
-        pass
+        try:
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            else:
+                config = {}
+            self.porta_input.setText(str(config.get('porta_local', '8000')))
+            self.timeout_input.setText(str(config.get('timeout', '10')))
+            self.modo_combo.setCurrentText(config.get('modo_operacao', 'Produção'))
+            self.api_input.setText(config.get('api_externa', ''))
+            self.status_output.setText(config.get('status_conexao', '-'))
+            self.ultima_output.setText(config.get('ultima_sync', '-'))
+        except Exception:
+            pass
 
 class EnvioWidget(QWidget):
     def __init__(self):
@@ -669,6 +715,12 @@ class AutomacaoWidget(QWidget):
         self.layout.addWidget(self.intervalo_label)
         self.intervalo_input = QLineEdit()
         self.layout.addWidget(self.intervalo_input)
+        # ComboBox para modo de operação
+        self.modo_label = QLabel('Modo de operação:')
+        self.layout.addWidget(self.modo_label)
+        self.modo_combo = QComboBox()
+        self.modo_combo.addItems(['Produção', 'Homologação'])
+        self.layout.addWidget(self.modo_combo)
         # Botão azul largura total
         self.forcar_btn = QPushButton('Forçar Atualização Manual')
         self.forcar_btn.setStyleSheet('background:#0078d7;color:white;font-weight:bold;height:32px;')
@@ -682,6 +734,7 @@ class AutomacaoWidget(QWidget):
         self.status_output = QLabel('Status: -')
         self.layout.addWidget(self.status_output)
         self.carregar_config()
+
     def carregar_config(self):
         try:
             if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
@@ -691,10 +744,13 @@ class AutomacaoWidget(QWidget):
                 config = {}
             self.intervalo_input.setText(str(config.get('automacao_intervalo', '60')))
             self.status_output.setText(config.get('automacao_status', '-'))
+            self.modo_combo.setCurrentText(config.get('automacao_modo', 'Produção'))
         except Exception:
             pass
+
     def salvar_config(self):
         intervalo = self.intervalo_input.text().strip()
+        modo = self.modo_combo.currentText()
         if not intervalo:
             QMessageBox.warning(self, 'Erro', 'Informe o intervalo!')
             return
@@ -702,14 +758,16 @@ class AutomacaoWidget(QWidget):
             if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
                 with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
                     config = json.load(f)
-                self.modo_combo.setCurrentText(config.get('modo_operacao', 'Produção'))
-                self.status_output.setText(config.get('status_conexao', '-'))
-                self.ultima_output.setText(config.get('ultima_sync', '-'))
-                self.api_input.setText(config.get('api_externa', ''))
+            else:
+                config = {}
+            config['automacao_intervalo'] = intervalo
+            config['automacao_modo'] = modo
+            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2)
             self.status_output.setText('Configuração salva!')
         except Exception as e:
             QMessageBox.critical(self, 'Erro', f'Falha ao salvar: {str(e)}')
+
     def forcar_atualizacao(self):
         try:
             if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
@@ -726,6 +784,12 @@ class AutomacaoWidget(QWidget):
         with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2)
         self.status_output.setText(config['automacao_status'])
+        # Executa o processamento do arquivo de entrada imediatamente
+        main_window = self.parentWidget()
+        while main_window and not hasattr(main_window, 'config_tab'):
+            main_window = main_window.parentWidget()
+        if main_window and hasattr(main_window, 'config_tab'):
+            main_window.config_tab.processar_arquivo_entrada_automatico()
 
 class EquipamentosWidget(QWidget):
     def preencher_formulario(self, row):
@@ -1046,8 +1110,13 @@ class EquipamentosGUI(QWidget):
     def processar_entrada_automatica(self):
         self.config_tab.processar_arquivo_entrada_automatico()
 
-if __name__ == "__main__":
+
+
+def main():
     app = QApplication(sys.argv)
     window = EquipamentosGUI()
     window.show()
     sys.exit(app.exec_())
+
+if __name__ == "__main__":
+    main()
