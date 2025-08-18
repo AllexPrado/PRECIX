@@ -238,16 +238,7 @@ def monitorar_equipamento(ip, porta):
         s.close()
         if result == 0:
             return 'OK'
-        # Se TCP falhar, tenta ICMP (ping)
-        import platform, subprocess
-        param = '-n' if platform.system().lower()=='windows' else '-c'
-        command = ['ping', param, '1', ip]
-        try:
-            output = subprocess.check_output(command, stderr=subprocess.STDOUT, universal_newlines=True)
-            if 'TTL=' in output or 'ttl=' in output:
-                return 'OK (ping)'
-        except Exception:
-            pass
+        # Removido subprocesso de ping para evitar prompt
         return 'Desconhecido'
     except Exception:
         return 'Desconhecido'

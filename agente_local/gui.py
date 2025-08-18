@@ -311,11 +311,25 @@ class ConfiguracaoArquivoWidget(QWidget):
         self.carregar_config()
         # Estilo visual (QSS)
         self.setStyleSheet('''
-            QLabel { font-size: 13px; }
-            QLineEdit, QComboBox { font-size: 13px; padding: 2px; }
-            QPushButton { font-size: 13px; padding: 4px; background: #0078d7; color: white; border-radius: 4px; }
-            QCheckBox { font-size: 13px; }
+            QLabel { font-size: 12px; }
+            QLineEdit, QComboBox { font-size: 12px; padding: 1px; }
+            QPushButton {
+                font-size: 12px;
+                padding: 2px 8px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2196F3, stop:1 #1565C0);
+                color: white;
+                border-radius: 4px;
+                min-height: 24px;
+                max-height: 28px;
+                min-width: 120px;
+                border: none;
+            }
+            QPushButton:pressed {
+                background: #0d47a1;
+            }
+            QCheckBox { font-size: 12px; }
             QTabWidget::pane { border: 1px solid #ccc; }
+            QTextEdit { font-size: 12px; }
         ''')
 
     def selecionar_arquivo_entrada(self):
@@ -476,11 +490,86 @@ class ConfiguracaoArquivoWidget(QWidget):
         return campos
 
 class IntegracaoPrecixWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout()
+        self.setLayout(self.layout)
+        # Título em negrito
+        self.title = QLabel('<b>Integração com PRECIX</b>')
+        self.title.setStyleSheet('font-size:18px;')
+        self.layout.addWidget(self.title)
+        # Fonte de Dados
+        self.fonte_label = QLabel('Fonte de Dados:')
+        self.fonte_combo = QComboBox()
+        self.fonte_combo.addItems(['Arquivo', 'API', 'Banco de Dados'])
+        self.layout.addWidget(self.fonte_label)
+        self.layout.addWidget(self.fonte_combo)
+        # Porta local
+        self.porta_label = QLabel('Porta local de comunicação:')
+        self.porta_input = QLineEdit()
+        self.layout.addWidget(self.porta_label)
+        self.layout.addWidget(self.porta_input)
+        # Timeout
+        self.timeout_label = QLabel('Timeout de requisição (segundos):')
+        self.timeout_input = QLineEdit()
+        self.layout.addWidget(self.timeout_label)
+        self.layout.addWidget(self.timeout_input)
+        # Modo de operação
+        self.modo_label = QLabel('Modo de operação:')
+        self.modo_combo = QComboBox()
+        self.modo_combo.addItems(['Produção', 'Homologação'])
+        self.layout.addWidget(self.modo_label)
+        self.layout.addWidget(self.modo_combo)
+        # API externa
+        self.api_label = QLabel('URL da API externa (opcional):')
+        self.api_input = QLineEdit()
+        self.api_input.setPlaceholderText('https://api.cliente.com.br/endpoint')
+        self.layout.addWidget(self.api_label)
+        self.layout.addWidget(self.api_input)
+        # Autenticação
+        self.auth_label = QLabel('Autenticação (opcional):')
+        self.layout.addWidget(self.auth_label)
+        self.user_input = QLineEdit()
+        self.user_input.setPlaceholderText('Usuário (opcional)')
+        self.layout.addWidget(self.user_input)
+        self.pass_input = QLineEdit()
+        self.pass_input.setPlaceholderText('Senha (opcional)')
+        self.pass_input.setEchoMode(QLineEdit.Password)
+        self.layout.addWidget(self.pass_input)
+        self.token_input = QLineEdit()
+        self.token_input.setPlaceholderText('Bearer Token (opcional)')
+        self.layout.addWidget(self.token_input)
+        # Status conexão
+        self.status_label = QLabel('Status da conexão:')
+        self.status_output = QLabel('-')
+        self.layout.addWidget(self.status_label)
+        self.layout.addWidget(self.status_output)
+        # Última sync
+        self.ultima_label = QLabel('Última sincronização:')
+        self.ultima_output = QLabel('-')
+        self.layout.addWidget(self.ultima_label)
+        self.layout.addWidget(self.ultima_output)
+        # Botão azul largura total
+        self.teste_btn = QPushButton('Testar Conexão')
+        self.teste_btn.setStyleSheet('background:#0078d7;color:white;font-weight:bold;height:32px;')
+        self.teste_btn.clicked.connect(self.testar_conexao)
+        self.layout.addWidget(self.teste_btn)
+        # Botão salvar
+        self.salvar_btn = QPushButton('Salvar Configuração')
+        self.salvar_btn.setStyleSheet('background:#0078d7;color:white;font-weight:bold;height:32px;')
+        self.salvar_btn.clicked.connect(self.salvar_config)
+        self.layout.addWidget(self.salvar_btn)
+        self.carregar_config()
+
     def testar_conexao(self):
         porta = self.porta_input.text().strip() or '8000'
         timeout = int(self.timeout_input.text().strip() or '10')
         modo = self.modo_combo.currentText()
         api_externa = self.api_input.text().strip()
+        usuario = self.user_input.text().strip()
+        senha = self.pass_input.text().strip()
+        token = self.token_input.text().strip()
+        fonte = self.fonte_combo.currentText()
         status_msg = ''
         try:
             # Testa API externa se preenchida, senão testa local
@@ -488,7 +577,13 @@ class IntegracaoPrecixWidget(QWidget):
                 url = api_externa
             else:
                 url = f'http://localhost:{porta}/health'
-            r = requests.get(url, timeout=timeout)
+            headers = {}
+            auth = None
+            if token:
+                headers['Authorization'] = f'Bearer {token}'
+            elif usuario and senha:
+                auth = (usuario, senha)
+            r = requests.get(url, timeout=timeout, headers=headers, auth=auth)
             if r.status_code in (200, 201, 204):
                 status_msg = 'Conexão OK'
             else:
@@ -512,69 +607,26 @@ class IntegracaoPrecixWidget(QWidget):
         config['timeout'] = timeout
         config['modo_operacao'] = modo
         config['api_externa'] = api_externa
+        config['api_usuario'] = usuario
+        config['api_senha'] = senha
+        config['api_token'] = token
         config['status_conexao'] = status_msg
+        config['tipo_integracao'] = fonte
         from datetime import datetime
         config['ultima_sync'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2)
         self.ultima_output.setText(config['ultima_sync'])
-    def __init__(self):
-        super().__init__()
-        self.layout = QVBoxLayout()
-        self.setLayout(self.layout)
-        # Título em negrito
-        self.title = QLabel('<b>Integração com PRECIX</b>')
-        self.title.setStyleSheet('font-size:18px;')
-        self.layout.addWidget(self.title)
-        # Porta local
-        self.porta_label = QLabel('Porta local de comunicação:')
-        self.porta_input = QLineEdit()
-        self.layout.addWidget(self.porta_label)
-        self.layout.addWidget(self.porta_input)
-        # Timeout
-        self.timeout_label = QLabel('Timeout de requisição (segundos):')
-        self.timeout_input = QLineEdit()
-        self.layout.addWidget(self.timeout_label)
-        self.layout.addWidget(self.timeout_input)
-        # Modo de operação
-        self.modo_label = QLabel('Modo de operação:')
-        self.modo_combo = QComboBox()
-        self.modo_combo.addItems(['Produção', 'Homologação'])
-        self.layout.addWidget(self.modo_label)
-        self.layout.addWidget(self.modo_combo)
-        # API externa
-        self.api_label = QLabel('URL da API externa (opcional):')
-        self.api_input = QLineEdit()
-        self.api_input.setPlaceholderText('https://api.cliente.com.br/endpoint')
-        self.layout.addWidget(self.api_label)
-        self.layout.addWidget(self.api_input)
-        # Status conexão
-        self.status_label = QLabel('Status da conexão:')
-        self.status_output = QLabel('-')
-        self.layout.addWidget(self.status_label)
-        self.layout.addWidget(self.status_output)
-        # Última sync
-        self.ultima_label = QLabel('Última sincronização:')
-        self.ultima_output = QLabel('-')
-        self.layout.addWidget(self.ultima_label)
-        self.layout.addWidget(self.ultima_output)
-        # Botão azul largura total
-        self.teste_btn = QPushButton('Testar Conexão')
-        self.teste_btn.setStyleSheet('background:#0078d7;color:white;font-weight:bold;height:32px;')
-        self.teste_btn.clicked.connect(self.testar_conexao)
-        self.layout.addWidget(self.teste_btn)
-        # Botão salvar
-        self.salvar_btn = QPushButton('Salvar Configuração')
-        self.salvar_btn.setStyleSheet('background:#0078d7;color:white;font-weight:bold;height:32px;')
-        self.salvar_btn.clicked.connect(self.salvar_config)
-        self.layout.addWidget(self.salvar_btn)
-        self.carregar_config()
 
     def salvar_config(self):
         porta = self.porta_input.text().strip() or '8000'
         timeout = int(self.timeout_input.text().strip() or '10')
         modo = self.modo_combo.currentText()
         api_externa = self.api_input.text().strip()
+        usuario = self.user_input.text().strip()
+        senha = self.pass_input.text().strip()
+        token = self.token_input.text().strip()
+        fonte = self.fonte_combo.currentText()
         try:
             if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
                 with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
@@ -587,6 +639,10 @@ class IntegracaoPrecixWidget(QWidget):
         config['timeout'] = timeout
         config['modo_operacao'] = modo
         config['api_externa'] = api_externa
+        config['api_usuario'] = usuario
+        config['api_senha'] = senha
+        config['api_token'] = token
+        config['tipo_integracao'] = fonte
         from datetime import datetime
         config['ultima_sync'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
@@ -600,10 +656,14 @@ class IntegracaoPrecixWidget(QWidget):
                     config = json.load(f)
             else:
                 config = {}
+            self.fonte_combo.setCurrentText(config.get('tipo_integracao', 'Arquivo'))
             self.porta_input.setText(str(config.get('porta_local', '8000')))
             self.timeout_input.setText(str(config.get('timeout', '10')))
             self.modo_combo.setCurrentText(config.get('modo_operacao', 'Produção'))
             self.api_input.setText(config.get('api_externa', ''))
+            self.user_input.setText(config.get('api_usuario', ''))
+            self.pass_input.setText(config.get('api_senha', ''))
+            self.token_input.setText(config.get('api_token', ''))
             self.status_output.setText(config.get('status_conexao', '-'))
             self.ultima_output.setText(config.get('ultima_sync', '-'))
         except Exception:
@@ -1063,6 +1123,9 @@ class EquipamentosGUI(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('Agente Local PRECIX')
+        self.setMinimumSize(800, 600)
+        self.setMaximumSize(900, 700)
+        self.resize(850, 650)
         self.tabs = QTabWidget()
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
@@ -1098,6 +1161,29 @@ class EquipamentosGUI(QWidget):
         self.timer_entrada.timeout.connect(self.processar_entrada_automatica)
         self.iniciar_timer_entrada()
 
+        # Ajuste de estilo global para compactar
+        self.setStyleSheet('''
+            QLabel { font-size: 12px; }
+            QLineEdit, QComboBox { font-size: 12px; padding: 1px; }
+            QPushButton {
+                font-size: 12px;
+                padding: 2px 8px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2196F3, stop:1 #1565C0);
+                color: white;
+                border-radius: 4px;
+                min-height: 24px;
+                max-height: 28px;
+                min-width: 120px;
+                border: none;
+            }
+            QPushButton:pressed {
+                background: #0d47a1;
+            }
+            QCheckBox { font-size: 12px; }
+            QTabWidget::pane { border: 1px solid #ccc; }
+            QTextEdit { font-size: 12px; }
+        ''')
+
     def iniciar_timer_entrada(self):
         try:
             with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
@@ -1120,3 +1206,14 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# ---
+# FLUXO HÍBRIDO DE INTEGRAÇÃO
+# O campo 'Fonte de Dados' (tipo_integracao) define de onde buscar os dados principais (Arquivo, API, Banco de Dados).
+# Independentemente da fonte, o sistema SEMPRE gera o arquivo texto para os equipamentos legados/PDVs.
+# Os equipamentos PWA continuam sendo alimentados pela API configurada.
+# Se a fonte for API, os dados vêm da API e são salvos no arquivo texto.
+# Se a fonte for Banco de Dados, os dados vêm do banco e também são salvos no arquivo texto.
+# Se a fonte for Arquivo, o arquivo é usado diretamente.
+# Isso garante compatibilidade total e migração gradual.
+# ---
