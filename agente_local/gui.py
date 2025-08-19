@@ -21,6 +21,8 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon, QPixmap
+from PyQt5.QtCore import Qt
 
 CONFIG_PATH = os.path.join(os.environ.get('LOCALAPPDATA', os.getcwd()), 'AgentePRECIX', 'config.json')
 os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
@@ -510,6 +512,32 @@ class ConfiguracaoArquivoWidget(QWidget):
         return campos
 
 class IntegracaoPrecixWidget(QWidget):
+    def salvar_config(self):
+        # Salva todos os campos comuns
+        config = {}
+        config['porta_local'] = self.porta_input.text().strip()
+        config['timeout'] = self.timeout_input.text().strip()
+        config['modo_operacao'] = self.modo_combo.currentText()
+        config['api_externa'] = self.api_input.text().strip()
+        config['api_usuario'] = self.user_input.text().strip()
+        config['api_senha'] = self.pass_input.text().strip()
+        config['api_token'] = self.token_input.text().strip()
+        config['tipo_integracao'] = self.fonte_combo.currentText()
+        # Salva campos de banco de dados apenas se selecionado
+        if self.fonte_combo.currentText() == 'Banco de Dados':
+            config['db_tipo'] = self.db_tipo_combo.currentText()
+            config['db_host'] = self.db_host_input.text().strip()
+            config['db_porta'] = self.db_porta_input.text().strip()
+            config['db_user'] = self.db_user_input.text().strip()
+            config['db_pass'] = self.db_pass_input.text().strip()
+            config['db_nome'] = self.db_nome_input.text().strip()
+            config['db_sql'] = self.db_sql_input.text().strip()
+        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+            import json
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        from PyQt5.QtWidgets import QMessageBox
+        QMessageBox.information(self, 'Configuração', 'Configuração salva com sucesso!')
+
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout()
@@ -517,6 +545,13 @@ class IntegracaoPrecixWidget(QWidget):
         self.title = QLabel('<b>Integração com PRECIX</b>')
         self.title.setStyleSheet('font-size:18px;')
         self.layout.addWidget(self.title)
+        # Fonte de Dados
+        self.fonte_label = QLabel('Fonte de Dados:')
+        self.fonte_combo = QComboBox()
+        self.fonte_combo.addItems(['Arquivo', 'API', 'Banco de Dados'])
+        self.fonte_combo.currentTextChanged.connect(self.toggle_db_fields)
+        self.layout.addWidget(self.fonte_label)
+        self.layout.addWidget(self.fonte_combo)
         self.porta_label = QLabel('Porta local de comunicação:')
         self.porta_input = QLineEdit()
         self.layout.addWidget(self.porta_label)
@@ -547,6 +582,34 @@ class IntegracaoPrecixWidget(QWidget):
         self.token_input = QLineEdit()
         self.token_input.setPlaceholderText('Bearer Token (opcional)')
         self.layout.addWidget(self.token_input)
+    # --- CAMPOS BANCO DE DADOS (AGRUPADOS EM CONTAINER) ---
+        self.db_container = QWidget()
+        self.db_container_layout = QVBoxLayout()
+        self.db_container.setLayout(self.db_container_layout)
+        self.db_tipo_label = QLabel('Tipo do Banco:')
+        self.db_tipo_combo = QComboBox()
+        self.db_tipo_combo.addItems(['SQLite', 'MySQL', 'PostgreSQL', 'SQL Server', 'Oracle'])
+        self.db_host_label = QLabel('Host:')
+        self.db_host_input = QLineEdit()
+        self.db_porta_label = QLabel('Porta:')
+        self.db_porta_input = QLineEdit()
+        self.db_user_label = QLabel('Usuário:')
+        self.db_user_input = QLineEdit()
+        self.db_pass_label = QLabel('Senha:')
+        self.db_pass_input = QLineEdit()
+        self.db_pass_input.setEchoMode(QLineEdit.Password)
+        self.db_nome_label = QLabel('Nome do Banco/Arquivo:')
+        self.db_nome_input = QLineEdit()
+        self.db_sql_label = QLabel('Consulta SQL:')
+        self.db_sql_input = QLineEdit()
+        # Adiciona ao layout do container
+        for w in [self.db_tipo_label, self.db_tipo_combo, self.db_host_label, self.db_host_input,
+                  self.db_porta_label, self.db_porta_input, self.db_user_label, self.db_user_input,
+                  self.db_pass_label, self.db_pass_input, self.db_nome_label, self.db_nome_input,
+                  self.db_sql_label, self.db_sql_input]:
+            self.db_container_layout.addWidget(w)
+        self.layout.addWidget(self.db_container)
+        # Status conexão
         self.status_label = QLabel('Status da conexão:')
         self.status_output = QLabel('-')
         self.layout.addWidget(self.status_label)
@@ -564,6 +627,12 @@ class IntegracaoPrecixWidget(QWidget):
         self.salvar_btn.clicked.connect(self.salvar_config)
         self.layout.addWidget(self.salvar_btn)
         self.carregar_config()
+        # Garante que os campos do banco só aparecem quando necessário
+        self.toggle_db_fields(self.fonte_combo.currentText())
+
+    def toggle_db_fields(self, value):
+        is_db = value == 'Banco de Dados'
+        self.db_container.setVisible(is_db)
 
     def testar_conexao(self):
         porta = self.porta_input.text().strip() or '8000'
