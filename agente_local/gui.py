@@ -1,3 +1,7 @@
+from PyQt5.QtWidgets import QApplication
+import sys
+if QApplication.instance() is None:
+    _app = QApplication(sys.argv)
 """
 Interface gráfica (GUI) do Agente Local PRECIX
 Este arquivo deve ser executado apenas para interface, nunca importar ou executar loops do serviço.
@@ -408,13 +412,18 @@ class ConfiguracaoArquivoWidget(QWidget):
             with open(arquivo_cliente, 'r', encoding='utf-8') as f:
                 conteudo = f.read()
             saida = self.path_input.text().strip() or os.getcwd()
-            # Se o usuário já forneceu um arquivo, usa direto; se for pasta, adiciona pricetab.txt
             if os.path.isdir(saida):
                 arquivo_saida = os.path.join(saida, 'pricetab.txt')
             else:
                 arquivo_saida = saida
             with open(arquivo_saida, 'w', encoding='utf-8') as f:
                 f.write(conteudo)
+            # Envio automático após gerar arquivo
+            try:
+                from main import enviar_arquivo_automatico
+                enviar_arquivo_automatico(arquivo_saida)
+            except Exception as e:
+                print(f'Erro ao enviar arquivo automaticamente: {e}')
         except Exception as e:
             print('Erro ao processar arquivo de entrada automático:', e)
 
@@ -437,13 +446,18 @@ class ConfiguracaoArquivoWidget(QWidget):
             with open(arquivo_cliente, 'r', encoding='utf-8') as f:
                 conteudo = f.read()
             saida = self.path_input.text().strip() or os.getcwd()
-            # Se o usuário já forneceu um arquivo, usa direto; se for pasta, adiciona pricetab.txt
             if os.path.isdir(saida):
                 arquivo_saida = os.path.join(saida, 'pricetab.txt')
             else:
                 arquivo_saida = saida
             with open(arquivo_saida, 'w', encoding='utf-8') as f:
                 f.write(conteudo)
+            # Envio automático após gerar arquivo
+            try:
+                from main import enviar_arquivo_automatico
+                enviar_arquivo_automatico(arquivo_saida)
+            except Exception as e:
+                print(f'Erro ao enviar arquivo automaticamente: {e}')
             QMessageBox.information(self, 'Processamento', f'Arquivo processado e salvo em: {arquivo_saida}')
         except Exception as e:
             QMessageBox.critical(self, 'Erro', f'Falha ao processar arquivo: {str(e)}')
@@ -451,7 +465,7 @@ class ConfiguracaoArquivoWidget(QWidget):
     def gerar_arquivo_teste(self):
         sep = self.get_separador()
         campos = self.get_campos()
-        path = self.path_input.text().strip() or '.'
+        path = self.path_input.text() or '.'
         # Se o usuário já forneceu um arquivo, usa direto; se for pasta, adiciona pricetab.txt
         if os.path.isdir(path):
             filename = os.path.join(path, 'pricetab.txt')
@@ -466,6 +480,12 @@ class ConfiguracaoArquivoWidget(QWidget):
                 for p in produtos:
                     linha = sep.join([str(p.get(c, '')) for c in campos]) + '\n'
                     f.write(linha)
+            # Envio automático após gerar arquivo
+            try:
+                from main import enviar_arquivo_automatico
+                enviar_arquivo_automatico(filename)
+            except Exception as e:
+                print(f'Erro ao enviar arquivo automaticamente: {e}')
             QMessageBox.information(self, 'Arquivo gerado', f'Arquivo de teste gerado em: {filename}')
         except Exception as e:
             QMessageBox.critical(self, 'Erro', f'Falha ao gerar arquivo: {str(e)}')
@@ -494,39 +514,27 @@ class IntegracaoPrecixWidget(QWidget):
         super().__init__()
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
-        # Título em negrito
         self.title = QLabel('<b>Integração com PRECIX</b>')
         self.title.setStyleSheet('font-size:18px;')
         self.layout.addWidget(self.title)
-        # Fonte de Dados
-        self.fonte_label = QLabel('Fonte de Dados:')
-        self.fonte_combo = QComboBox()
-        self.fonte_combo.addItems(['Arquivo', 'API', 'Banco de Dados'])
-        self.layout.addWidget(self.fonte_label)
-        self.layout.addWidget(self.fonte_combo)
-        # Porta local
         self.porta_label = QLabel('Porta local de comunicação:')
         self.porta_input = QLineEdit()
         self.layout.addWidget(self.porta_label)
         self.layout.addWidget(self.porta_input)
-        # Timeout
         self.timeout_label = QLabel('Timeout de requisição (segundos):')
         self.timeout_input = QLineEdit()
         self.layout.addWidget(self.timeout_label)
         self.layout.addWidget(self.timeout_input)
-        # Modo de operação
         self.modo_label = QLabel('Modo de operação:')
         self.modo_combo = QComboBox()
         self.modo_combo.addItems(['Produção', 'Homologação'])
         self.layout.addWidget(self.modo_label)
         self.layout.addWidget(self.modo_combo)
-        # API externa
         self.api_label = QLabel('URL da API externa (opcional):')
         self.api_input = QLineEdit()
         self.api_input.setPlaceholderText('https://api.cliente.com.br/endpoint')
         self.layout.addWidget(self.api_label)
         self.layout.addWidget(self.api_input)
-        # Autenticação
         self.auth_label = QLabel('Autenticação (opcional):')
         self.layout.addWidget(self.auth_label)
         self.user_input = QLineEdit()
@@ -539,22 +547,18 @@ class IntegracaoPrecixWidget(QWidget):
         self.token_input = QLineEdit()
         self.token_input.setPlaceholderText('Bearer Token (opcional)')
         self.layout.addWidget(self.token_input)
-        # Status conexão
         self.status_label = QLabel('Status da conexão:')
         self.status_output = QLabel('-')
         self.layout.addWidget(self.status_label)
         self.layout.addWidget(self.status_output)
-        # Última sync
         self.ultima_label = QLabel('Última sincronização:')
         self.ultima_output = QLabel('-')
         self.layout.addWidget(self.ultima_label)
         self.layout.addWidget(self.ultima_output)
-        # Botão azul largura total
         self.teste_btn = QPushButton('Testar Conexão')
         self.teste_btn.setStyleSheet('background:#0078d7;color:white;font-weight:bold;height:32px;')
         self.teste_btn.clicked.connect(self.testar_conexao)
         self.layout.addWidget(self.teste_btn)
-        # Botão salvar
         self.salvar_btn = QPushButton('Salvar Configuração')
         self.salvar_btn.setStyleSheet('background:#0078d7;color:white;font-weight:bold;height:32px;')
         self.salvar_btn.clicked.connect(self.salvar_config)
@@ -570,6 +574,14 @@ class IntegracaoPrecixWidget(QWidget):
         senha = self.pass_input.text().strip()
         token = self.token_input.text().strip()
         fonte = self.fonte_combo.currentText()
+        # Campos banco de dados
+        db_tipo = self.db_tipo_combo.currentText() if fonte == 'Banco de Dados' else ''
+        db_host = self.db_host_input.text().strip() if fonte == 'Banco de Dados' else ''
+        db_porta = self.db_porta_input.text().strip() if fonte == 'Banco de Dados' else ''
+        db_user = self.db_user_input.text().strip() if fonte == 'Banco de Dados' else ''
+        db_pass = self.db_pass_input.text().strip() if fonte == 'Banco de Dados' else ''
+        db_nome = self.db_nome_input.text().strip() if fonte == 'Banco de Dados' else ''
+        db_sql = self.db_sql_input.text().strip() if fonte == 'Banco de Dados' else ''
         status_msg = ''
         try:
             # Testa API externa se preenchida, senão testa local
@@ -612,6 +624,14 @@ class IntegracaoPrecixWidget(QWidget):
         config['api_token'] = token
         config['status_conexao'] = status_msg
         config['tipo_integracao'] = fonte
+        # Salvar campos banco de dados
+        config['db_tipo'] = db_tipo
+        config['db_host'] = db_host
+        config['db_porta'] = db_porta
+        config['db_user'] = db_user
+        config['db_pass'] = db_pass
+        config['db_nome'] = db_nome
+        config['db_sql'] = db_sql
         from datetime import datetime
         config['ultima_sync'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
@@ -627,6 +647,13 @@ class IntegracaoPrecixWidget(QWidget):
         senha = self.pass_input.text().strip()
         token = self.token_input.text().strip()
         fonte = self.fonte_combo.currentText()
+        db_tipo = self.db_tipo_combo.currentText() if fonte == 'Banco de Dados' else ''
+        db_host = self.db_host_input.text().strip() if fonte == 'Banco de Dados' else ''
+        db_porta = self.db_porta_input.text().strip() if fonte == 'Banco de Dados' else ''
+        db_user = self.db_user_input.text().strip() if fonte == 'Banco de Dados' else ''
+        db_pass = self.db_pass_input.text().strip() if fonte == 'Banco de Dados' else ''
+        db_nome = self.db_nome_input.text().strip() if fonte == 'Banco de Dados' else ''
+        db_sql = self.db_sql_input.text().strip() if fonte == 'Banco de Dados' else ''
         try:
             if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
                 with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
@@ -643,6 +670,13 @@ class IntegracaoPrecixWidget(QWidget):
         config['api_senha'] = senha
         config['api_token'] = token
         config['tipo_integracao'] = fonte
+        config['db_tipo'] = db_tipo
+        config['db_host'] = db_host
+        config['db_porta'] = db_porta
+        config['db_user'] = db_user
+        config['db_pass'] = db_pass
+        config['db_nome'] = db_nome
+        config['db_sql'] = db_sql
         from datetime import datetime
         config['ultima_sync'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
@@ -666,6 +700,15 @@ class IntegracaoPrecixWidget(QWidget):
             self.token_input.setText(config.get('api_token', ''))
             self.status_output.setText(config.get('status_conexao', '-'))
             self.ultima_output.setText(config.get('ultima_sync', '-'))
+            # Carregar campos banco de dados
+            self.db_tipo_combo.setCurrentText(config.get('db_tipo', 'SQLite'))
+            self.db_host_input.setText(config.get('db_host', ''))
+            self.db_porta_input.setText(config.get('db_porta', ''))
+            self.db_user_input.setText(config.get('db_user', ''))
+            self.db_pass_input.setText(config.get('db_pass', ''))
+            self.db_nome_input.setText(config.get('db_nome', ''))
+            self.db_sql_input.setText(config.get('db_sql', ''))
+            self.toggle_db_fields(self.fonte_combo.currentText())
         except Exception:
             pass
 
@@ -1061,6 +1104,7 @@ class EquipamentosWidget(QWidget):
 class MonitoramentoWidget(QWidget):
     def __init__(self):
         super().__init__()
+        from PyQt5.QtCore import QTimer
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
         self.title = QLabel('<b>Monitoramento</b>')
@@ -1068,6 +1112,15 @@ class MonitoramentoWidget(QWidget):
         self.layout.addWidget(self.title)
         self.status_label = QLabel('Status dos equipamentos:')
         self.layout.addWidget(self.status_label)
+        # Botão de recarregar
+        self.refresh_btn = QPushButton('Recarregar')
+        self.refresh_btn.setToolTip('Atualiza os dados de monitoramento')
+        self.refresh_btn.clicked.connect(self.carregar_status)
+        self.layout.addWidget(self.refresh_btn)
+        # Checkbox de auto-refresh
+        self.auto_refresh_cb = QCheckBox('Atualizar automaticamente a cada 30s')
+        self.auto_refresh_cb.stateChanged.connect(self.toggle_auto_refresh)
+        self.layout.addWidget(self.auto_refresh_cb)
         self.status_table = QTableWidget()
         self.layout.addWidget(self.status_table)
         self.hist_label = QLabel('Histórico de atualizações:')
@@ -1078,8 +1131,17 @@ class MonitoramentoWidget(QWidget):
         self.alerta_label = QLabel('Alertas:')
         self.layout.addWidget(self.alerta_label)
         self.alerta_output = QLabel('-')
+        self.alerta_output.setWordWrap(True)
         self.layout.addWidget(self.alerta_output)
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.carregar_status)
         self.carregar_status()
+
+    def toggle_auto_refresh(self, state):
+        if state == Qt.Checked:
+            self.timer.start(30000)  # 30 segundos
+        else:
+            self.timer.stop()
     def carregar_status(self):
         try:
             with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
@@ -1092,35 +1154,96 @@ class MonitoramentoWidget(QWidget):
                 self.status_table.setItem(i, 0, QTableWidgetItem(str(eq.get('ip', ''))))
                 self.status_table.setItem(i, 1, QTableWidgetItem(str(eq.get('porta', ''))))
                 self.status_table.setItem(i, 2, QTableWidgetItem(eq.get('descricao', '')))
-                self.status_table.setItem(i, 3, QTableWidgetItem(eq.get('status', 'Desconhecido')))
-            self.hist_output.setText(str(config.get('historico_atualizacoes', '')))
-            self.alerta_output.setText(str(config.get('alertas', '-')))
-        except Exception:
-            pass
+                status = eq.get('status', 'Desconhecido')
+                item_status = QTableWidgetItem(status)
+                # Colorir status
+                if status.lower() in ['ok', 'online', 'ativo']:
+                    item_status.setBackground(Qt.green)
+                elif status.lower() in ['desconhecido', 'erro', 'offline', 'inativo']:
+                    item_status.setBackground(Qt.red)
+                else:
+                    item_status.setBackground(Qt.yellow)
+                self.status_table.setItem(i, 3, item_status)
+            # Exibir histórico formatado
+            historico = config.get('historico_atualizacoes', '')
+            if isinstance(historico, list):
+                texto_hist = '\n'.join([
+                    f"[{h.get('data', '')}] {h.get('evento', h)}" if isinstance(h, dict) else str(h)
+                    for h in historico
+                ])
+            else:
+                texto_hist = str(historico)
+            self.hist_output.setText(texto_hist)
+            # Destacar alerta
+            alertas = config.get('alertas', '-')
+            if alertas and alertas != '-' and str(alertas).strip():
+                self.alerta_output.setText(f'<b style="color:red;">{alertas}</b>')
+                self.alerta_output.setStyleSheet('background:#ffe0e0; border:1px solid #ff0000; padding:4px;')
+            else:
+                self.alerta_output.setText('-')
+                self.alerta_output.setStyleSheet('')
+        except Exception as e:
+            self.hist_output.setText('Erro ao carregar monitoramento: ' + str(e))
+            self.alerta_output.setText('-')
+            self.alerta_output.setStyleSheet('')
 
 class LogsWidget(QWidget):
     def __init__(self):
         super().__init__()
+        import os
+        from PyQt5.QtCore import QTimer
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
         self.title = QLabel('<b>Logs</b>')
         self.title.setStyleSheet('font-size:18px;')
         self.layout.addWidget(self.title)
+        # Caminho do log
+        self.log_path = os.path.abspath('agente.log')
+        self.path_label = QLabel(f'<span style="font-size:10px;color:#888;">Arquivo: {self.log_path}</span>')
+        self.layout.addWidget(self.path_label)
+        # Botão recarregar
+        self.refresh_btn = QPushButton('Recarregar')
+        self.refresh_btn.setToolTip('Atualiza o conteúdo do log')
+        self.refresh_btn.clicked.connect(self.carregar_logs)
+        self.layout.addWidget(self.refresh_btn)
         self.logs_output = QTextEdit()
         self.logs_output.setReadOnly(True)
         self.layout.addWidget(self.logs_output)
         self.carregar_logs()
+
     def carregar_logs(self):
+        import os
         try:
+            if not os.path.exists('agente.log') or os.path.getsize('agente.log') == 0:
+                self.logs_output.setText('Nenhum evento registrado.')
+                return
             with open('agente.log', 'r', encoding='utf-8') as f:
-                self.logs_output.setText(f.read())
-        except Exception:
-            self.logs_output.setText('Nenhum log encontrado.')
+                lines = f.readlines()
+            # Limitar a 500 últimas linhas
+            if len(lines) > 500:
+                lines = lines[-500:]
+            # Destacar erros/avisos
+            html = ''
+            for line in lines:
+                if 'ERROR' in line:
+                    html += f'<span style="color:#b00;font-weight:bold;">{line.strip()}</span><br>'
+                elif 'WARNING' in line:
+                    html += f'<span style="color:#e69500;">{line.strip()}</span><br>'
+                else:
+                    html += f'{line.strip()}<br>'
+            self.logs_output.setHtml(html)
+            # Auto-rolagem para o final
+            self.logs_output.moveCursor(self.logs_output.textCursor().End)
+        except Exception as e:
+            self.logs_output.setText(f'Erro ao carregar log: {e}')
 
 # Certifique-se de que todas as classes de widgets estão definidas antes da classe EquipamentosGUI
 
 class EquipamentosGUI(QWidget):
     def __init__(self):
+        from PyQt5.QtWidgets import QApplication
+        if QApplication.instance() is None:
+            self._app = QApplication(sys.argv)
         super().__init__()
         self.setWindowTitle('Agente Local PRECIX')
         self.setMinimumSize(800, 600)

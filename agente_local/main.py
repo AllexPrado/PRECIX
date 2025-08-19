@@ -1,100 +1,47 @@
-# Funções CRUD para lojas
-def editar_loja(codigo, novo_nome):
+# Função para buscar dados do banco de dados (genérica)
+def buscar_dados_banco():
     config = load_config()
-    lojas = config.get('lojas', [])
-    for loja in lojas:
-        if loja.get('codigo') == codigo:
-            loja['nome'] = novo_nome
-            logging.info(f"Loja editada: {codigo} -> {novo_nome}")
-            break
-    else:
-        logging.warning(f"Loja não encontrada para edição: {codigo}")
-    config['lojas'] = lojas
-    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=2)
-
-def excluir_loja(codigo):
-    config = load_config()
-    lojas = config.get('lojas', [])
-    novas_lojas = [l for l in lojas if l.get('codigo') != codigo]
-    if len(novas_lojas) < len(lojas):
-        logging.info(f"Loja excluída: {codigo}")
-    else:
-        logging.warning(f"Loja não encontrada para exclusão: {codigo}")
-    config['lojas'] = novas_lojas
-    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=2)
-
-# Funções CRUD para equipamentos
-def editar_equipamento(ip, porta, novo_ip=None, nova_porta=None, nova_descricao=None):
-    config = load_config()
-    equipamentos = config.get('equipamentos', [])
-    for eq in equipamentos:
-        if eq.get('ip') == ip and str(eq.get('porta')) == str(porta):
-            if novo_ip:
-                eq['ip'] = novo_ip
-            if nova_porta:
-                eq['porta'] = nova_porta
-            if nova_descricao:
-                eq['descricao'] = nova_descricao
-            logging.info(f"Equipamento editado: {ip}:{porta} -> {eq}")
-            break
-    else:
-        logging.warning(f"Equipamento não encontrado para edição: {ip}:{porta}")
-    config['equipamentos'] = equipamentos
-    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=2)
-
-def excluir_equipamento(ip, porta):
-    config = load_config()
-    equipamentos = config.get('equipamentos', [])
-    novos_equip = [eq for eq in equipamentos if not (eq.get('ip') == ip and str(eq.get('porta')) == str(porta))]
-    if len(novos_equip) < len(equipamentos):
-        logging.info(f"Equipamento excluído: {ip}:{porta}")
-    else:
-        logging.warning(f"Equipamento não encontrado para exclusão: {ip}:{porta}")
-    config['equipamentos'] = novos_equip
-    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=2)
-def get_local_ip():
+    tipo = config.get('db_tipo', 'SQLite')
+    host = config.get('db_host', '')
+    porta = config.get('db_porta', '')
+    usuario = config.get('db_user', '')
+    senha = config.get('db_pass', '')
+    nome = config.get('db_nome', '')
+    sql = config.get('db_sql', '')
+    if not sql:
+        logging.error('Consulta SQL não informada para integração via banco de dados.')
+        return None
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except Exception:
-        return "-"
-
-# Caminho do arquivo de status no backend
-AGENTS_STATUS_PATH = r'd:\Sonda\Precix\backend\agents_status.json'
-
-def salvar_status_agente():
-    status = {
-        "id": str(uuid.uuid4()),
-        "identifier": socket.gethostname(),
-        "nome": "Agente Local",
-        "loja": "",
-        "ip": get_local_ip(),
-        "ultima_atualizacao": datetime.now().strftime("%d/%m/%Y, %H:%M:%S")
-    }
-    try:
-        with open(AGENTS_STATUS_PATH, 'w', encoding='utf-8') as f:
-            json.dump([status], f, ensure_ascii=False, indent=2)
+        if tipo == 'SQLite':
+            import sqlite3
+            conn = sqlite3.connect(nome)
+        elif tipo == 'MySQL':
+            import pymysql
+            conn = pymysql.connect(host=host, port=int(porta or 3306), user=usuario, password=senha, database=nome)
+        elif tipo == 'PostgreSQL':
+            import psycopg2
+            conn = psycopg2.connect(host=host, port=int(porta or 5432), user=usuario, password=senha, dbname=nome)
+        elif tipo == 'SQL Server':
+            import pyodbc
+            conn = pyodbc.connect(f'DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={host},{porta or 1433};DATABASE={nome};UID={usuario};PWD={senha}')
+        elif tipo == 'Oracle':
+            import cx_Oracle
+            dsn = cx_Oracle.makedsn(host, int(porta or 1521), service_name=nome)
+            conn = cx_Oracle.connect(usuario, senha, dsn)
+        else:
+            logging.error(f'Tipo de banco não suportado: {tipo}')
+            return None
+        cur = conn.cursor()
+        cur.execute(sql)
+        colunas = [desc[0] for desc in cur.description]
+        dados = [dict(zip(colunas, row)) for row in cur.fetchall()]
+        cur.close()
+        conn.close()
+        logging.info(f"Dados recebidos do banco {tipo}: {len(dados)} registros.")
+        return dados
     except Exception as e:
-        logging.error(f"Erro ao salvar status do agente: {e}")
-
-# Exemplo de uso: salve o status a cada 10 segundos em thread separada
-def iniciar_status_heartbeat():
-    import threading
-    def loop():
-        while True:
-            salvar_status_agente()
-            time.sleep(10)
-    t = threading.Thread(target=loop, daemon=True)
-    t.start()
-
-# No início do main, chame iniciar_status_heartbeat()
+        logging.error(f"Erro ao buscar dados do banco {tipo}: {e}")
+        return None
 """
 Agente Local PRECIX - Integração de Equipamentos Legados
 
@@ -215,33 +162,139 @@ def gerar_arquivo_precos(dados, filename):
     except Exception as e:
         logging.error(f"Erro ao gerar arquivo de preços: {e}")
 
-# Função para enviar arquivo via FTP
-def enviar_arquivo_ftp(ip, porta, usuario, senha, localfile, remotefile):
+def enviar_arquivo_automatico(filepath):
+    """Envia o arquivo de preços conforme configuração da aba Envio (FTP/TCP/LOCAL)."""
+    import json
     try:
-        with ftplib.FTP() as ftp:
-            ftp.connect(ip, porta, timeout=10)
-            ftp.login(usuario, senha)
-            with open(localfile, 'rb') as f:
-                ftp.storbinary(f'STOR {remotefile}', f)
-        logging.info(f"Arquivo enviado via FTP para {ip}:{porta}")
-        return True
-    except Exception as e:
-        logging.error(f"Erro ao enviar arquivo FTP: {e}")
-        return False
-
-# Função para monitorar equipamentos (ping)
-def monitorar_equipamento(ip, porta):
-    try:
-        socket.setdefaulttimeout(2)
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        result = s.connect_ex((ip, porta))
-        s.close()
-        if result == 0:
-            return 'OK'
-        # Removido subprocesso de ping para evitar prompt
-        return 'Desconhecido'
+        with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+            config = json.load(f)
     except Exception:
-        return 'Desconhecido'
+        return
+    metodo = config.get('envio_metodo', 'LOCAL')
+    host = config.get('envio_host', '')
+    porta = int(config.get('envio_porta', 21))
+    usuario = config.get('envio_usuario', '')
+    senha = config.get('envio_senha', '')
+    if metodo == 'FTP':
+        try:
+            ftp = ftplib.FTP()
+            ftp.connect(host, porta, timeout=10)
+            ftp.login(usuario, senha)
+            with open(filepath, 'rb') as f:
+                ftp.storbinary(f'STOR {os.path.basename(filepath)}', f)
+            ftp.quit()
+        except Exception as e:
+            print(f'Falha ao enviar via FTP: {e}')
+    elif metodo == 'TCP':
+        try:
+            with open(filepath, 'rb') as f:
+                data = f.read()
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect((host, porta))
+            s.sendall(data)
+            s.close()
+        except Exception as e:
+            print(f'Falha ao enviar via TCP: {e}')
+    # LOCAL: não faz nada, apenas mantém o arquivo local
+
+# Função para obter o IP local
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "-"
+
+# Caminho do arquivo de status no backend
+AGENTS_STATUS_PATH = r'd:\Sonda\Precix\backend\agents_status.json'
+
+def salvar_status_agente():
+    status = {
+        "id": str(uuid.uuid4()),
+        "identifier": socket.gethostname(),
+        "nome": "Agente Local",
+        "loja": "",
+        "ip": get_local_ip(),
+        "ultima_atualizacao": datetime.now().strftime("%d/%m/%Y, %H:%M:%S")
+    }
+    try:
+        with open(AGENTS_STATUS_PATH, 'w', encoding='utf-8') as f:
+            json.dump([status], f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logging.error(f"Erro ao salvar status do agente: {e}")
+
+# Exemplo de uso: salve o status a cada 10 segundos em thread separada
+def iniciar_status_heartbeat():
+    import threading
+    def loop():
+        while True:
+            salvar_status_agente()
+            time.sleep(10)
+    t = threading.Thread(target=loop, daemon=True)
+    t.start()
+
+# No início do main, chame iniciar_status_heartbeat()
+# Funções CRUD para lojas
+def editar_loja(codigo, novo_nome):
+    config = load_config()
+    lojas = config.get('lojas', [])
+    for loja in lojas:
+        if loja.get('codigo') == codigo:
+            loja['nome'] = novo_nome
+            logging.info(f"Loja editada: {codigo} -> {novo_nome}")
+            break
+    else:
+        logging.warning(f"Loja não encontrada para edição: {codigo}")
+    config['lojas'] = lojas
+    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2)
+
+def excluir_loja(codigo):
+    config = load_config()
+    lojas = config.get('lojas', [])
+    novas_lojas = [l for l in lojas if l.get('codigo') != codigo]
+    if len(novas_lojas) < len(lojas):
+        logging.info(f"Loja excluída: {codigo}")
+    else:
+        logging.warning(f"Loja não encontrada para exclusão: {codigo}")
+    config['lojas'] = novas_lojas
+    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2)
+
+# Funções CRUD para equipamentos
+def editar_equipamento(ip, porta, novo_ip=None, nova_porta=None, nova_descricao=None):
+    config = load_config()
+    equipamentos = config.get('equipamentos', [])
+    for eq in equipamentos:
+        if eq.get('ip') == ip and str(eq.get('porta')) == str(porta):
+            if novo_ip:
+                eq['ip'] = novo_ip
+            if nova_porta:
+                eq['porta'] = nova_porta
+            if nova_descricao:
+                eq['descricao'] = nova_descricao
+            logging.info(f"Equipamento editado: {ip}:{porta} -> {eq}")
+            break
+    else:
+        logging.warning(f"Equipamento não encontrado para edição: {ip}:{porta}")
+    config['equipamentos'] = equipamentos
+    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2)
+
+def excluir_equipamento(ip, porta):
+    config = load_config()
+    equipamentos = config.get('equipamentos', [])
+    novos_equip = [eq for eq in equipamentos if not (eq.get('ip') == ip and str(eq.get('porta')) == str(porta))]
+    if len(novos_equip) < len(equipamentos):
+        logging.info(f"Equipamento excluído: {ip}:{porta}")
+    else:
+        logging.warning(f"Equipamento não encontrado para exclusão: {ip}:{porta}")
+    config['equipamentos'] = novos_equip
+    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2)
 
 # Função de IA embarcada (estrutura inicial)
 def ia_supervisao(equipamento, status):
@@ -338,9 +391,31 @@ def main():
         intervalo = int(config.get('automacao_intervalo', 1))  # em minutos
         forcar = config.get('forcar_atualizacao', False)
         enviar_status_agente()  # Envia status a cada ciclo
+        fonte = config.get('tipo_integracao', 'Arquivo')
+        dados = None
+        if fonte == 'API':
+            api_url = config.get('api_url', 'http://192.168.18.7:8000/product/all')
+            dados = buscar_dados_precix(api_url)
+        elif fonte == 'Arquivo':
+            arquivo = config.get('arquivo_origem', '')
+            if arquivo and os.path.exists(arquivo):
+                try:
+                    with open(arquivo, 'r', encoding='utf-8') as f:
+                        import csv
+                        reader = csv.DictReader(f, delimiter=config.get('arquivo_separador', ';'))
+                        dados = [row for row in reader]
+                except Exception as e:
+                    logging.error(f"Erro ao ler arquivo de origem: {e}")
+            else:
+                logging.error('Arquivo de origem não informado ou não encontrado.')
+        elif fonte == 'Banco de Dados':
+            dados = buscar_dados_banco()
+        else:
+            logging.error(f'Fonte de dados desconhecida: {fonte}')
+
         if forcar:
             try:
-                forcar_atualizacao_manual()
+                gerar_arquivo_precos(dados, os.path.join(LOG_DIR, 'pricetab.txt'))
                 logging.info("Atualização manual forçada executada com sucesso.")
             except Exception as e:
                 logging.error(f"Erro ao executar atualização manual forçada: {e}")
@@ -349,10 +424,6 @@ def main():
             with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2)
         else:
-            api_url = config.get('api_url', 'http://192.168.18.7:8000/product/all')
-            usuario = config.get('ftp_usuario', 'user')
-            senha = config.get('ftp_senha', 'pass')
-            dados = buscar_dados_precix(api_url)
             if dados:
                 try:
                     gerar_arquivo_precos(dados, os.path.join(LOG_DIR, 'pricetab.txt'))
@@ -368,8 +439,8 @@ def main():
                         enviado = enviar_arquivo_ftp(
                             equipamento['ip'],
                             int(equipamento['porta']),
-                            usuario,
-                            senha,
+                            config.get('ftp_usuario', 'user'),
+                            config.get('ftp_senha', 'pass'),
                             os.path.join(LOG_DIR, 'pricetab.txt'),
                             'pricetab.txt'
                         )
