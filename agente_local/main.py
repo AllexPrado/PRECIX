@@ -120,6 +120,11 @@ def gerar_arquivo_precos(dados, filename):
         sep = config.get('arquivo_separador', ';')
         campos = config.get('arquivo_campos', ['barcode', 'name', 'price'])
         local = config.get('arquivo_local', LOG_DIR)
+        # Permitir que o campo aceite tanto pasta quanto caminho completo de arquivo
+        if local.lower().endswith('.txt'):
+            abs_path = local
+        else:
+            abs_path = os.path.join(local, 'pricetab.txt')
         ia_ativo = config.get('ia_ativo', False)
         layout = config.get('arquivo_layout', 'barcode;name;price')
         loja_codigo = config.get('loja_codigo', '')
@@ -143,12 +148,22 @@ def gerar_arquivo_precos(dados, filename):
             layout = 'barcode;name;price'
         if not campos or not isinstance(campos, list):
             campos = ['barcode', 'name', 'price']
-        campos_layout = layout.split(sep)
+        # Garante que o separador do layout seja o mesmo do separador configurado
+        if sep not in layout:
+            # fallback: tenta split por ; ou |
+            if ';' in layout:
+                campos_layout = layout.split(';')
+            elif '|' in layout:
+                campos_layout = layout.split('|')
+            else:
+                campos_layout = layout.split(sep)
+        else:
+            campos_layout = layout.split(sep)
         logging.info(f"Produtos extraídos: {type(produtos)} - Quantidade: {len(produtos) if produtos else 0}")
+        logging.info(f"Primeiros produtos: {str(produtos[:3])}")
         if not produtos or len(produtos) == 0:
             logging.error(f"Nenhum produto válido para gerar arquivo de preços. Dados recebidos: {str(dados)[:500]}")
             return
-        abs_path = os.path.join(local, 'pricetab.txt')
         with open(abs_path, 'w', encoding='utf-8') as f:
             for produto in produtos:
                 if not isinstance(produto, dict):
@@ -165,26 +180,34 @@ def gerar_arquivo_precos(dados, filename):
 def enviar_arquivo_automatico(filepath):
     """Envia o arquivo de preços conforme configuração da aba Envio (FTP/TCP/LOCAL)."""
     import json
+    import traceback
+    import datetime
     try:
         with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
             config = json.load(f)
-    except Exception:
+    except Exception as e:
+        print(f'[ERRO][{datetime.datetime.now()}] Falha ao ler config: {e}\n{traceback.format_exc()}')
         return
     metodo = config.get('envio_metodo', 'LOCAL')
     host = config.get('envio_host', '')
     porta = int(config.get('envio_porta', 21))
     usuario = config.get('envio_usuario', '')
     senha = config.get('envio_senha', '')
+    print(f'[INFO][{datetime.datetime.now()}] Iniciando envio automático: metodo={metodo}, host={host}, porta={porta}, usuario={usuario}, arquivo={filepath}')
     if metodo == 'FTP':
         try:
             ftp = ftplib.FTP()
             ftp.connect(host, porta, timeout=10)
+            print(f'[INFO][{datetime.datetime.now()}] Conectado ao FTP {host}:{porta}')
             ftp.login(usuario, senha)
+            print(f'[INFO][{datetime.datetime.now()}] Login FTP realizado com sucesso.')
+            ftp.cwd('/dist')
             with open(filepath, 'rb') as f:
                 ftp.storbinary(f'STOR {os.path.basename(filepath)}', f)
+            print(f'[INFO][{datetime.datetime.now()}] Upload de {os.path.basename(filepath)} realizado com sucesso.')
             ftp.quit()
         except Exception as e:
-            print(f'Falha ao enviar via FTP: {e}')
+            print(f'[ERRO][{datetime.datetime.now()}] Falha ao enviar via FTP: {e}\n{traceback.format_exc()}')
     elif metodo == 'TCP':
         try:
             with open(filepath, 'rb') as f:
@@ -193,9 +216,11 @@ def enviar_arquivo_automatico(filepath):
             s.connect((host, porta))
             s.sendall(data)
             s.close()
+            print(f'[INFO][{datetime.datetime.now()}] Envio TCP realizado com sucesso.')
         except Exception as e:
-            print(f'Falha ao enviar via TCP: {e}')
-    # LOCAL: não faz nada, apenas mantém o arquivo local
+            print(f'[ERRO][{datetime.datetime.now()}] Falha ao enviar via TCP: {e}\n{traceback.format_exc()}')
+    else:
+        print(f'[INFO][{datetime.datetime.now()}] Modo LOCAL: arquivo mantido localmente.')
 
 # Função para obter o IP local
 def get_local_ip():
@@ -394,7 +419,8 @@ def main():
         fonte = config.get('tipo_integracao', 'Arquivo')
         dados = None
         if fonte == 'API':
-            api_url = config.get('api_url', 'http://192.168.18.7:8000/product/all')
+            # Usa sempre api_externa, se não existir, tenta api_url
+            api_url = config.get('api_externa') or config.get('api_url') or 'http://192.168.18.7:8000/product/all'
             dados = buscar_dados_precix(api_url)
         elif fonte == 'Arquivo':
             arquivo = config.get('arquivo_origem', '')
@@ -415,6 +441,7 @@ def main():
 
         if forcar:
             try:
+                logging.info(f"[DEBUG] Conteúdo de dados (forcar): {type(dados)} - {str(dados)[:500]}")
                 gerar_arquivo_precos(dados, os.path.join(LOG_DIR, 'pricetab.txt'))
                 logging.info("Atualização manual forçada executada com sucesso.")
             except Exception as e:
@@ -426,6 +453,7 @@ def main():
         else:
             if dados:
                 try:
+                    logging.info(f"[DEBUG] Conteúdo de dados: {type(dados)} - {str(dados)[:500]}")
                     gerar_arquivo_precos(dados, os.path.join(LOG_DIR, 'pricetab.txt'))
                 except Exception as e:
                     logging.error(f"Erro ao chamar gerar_arquivo_precos: {e}")

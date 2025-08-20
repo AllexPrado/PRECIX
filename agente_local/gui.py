@@ -250,6 +250,13 @@ class ConfiguracaoArquivoWidget(QWidget):
         header.addStretch()
         self.layout.addLayout(header)
 
+        # Fonte de Dados
+        self.fonte_label = QLabel('Fonte de Dados:')
+        self.fonte_combo = QComboBox()
+        self.fonte_combo.addItems(['Arquivo', 'API', 'Banco de Dados'])
+        self.layout.addWidget(self.fonte_label)
+        self.layout.addWidget(self.fonte_combo)
+
         # Arquivo de entrada do cliente (ou pasta)
         self.input_file_label = QLabel('Arquivo de entrada do cliente (ou pasta):')
         self.input_file_path = QLineEdit()
@@ -350,6 +357,7 @@ class ConfiguracaoArquivoWidget(QWidget):
                     config = json.load(f)
             else:
                 config = {"lojas": [], "equipamentos": []}
+            self.fonte_combo.setCurrentText(config.get('tipo_integracao', 'Arquivo'))
             self.sep_combo.setCurrentText(config.get('arquivo_separador', ';'))
             self.sep_custom.setText(config.get('arquivo_separador_custom', ''))
             self.path_input.setText(config.get('arquivo_local', ''))
@@ -378,6 +386,7 @@ class ConfiguracaoArquivoWidget(QWidget):
         path = self.path_input.text().strip() or os.getcwd()
         ia_ativo = self.ia_cb.isChecked()
         layout = self.layout_input.text().strip() or 'barcode;name;price'
+        fonte = self.fonte_combo.currentText()
         try:
             if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
                 with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
@@ -386,6 +395,7 @@ class ConfiguracaoArquivoWidget(QWidget):
                 config = {"lojas": [], "equipamentos": []}
         except Exception:
             config = {"lojas": [], "equipamentos": []}
+        config['tipo_integracao'] = fonte
         config['arquivo_separador'] = sep
         config['arquivo_separador_custom'] = self.sep_custom.text().strip()
         config['arquivo_campos'] = campos
@@ -399,27 +409,125 @@ class ConfiguracaoArquivoWidget(QWidget):
 
     def processar_arquivo_entrada_automatico(self):
         # Rotina automática chamada pelo timer
-        entrada = self.input_file_path.text().strip()
-        if not entrada:
-            return
+        import requests
+        import importlib
         try:
-            if os.path.isdir(entrada):
-                arquivos = [f for f in os.listdir(entrada) if f.lower().endswith('.txt')]
-                if not arquivos:
-                    return
-                arquivos.sort(key=lambda x: os.path.getmtime(os.path.join(entrada, x)), reverse=True)
-                arquivo_cliente = os.path.join(entrada, arquivos[0])
+            # Carrega config para saber a fonte de dados
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
             else:
-                arquivo_cliente = entrada
-            with open(arquivo_cliente, 'r', encoding='utf-8') as f:
-                conteudo = f.read()
-            saida = self.path_input.text().strip() or os.getcwd()
+                config = {}
+            fonte = config.get('tipo_integracao', 'Arquivo')
+            campos = config.get('arquivo_campos', ['barcode', 'name', 'price'])
+            sep = config.get('arquivo_separador', ';')
+            saida = config.get('arquivo_local', self.path_input.text().strip() or os.getcwd())
             if os.path.isdir(saida):
                 arquivo_saida = os.path.join(saida, 'pricetab.txt')
             else:
                 arquivo_saida = saida
-            with open(arquivo_saida, 'w', encoding='utf-8') as f:
-                f.write(conteudo)
+            produtos = []
+            if fonte == 'Arquivo':
+                entrada = config.get('arquivo_entrada', self.input_file_path.text().strip())
+                if not entrada:
+                    return
+                if os.path.isdir(entrada):
+                    arquivos = [f for f in os.listdir(entrada) if f.lower().endswith('.txt')]
+                    if not arquivos:
+                        return
+                    arquivos.sort(key=lambda x: os.path.getmtime(os.path.join(entrada, x)), reverse=True)
+                    arquivo_cliente = os.path.join(entrada, arquivos[0])
+                else:
+                    arquivo_cliente = entrada
+                with open(arquivo_cliente, 'r', encoding='utf-8') as f:
+                    conteudo = f.read()
+                # Tenta converter para lista de produtos se possível, senão salva como está
+                linhas = [l.strip() for l in conteudo.splitlines() if l.strip()]
+                for linha in linhas:
+                    partes = linha.split(sep)
+                    if len(partes) == len(campos):
+                        produtos.append(dict(zip(campos, partes)))
+                if not produtos:
+                    # fallback: salva o conteúdo bruto
+                    with open(arquivo_saida, 'w', encoding='utf-8') as f:
+                        f.write(conteudo)
+                        produtos = None
+            elif fonte == 'API':
+                url = config.get('api_externa', '')
+                usuario = config.get('api_usuario', '')
+                senha = config.get('api_senha', '')
+                token = config.get('api_token', '')
+                headers = {}
+                auth = None
+                if token:
+                    headers['Authorization'] = f'Bearer {token}'
+                elif usuario and senha:
+                    auth = (usuario, senha)
+                r = requests.get(url, headers=headers, auth=auth, timeout=15)
+                r.raise_for_status()
+                data = r.json()
+                # Espera-se que data seja uma lista de produtos
+                produtos = data if isinstance(data, list) else data.get('produtos', [])
+            elif fonte == 'Banco de Dados':
+                tipo = config.get('db_tipo', 'SQLite')
+                host = config.get('db_host', '')
+                porta = config.get('db_porta', '')
+                usuario = config.get('db_user', '')
+                senha = config.get('db_pass', '')
+                nome = config.get('db_nome', '')
+                sql = config.get('db_sql', '')
+                if tipo == 'SQLite':
+                    import sqlite3
+                    conn = sqlite3.connect(nome)
+                    cur = conn.cursor()
+                    cur.execute(sql)
+                    produtos = [dict(zip([d[0] for d in cur.description], row)) for row in cur.fetchall()]
+                    conn.close()
+                elif tipo == 'MySQL':
+                    if importlib.util.find_spec('mysql.connector'):
+                        import mysql.connector
+                        conn = mysql.connector.connect(host=host, port=int(porta or 3306), user=usuario, password=senha, database=nome)
+                        cur = conn.cursor()
+                        cur.execute(sql)
+                        produtos = [dict(zip([d[0] for d in cur.description], row)) for row in cur.fetchall()]
+                        conn.close()
+                elif tipo == 'PostgreSQL':
+                    if importlib.util.find_spec('psycopg2'):
+                        import psycopg2
+                        conn = psycopg2.connect(host=host, port=int(porta or 5432), user=usuario, password=senha, dbname=nome)
+                        cur = conn.cursor()
+                        cur.execute(sql)
+                        produtos = [dict(zip([d[0] for d in cur.description], row)) for row in cur.fetchall()]
+                        conn.close()
+                elif tipo == 'SQL Server':
+                    if importlib.util.find_spec('pyodbc'):
+                        import pyodbc
+                        conn_str = (
+                            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+                            f"SERVER={host},{porta or '1433'};"
+                            f"DATABASE={nome};"
+                            f"UID={usuario};PWD={senha}"
+                        )
+                        conn = pyodbc.connect(conn_str, timeout=5)
+                        cur = conn.cursor()
+                        cur.execute(sql)
+                        produtos = [dict(zip([d[0] for d in cur.description], row)) for row in cur.fetchall()]
+                        conn.close()
+                elif tipo == 'Oracle':
+                    if importlib.util.find_spec('cx_Oracle'):
+                        import cx_Oracle
+                        dsn = cx_Oracle.makedsn(host, int(porta or 1521), service_name=nome)
+                        conn = cx_Oracle.connect(user=usuario, password=senha, dsn=dsn)
+                        cur = conn.cursor()
+                        cur.execute(sql)
+                        produtos = [dict(zip([d[0] for d in cur.description], row)) for row in cur.fetchall()]
+                        conn.close()
+            # Geração do arquivo texto para equipamentos legados
+            if produtos is not None:
+                with open(arquivo_saida, 'w', encoding='utf-8') as f:
+                    for p in produtos:
+                        linha = sep.join([str(p.get(c, '')) for c in campos]) + '\n'
+                        f.write(linha)
             # Envio automático após gerar arquivo
             try:
                 from main import enviar_arquivo_automatico
@@ -511,80 +619,20 @@ class ConfiguracaoArquivoWidget(QWidget):
             campos.append('price')
         return campos
 
-class IntegracaoPrecixWidget(QWidget):
-    def salvar_config(self):
-        # Salva todos os campos comuns
-        config = {}
-        config['porta_local'] = self.porta_input.text().strip()
-        config['timeout'] = self.timeout_input.text().strip()
-        config['modo_operacao'] = self.modo_combo.currentText()
-        config['api_externa'] = self.api_input.text().strip()
-        config['api_usuario'] = self.user_input.text().strip()
-        config['api_senha'] = self.pass_input.text().strip()
-        config['api_token'] = self.token_input.text().strip()
-        config['tipo_integracao'] = self.fonte_combo.currentText()
-        # Salva campos de banco de dados apenas se selecionado
-        if self.fonte_combo.currentText() == 'Banco de Dados':
-            config['db_tipo'] = self.db_tipo_combo.currentText()
-            config['db_host'] = self.db_host_input.text().strip()
-            config['db_porta'] = self.db_porta_input.text().strip()
-            config['db_user'] = self.db_user_input.text().strip()
-            config['db_pass'] = self.db_pass_input.text().strip()
-            config['db_nome'] = self.db_nome_input.text().strip()
-            config['db_sql'] = self.db_sql_input.text().strip()
-        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-            import json
-            json.dump(config, f, indent=2, ensure_ascii=False)
-        from PyQt5.QtWidgets import QMessageBox
-        QMessageBox.information(self, 'Configuração', 'Configuração salva com sucesso!')
-
+class BancoDadosWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout()
+        self.layout.setContentsMargins(16, 16, 16, 16)
+        self.layout.setSpacing(12)
         self.setLayout(self.layout)
-        self.title = QLabel('<b>Integração com PRECIX</b>')
+        self.title = QLabel('<b>Configuração de Banco de Dados</b>')
         self.title.setStyleSheet('font-size:18px;')
         self.layout.addWidget(self.title)
-        # Fonte de Dados
-        self.fonte_label = QLabel('Fonte de Dados:')
-        self.fonte_combo = QComboBox()
-        self.fonte_combo.addItems(['Arquivo', 'API', 'Banco de Dados'])
-        self.fonte_combo.currentTextChanged.connect(self.toggle_db_fields)
-        self.layout.addWidget(self.fonte_label)
-        self.layout.addWidget(self.fonte_combo)
-        self.porta_label = QLabel('Porta local de comunicação:')
-        self.porta_input = QLineEdit()
-        self.layout.addWidget(self.porta_label)
-        self.layout.addWidget(self.porta_input)
-        self.timeout_label = QLabel('Timeout de requisição (segundos):')
-        self.timeout_input = QLineEdit()
-        self.layout.addWidget(self.timeout_label)
-        self.layout.addWidget(self.timeout_input)
-        self.modo_label = QLabel('Modo de operação:')
-        self.modo_combo = QComboBox()
-        self.modo_combo.addItems(['Produção', 'Homologação'])
-        self.layout.addWidget(self.modo_label)
-        self.layout.addWidget(self.modo_combo)
-        self.api_label = QLabel('URL da API externa (opcional):')
-        self.api_input = QLineEdit()
-        self.api_input.setPlaceholderText('https://api.cliente.com.br/endpoint')
-        self.layout.addWidget(self.api_label)
-        self.layout.addWidget(self.api_input)
-        self.auth_label = QLabel('Autenticação (opcional):')
-        self.layout.addWidget(self.auth_label)
-        self.user_input = QLineEdit()
-        self.user_input.setPlaceholderText('Usuário (opcional)')
-        self.layout.addWidget(self.user_input)
-        self.pass_input = QLineEdit()
-        self.pass_input.setPlaceholderText('Senha (opcional)')
-        self.pass_input.setEchoMode(QLineEdit.Password)
-        self.layout.addWidget(self.pass_input)
-        self.token_input = QLineEdit()
-        self.token_input.setPlaceholderText('Bearer Token (opcional)')
-        self.layout.addWidget(self.token_input)
-    # --- CAMPOS BANCO DE DADOS (AGRUPADOS EM CONTAINER) ---
         self.db_container = QWidget()
         self.db_container_layout = QVBoxLayout()
+        self.db_container_layout.setContentsMargins(8, 8, 8, 8)
+        self.db_container_layout.setSpacing(8)
         self.db_container.setLayout(self.db_container_layout)
         self.db_tipo_label = QLabel('Tipo do Banco:')
         self.db_tipo_combo = QComboBox()
@@ -602,14 +650,12 @@ class IntegracaoPrecixWidget(QWidget):
         self.db_nome_input = QLineEdit()
         self.db_sql_label = QLabel('Consulta SQL:')
         self.db_sql_input = QLineEdit()
-        # Adiciona ao layout do container
         for w in [self.db_tipo_label, self.db_tipo_combo, self.db_host_label, self.db_host_input,
                   self.db_porta_label, self.db_porta_input, self.db_user_label, self.db_user_input,
                   self.db_pass_label, self.db_pass_input, self.db_nome_label, self.db_nome_input,
                   self.db_sql_label, self.db_sql_input]:
             self.db_container_layout.addWidget(w)
         self.layout.addWidget(self.db_container)
-        # Status conexão
         self.status_label = QLabel('Status da conexão:')
         self.status_output = QLabel('-')
         self.layout.addWidget(self.status_label)
@@ -619,19 +665,247 @@ class IntegracaoPrecixWidget(QWidget):
         self.layout.addWidget(self.ultima_label)
         self.layout.addWidget(self.ultima_output)
         self.teste_btn = QPushButton('Testar Conexão')
-        self.teste_btn.setStyleSheet('background:#0078d7;color:white;font-weight:bold;height:32px;')
         self.teste_btn.clicked.connect(self.testar_conexao)
         self.layout.addWidget(self.teste_btn)
         self.salvar_btn = QPushButton('Salvar Configuração')
-        self.salvar_btn.setStyleSheet('background:#0078d7;color:white;font-weight:bold;height:32px;')
         self.salvar_btn.clicked.connect(self.salvar_config)
         self.layout.addWidget(self.salvar_btn)
+
+    def testar_conexao(self):
+        from PyQt5.QtWidgets import QApplication, QMessageBox
+        import importlib
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            tipo = self.db_tipo_combo.currentText()
+            host = self.db_host_input.text().strip()
+            porta = self.db_porta_input.text().strip()
+            usuario = self.db_user_input.text().strip()
+            senha = self.db_pass_input.text().strip()
+            nome = self.db_nome_input.text().strip()
+            status = ''
+            if tipo == 'SQLite':
+                import sqlite3
+                try:
+                    if not nome:
+                        raise Exception('Informe o nome do arquivo SQLite.')
+                    conn = sqlite3.connect(nome)
+                    conn.close()
+                    status = 'Conexão SQLite OK!'
+                except Exception as e:
+                    status = f'Erro SQLite: {e}'
+            elif tipo == 'MySQL':
+                if importlib.util.find_spec('mysql.connector'):
+                    import mysql.connector
+                    try:
+                        conn = mysql.connector.connect(
+                            host=host,
+                            port=int(porta) if porta else 3306,
+                            user=usuario,
+                            password=senha,
+                            database=nome
+                        )
+                        conn.close()
+                        status = 'Conexão MySQL OK!'
+                    except Exception as e:
+                        status = f'Erro MySQL: {e}'
+                else:
+                    status = 'mysql-connector-python não instalado.'
+            elif tipo == 'PostgreSQL':
+                if importlib.util.find_spec('psycopg2'):
+                    import psycopg2
+                    try:
+                        conn = psycopg2.connect(
+                            host=host,
+                            port=int(porta) if porta else 5432,
+                            user=usuario,
+                            password=senha,
+                            dbname=nome
+                        )
+                        conn.close()
+                        status = 'Conexão PostgreSQL OK!'
+                    except Exception as e:
+                        status = f'Erro PostgreSQL: {e}'
+                else:
+                    status = 'psycopg2 não instalado.'
+            elif tipo == 'SQL Server':
+                import importlib
+                if importlib.util.find_spec('pyodbc'):
+                    import pyodbc
+                    try:
+                        conn_str = (
+                            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+                            f"SERVER={host},{porta if porta else '1433'};"
+                            f"DATABASE={nome};"
+                            f"UID={usuario};PWD={senha}"
+                        )
+                        conn = pyodbc.connect(conn_str, timeout=5)
+                        conn.close()
+                        status = 'Conexão SQL Server OK!'
+                    except Exception as e:
+                        status = f'Erro SQL Server: {e}'
+                else:
+                    status = 'pyodbc não instalado.'
+            elif tipo == 'Oracle':
+                import importlib
+                if importlib.util.find_spec('cx_Oracle'):
+                    import cx_Oracle
+                    try:
+                        dsn = cx_Oracle.makedsn(host, int(porta) if porta else 1521, service_name=nome)
+                        conn = cx_Oracle.connect(user=usuario, password=senha, dsn=dsn)
+                        conn.close()
+                        status = 'Conexão Oracle OK!'
+                    except Exception as e:
+                        status = f'Erro Oracle: {e}'
+                else:
+                    status = 'cx_Oracle não instalado.'
+            else:
+                status = f'Teste não implementado para: {tipo}'
+            self.status_output.setText(status)
+            QMessageBox.information(self, 'Teste de Conexão', status)
+        finally:
+            QApplication.restoreOverrideCursor()
+
+    def salvar_config(self):
+        from PyQt5.QtWidgets import QApplication, QMessageBox
+        import json
+        import os
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            config = {}
+            config['db_tipo'] = self.db_tipo_combo.currentText()
+            config['db_host'] = self.db_host_input.text().strip()
+            config['db_porta'] = self.db_porta_input.text().strip()
+            config['db_user'] = self.db_user_input.text().strip()
+            config['db_pass'] = self.db_pass_input.text().strip()
+            config['db_nome'] = self.db_nome_input.text().strip()
+            config['db_sql'] = self.db_sql_input.text().strip()
+            # Carrega config existente para não sobrescrever outros dados
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    try:
+                        old = json.load(f)
+                    except Exception:
+                        old = {}
+            else:
+                old = {}
+            old.update(config)
+            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                json.dump(old, f, indent=2)
+            self.status_output.setText('Configuração salva!')
+            QMessageBox.information(self, 'Salvar Configuração', 'Configuração salva com sucesso!')
+        finally:
+            QApplication.restoreOverrideCursor()
+
+class IntegracaoPrecixWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout()
+        self.setLayout(self.layout)
+        # Título
+        self.title = QLabel('<b>Configuração de Integração API PRECIX</b>')
+        self.title.setStyleSheet('font-size:18px;')
+        self.layout.addWidget(self.title)
+        # Porta local
+        self.porta_label = QLabel('Porta local:')
+        self.porta_input = QLineEdit()
+        self.layout.addWidget(self.porta_label)
+        self.layout.addWidget(self.porta_input)
+        # Timeout
+        self.timeout_label = QLabel('Timeout (segundos):')
+        self.timeout_input = QLineEdit()
+        self.layout.addWidget(self.timeout_label)
+        self.layout.addWidget(self.timeout_input)
+        # Modo de operação
+        self.modo_label = QLabel('Modo de operação:')
+        self.modo_combo = QComboBox()
+        self.modo_combo.addItems(['Produção', 'Homologação', 'Desenvolvimento'])
+        self.layout.addWidget(self.modo_label)
+        self.layout.addWidget(self.modo_combo)
+        # URL da API
+        self.api_label = QLabel('URL da API Externa:')
+        self.api_input = QLineEdit()
+        self.layout.addWidget(self.api_label)
+        self.layout.addWidget(self.api_input)
+        # Autenticação
+        self.auth_label = QLabel('Autenticação:')
+        self.layout.addWidget(self.auth_label)
+        self.user_input = QLineEdit()
+        self.user_input.setPlaceholderText('Usuário')
+        self.layout.addWidget(self.user_input)
+        self.pass_input = QLineEdit()
+        self.pass_input.setPlaceholderText('Senha')
+        self.pass_input.setEchoMode(QLineEdit.Password)
+        self.layout.addWidget(self.pass_input)
+        self.token_input = QLineEdit()
+        self.token_input.setPlaceholderText('Token (opcional)')
+        self.layout.addWidget(self.token_input)
+        # Status e última sync
+        self.status_label = QLabel('Status da conexão:')
+        self.status_output = QLabel('-')
+        self.layout.addWidget(self.status_label)
+        self.layout.addWidget(self.status_output)
+        self.ultima_label = QLabel('Última sincronização:')
+        self.ultima_output = QLabel('-')
+        self.layout.addWidget(self.ultima_label)
+        self.layout.addWidget(self.ultima_output)
+        # Botões
+        self.teste_btn = QPushButton('Testar Conexão')
+        self.teste_btn.clicked.connect(self.testar_conexao)
+        self.salvar_btn = QPushButton('Salvar Configuração')
+        self.salvar_btn.clicked.connect(self.salvar_config)
+        btn_layout = QHBoxLayout()
+        btn_layout.addWidget(self.teste_btn)
+        btn_layout.addSpacing(16)
+        btn_layout.addWidget(self.salvar_btn)
+        btn_container = QWidget()
+        btn_container.setLayout(btn_layout)
+        self.layout.addWidget(btn_container)
+        # Carregar config existente
         self.carregar_config()
-        # Garante que os campos do banco só aparecem quando necessário
-        self.toggle_db_fields(self.fonte_combo.currentText())
+
+    def salvar_config(self):
+        porta = self.porta_input.text().strip() or '8000'
+        timeout = int(self.timeout_input.text().strip() or '10')
+        modo = self.modo_combo.currentText()
+        api_externa = self.api_input.text().strip()
+        usuario = self.user_input.text().strip()
+        senha = self.pass_input.text().strip()
+        token = self.token_input.text().strip()
+        try:
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            else:
+                config = {}
+        except Exception:
+            config = {}
+        config['porta_local'] = porta
+        config['timeout'] = timeout
+        config['modo_operacao'] = modo
+        config['api_externa'] = api_externa
+        config['api_usuario'] = usuario
+        config['api_senha'] = senha
+        config['api_token'] = token
+        config['tipo_integracao'] = 'API'
+        from datetime import datetime
+        config['ultima_sync'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2)
+        self.ultima_output.setText(config['ultima_sync'])
+    # Remover manipulação de layout de botões do salvar_config
+        # Após carregar config, garanta que a interface reflita o tipo de integração
+        # ...existing code...
 
     def toggle_db_fields(self, value):
         is_db = value == 'Banco de Dados'
+        # Campos de API
+        self.api_label.setVisible(not is_db)
+        self.api_input.setVisible(not is_db)
+        self.auth_label.setVisible(not is_db)
+        self.user_input.setVisible(not is_db)
+        self.pass_input.setVisible(not is_db)
+        self.token_input.setVisible(not is_db)
+        # Campos de banco de dados
         self.db_container.setVisible(is_db)
 
     def testar_conexao(self):
@@ -642,22 +916,14 @@ class IntegracaoPrecixWidget(QWidget):
         usuario = self.user_input.text().strip()
         senha = self.pass_input.text().strip()
         token = self.token_input.text().strip()
-        fonte = self.fonte_combo.currentText()
-        # Campos banco de dados
-        db_tipo = self.db_tipo_combo.currentText() if fonte == 'Banco de Dados' else ''
-        db_host = self.db_host_input.text().strip() if fonte == 'Banco de Dados' else ''
-        db_porta = self.db_porta_input.text().strip() if fonte == 'Banco de Dados' else ''
-        db_user = self.db_user_input.text().strip() if fonte == 'Banco de Dados' else ''
-        db_pass = self.db_pass_input.text().strip() if fonte == 'Banco de Dados' else ''
-        db_nome = self.db_nome_input.text().strip() if fonte == 'Banco de Dados' else ''
-        db_sql = self.db_sql_input.text().strip() if fonte == 'Banco de Dados' else ''
         status_msg = ''
+        from PyQt5.QtWidgets import QMessageBox
+        if not api_externa:
+            QMessageBox.warning(self, 'Atenção', 'Preencha a URL da API externa para testar a conexão.')
+            self.status_output.setText('Preencha a URL da API externa.')
+            return
         try:
-            # Testa API externa se preenchida, senão testa local
-            if api_externa:
-                url = api_externa
-            else:
-                url = f'http://localhost:{porta}/health'
+            url = api_externa
             headers = {}
             auth = None
             if token:
@@ -692,15 +958,7 @@ class IntegracaoPrecixWidget(QWidget):
         config['api_senha'] = senha
         config['api_token'] = token
         config['status_conexao'] = status_msg
-        config['tipo_integracao'] = fonte
-        # Salvar campos banco de dados
-        config['db_tipo'] = db_tipo
-        config['db_host'] = db_host
-        config['db_porta'] = db_porta
-        config['db_user'] = db_user
-        config['db_pass'] = db_pass
-        config['db_nome'] = db_nome
-        config['db_sql'] = db_sql
+        config['tipo_integracao'] = 'API'
         from datetime import datetime
         config['ultima_sync'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
@@ -715,14 +973,7 @@ class IntegracaoPrecixWidget(QWidget):
         usuario = self.user_input.text().strip()
         senha = self.pass_input.text().strip()
         token = self.token_input.text().strip()
-        fonte = self.fonte_combo.currentText()
-        db_tipo = self.db_tipo_combo.currentText() if fonte == 'Banco de Dados' else ''
-        db_host = self.db_host_input.text().strip() if fonte == 'Banco de Dados' else ''
-        db_porta = self.db_porta_input.text().strip() if fonte == 'Banco de Dados' else ''
-        db_user = self.db_user_input.text().strip() if fonte == 'Banco de Dados' else ''
-        db_pass = self.db_pass_input.text().strip() if fonte == 'Banco de Dados' else ''
-        db_nome = self.db_nome_input.text().strip() if fonte == 'Banco de Dados' else ''
-        db_sql = self.db_sql_input.text().strip() if fonte == 'Banco de Dados' else ''
+    # Removido: fonte_combo e campos de banco de dados
         try:
             if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
                 with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
@@ -738,14 +989,7 @@ class IntegracaoPrecixWidget(QWidget):
         config['api_usuario'] = usuario
         config['api_senha'] = senha
         config['api_token'] = token
-        config['tipo_integracao'] = fonte
-        config['db_tipo'] = db_tipo
-        config['db_host'] = db_host
-        config['db_porta'] = db_porta
-        config['db_user'] = db_user
-        config['db_pass'] = db_pass
-        config['db_nome'] = db_nome
-        config['db_sql'] = db_sql
+        config['tipo_integracao'] = 'API'
         from datetime import datetime
         config['ultima_sync'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
@@ -759,7 +1003,6 @@ class IntegracaoPrecixWidget(QWidget):
                     config = json.load(f)
             else:
                 config = {}
-            self.fonte_combo.setCurrentText(config.get('tipo_integracao', 'Arquivo'))
             self.porta_input.setText(str(config.get('porta_local', '8000')))
             self.timeout_input.setText(str(config.get('timeout', '10')))
             self.modo_combo.setCurrentText(config.get('modo_operacao', 'Produção'))
@@ -769,15 +1012,6 @@ class IntegracaoPrecixWidget(QWidget):
             self.token_input.setText(config.get('api_token', ''))
             self.status_output.setText(config.get('status_conexao', '-'))
             self.ultima_output.setText(config.get('ultima_sync', '-'))
-            # Carregar campos banco de dados
-            self.db_tipo_combo.setCurrentText(config.get('db_tipo', 'SQLite'))
-            self.db_host_input.setText(config.get('db_host', ''))
-            self.db_porta_input.setText(config.get('db_porta', ''))
-            self.db_user_input.setText(config.get('db_user', ''))
-            self.db_pass_input.setText(config.get('db_pass', ''))
-            self.db_nome_input.setText(config.get('db_nome', ''))
-            self.db_sql_input.setText(config.get('db_sql', ''))
-            self.toggle_db_fields(self.fonte_combo.currentText())
         except Exception:
             pass
 
@@ -813,7 +1047,6 @@ class EnvioWidget(QWidget):
         self.layout.addWidget(self.senha_input)
         # Botão azul largura total
         self.teste_btn = QPushButton('Testar Envio')
-        self.teste_btn.setStyleSheet('background:#0078d7;color:white;font-weight:bold;height:32px;')
         self.teste_btn.clicked.connect(self.testar_envio)
         self.layout.addWidget(self.teste_btn)
         self.status_output = QLabel('Status: -')
@@ -895,12 +1128,10 @@ class AutomacaoWidget(QWidget):
         self.layout.addWidget(self.modo_combo)
         # Botão azul largura total
         self.forcar_btn = QPushButton('Forçar Atualização Manual')
-        self.forcar_btn.setStyleSheet('background:#0078d7;color:white;font-weight:bold;height:32px;')
         self.forcar_btn.clicked.connect(self.forcar_atualizacao)
         self.layout.addWidget(self.forcar_btn)
         # Botão salvar
         self.salvar_btn = QPushButton('Salvar')
-        self.salvar_btn.setStyleSheet('background:#0078d7;color:white;font-weight:bold;height:32px;')
         self.salvar_btn.clicked.connect(self.salvar_config)
         self.layout.addWidget(self.salvar_btn)
         self.status_output = QLabel('Status: -')
@@ -941,6 +1172,8 @@ class AutomacaoWidget(QWidget):
             QMessageBox.critical(self, 'Erro', f'Falha ao salvar: {str(e)}')
 
     def forcar_atualizacao(self):
+        from PyQt5.QtWidgets import QMessageBox
+        import traceback
         try:
             if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
                 with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
@@ -957,11 +1190,16 @@ class AutomacaoWidget(QWidget):
             json.dump(config, f, indent=2)
         self.status_output.setText(config['automacao_status'])
         # Executa o processamento do arquivo de entrada imediatamente
-        main_window = self.parentWidget()
-        while main_window and not hasattr(main_window, 'config_tab'):
-            main_window = main_window.parentWidget()
-        if main_window and hasattr(main_window, 'config_tab'):
-            main_window.config_tab.processar_arquivo_entrada_automatico()
+        # Busca a janela principal corretamente
+        main_window = self.window()
+        try:
+            if hasattr(main_window, 'config_tab'):
+                main_window.config_tab.processar_arquivo_entrada_automatico()
+                QMessageBox.information(self, 'Automação', 'Arquivo gerado/processado com sucesso (verifique logs para detalhes de envio).')
+            else:
+                QMessageBox.warning(self, 'Automação', 'Não foi possível acionar a geração automática. Reinicie o sistema e tente novamente.')
+        except Exception as e:
+            QMessageBox.critical(self, 'Erro', f'Falha ao gerar/processar arquivo: {str(e)}\n{traceback.format_exc()}')
 
 class EquipamentosWidget(QWidget):
     def preencher_formulario(self, row):
@@ -1330,10 +1568,13 @@ class EquipamentosGUI(QWidget):
         self.tabs.addTab(self.equip_tab, 'Equipamentos')
         # Aba de configuração de arquivo
         self.config_tab = ConfiguracaoArquivoWidget()
-        self.tabs.addTab(self.config_tab, 'Arquivo de Preços')
-        # Aba de integração PRECIX
+        self.tabs.addTab(self.config_tab, 'Arquivo')
+        # Aba de integração API
         self.integracao_tab = IntegracaoPrecixWidget()
-        self.tabs.addTab(self.integracao_tab, 'Integração PRECIX')
+        self.tabs.addTab(self.integracao_tab, 'API')
+        # Nova aba de banco de dados
+        self.banco_tab = BancoDadosWidget()
+        self.tabs.addTab(self.banco_tab, 'Banco de Dados')
         # Aba de envio
         self.envio_tab = EnvioWidget()
         self.tabs.addTab(self.envio_tab, 'Envio')
@@ -1353,28 +1594,28 @@ class EquipamentosGUI(QWidget):
         self.timer_entrada.timeout.connect(self.processar_entrada_automatica)
         self.iniciar_timer_entrada()
 
-        # Ajuste de estilo global para compactar
+# Ajuste de estilo global para compactar
         self.setStyleSheet('''
-            QLabel { font-size: 12px; }
-            QLineEdit, QComboBox { font-size: 12px; padding: 1px; }
-            QPushButton {
-                font-size: 12px;
-                padding: 2px 8px;
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2196F3, stop:1 #1565C0);
-                color: white;
-                border-radius: 4px;
-                min-height: 24px;
-                max-height: 28px;
-                min-width: 120px;
-                border: none;
-            }
-            QPushButton:pressed {
-                background: #0d47a1;
-            }
-            QCheckBox { font-size: 12px; }
-            QTabWidget::pane { border: 1px solid #ccc; }
-            QTextEdit { font-size: 12px; }
-        ''')
+                QLabel { font-size: 12px; }
+                QLineEdit, QComboBox { font-size: 12px; padding: 1px; }
+                QPushButton {
+                    font-size: 12px;
+                    padding: 2px 8px;
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2196F3, stop:1 #1565C0);
+                    color: white;
+                    border-radius: 4px;
+                    min-height: 24px;
+                    max-height: 28px;
+                    min-width: 120px;
+                    border: none;
+                }
+                QPushButton:pressed {
+                    background: #0d47a1;
+                }
+                QCheckBox { font-size: 12px; }
+                QTabWidget::pane { border: 1px solid #ccc; }
+                QTextEdit { font-size: 12px; }
+            ''')
 
     def iniciar_timer_entrada(self):
         try:
