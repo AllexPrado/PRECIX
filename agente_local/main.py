@@ -1,47 +1,3 @@
-# Função para buscar dados do banco de dados (genérica)
-def buscar_dados_banco():
-    config = load_config()
-    tipo = config.get('db_tipo', 'SQLite')
-    host = config.get('db_host', '')
-    porta = config.get('db_porta', '')
-    usuario = config.get('db_user', '')
-    senha = config.get('db_pass', '')
-    nome = config.get('db_nome', '')
-    sql = config.get('db_sql', '')
-    if not sql:
-        logging.error('Consulta SQL não informada para integração via banco de dados.')
-        return None
-    try:
-        if tipo == 'SQLite':
-            import sqlite3
-            conn = sqlite3.connect(nome)
-        elif tipo == 'MySQL':
-            import pymysql
-            conn = pymysql.connect(host=host, port=int(porta or 3306), user=usuario, password=senha, database=nome)
-        elif tipo == 'PostgreSQL':
-            import psycopg2
-            conn = psycopg2.connect(host=host, port=int(porta or 5432), user=usuario, password=senha, dbname=nome)
-        elif tipo == 'SQL Server':
-            import pyodbc
-            conn = pyodbc.connect(f'DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={host},{porta or 1433};DATABASE={nome};UID={usuario};PWD={senha}')
-        elif tipo == 'Oracle':
-            import cx_Oracle
-            dsn = cx_Oracle.makedsn(host, int(porta or 1521), service_name=nome)
-            conn = cx_Oracle.connect(usuario, senha, dsn)
-        else:
-            logging.error(f'Tipo de banco não suportado: {tipo}')
-            return None
-        cur = conn.cursor()
-        cur.execute(sql)
-        colunas = [desc[0] for desc in cur.description]
-        dados = [dict(zip(colunas, row)) for row in cur.fetchall()]
-        cur.close()
-        conn.close()
-        logging.info(f"Dados recebidos do banco {tipo}: {len(dados)} registros.")
-        return dados
-    except Exception as e:
-        logging.error(f"Erro ao buscar dados do banco {tipo}: {e}")
-        return None
 """
 Agente Local PRECIX - Integração de Equipamentos Legados
 
@@ -62,152 +18,191 @@ import socket
 import os
 import uuid
 from datetime import datetime
+import shutil
+import sys
 
 # Configuração inicial
 USER_CONFIG_DIR = os.path.join(os.environ.get('LOCALAPPDATA', os.getcwd()), 'AgentePRECIX')
 os.makedirs(USER_CONFIG_DIR, exist_ok=True)
 CONFIG_PATH = os.path.join(USER_CONFIG_DIR, 'config.json')
 
+
 # Caminho seguro para log
 LOG_DIR = USER_CONFIG_DIR
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG_PATH = os.path.join(LOG_DIR, 'agente.log')
+# Configura logging global já no início
+logging.basicConfig(
+    filename=LOG_PATH,
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s:%(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
-# Função para carregar configuração
+# Se não houver StreamHandler, adiciona um para exibir logs no console (útil em builds de debug)
+root_logger = logging.getLogger()
+if not any(isinstance(h, logging.StreamHandler) for h in root_logger.handlers):
+    try:
+        sh = logging.StreamHandler(stream=sys.stdout)
+        sh.setLevel(logging.INFO)
+        sh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s:%(message)s'))
+        root_logger.addHandler(sh)
+    except Exception:
+        pass
+
+
+# Tratador global para exceções não capturadas - garante log antes do processo encerrar
+def _global_excepthook(exc_type, exc_value, exc_tb):
+    try:
+        logging.critical('Unhandled exception', exc_info=(exc_type, exc_value, exc_tb))
+        # também grava em arquivo separado rápido para visibilidade imediata
+        try:
+            with open(LOG_PATH + '.fatal', 'a', encoding='utf-8') as fh:
+                fh.write(f"{datetime.now().isoformat()} UNHANDLED: {exc_type} {exc_value}\n")
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+sys.excepthook = _global_excepthook
+
 
 def load_config():
     try:
-        with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        # Se não existir, copia config.json padrão do diretório do programa
+        if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        # fallback: try to copy default config next to the app
         default_path = os.path.join(os.path.dirname(__file__), 'config.json')
         if os.path.exists(default_path):
             try:
-                import shutil
                 shutil.copy(default_path, CONFIG_PATH)
                 with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
                     return json.load(f)
             except Exception:
                 pass
-        return {"equipamentos": []}
+    except Exception:
+        logging.exception('Falha ao carregar config')
+    # default minimal config
+    return {"lojas": [], "equipamentos": []}
 
-# Função para cadastrar novo equipamento
 
 def cadastrar_equipamento(ip, porta, descricao):
     config = load_config()
-    config["equipamentos"].append({"ip": ip, "porta": porta, "descricao": descricao})
+    if 'equipamentos' not in config:
+        config['equipamentos'] = []
+    config['equipamentos'].append({"ip": ip, "porta": porta, "descricao": descricao})
     with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2)
-    print(f"Equipamento cadastrado: {ip}:{porta} - {descricao}")
+    logging.info(f"Equipamento cadastrado: {ip}:{porta} - {descricao}")
 
-# Função para buscar dados do PRECIX (API)
+
 def buscar_dados_precix(api_url):
     try:
-        response = requests.get(api_url)
+        logging.info(f"[API] Buscando dados de preços em: {api_url}")
+        response = requests.get(api_url, timeout=20)
         response.raise_for_status()
+        logging.info(f"[API] Conteúdo bruto retornado (preview): {response.text[:1000]}")
         dados = response.json()
-        logging.info(f"Dados recebidos da API: {type(dados)} - {str(dados)[:500]}")
+        logging.info(f"[API] Dados recebidos: {type(dados)} - {str(dados)[:500]}")
         return dados
     except Exception as e:
         logging.error(f"Erro ao buscar dados PRECIX: {e}")
         return None
 
-# Função para gerar arquivo de preços (exemplo: pricetab.txt)
-def gerar_arquivo_precos(dados, filename):
+
+def gerar_arquivo_precos(dados, filename, incluir_cabecalho=None):
     try:
-        config = load_config()
-        sep = config.get('arquivo_separador', ';')
-        campos = config.get('arquivo_campos', ['barcode', 'name', 'price'])
-        local = config.get('arquivo_local', LOG_DIR)
-        # Permitir que o campo aceite tanto pasta quanto caminho completo de arquivo
-        if local.lower().endswith('.txt'):
-            abs_path = local
-        else:
-            abs_path = os.path.join(local, 'pricetab.txt')
-        ia_ativo = config.get('ia_ativo', False)
-        layout = config.get('arquivo_layout', 'barcode;name;price')
-        loja_codigo = config.get('loja_codigo', '')
-        loja_nome = config.get('loja_nome', '')
-        produtos = None
-        # Se a resposta for uma lista, já são os produtos
+        logging.info(f"[DEBUG] gerar_arquivo_precos: tipo(dados)={type(dados)}, preview={str(dados)[:500]}")
+        produtos = []
         if isinstance(dados, list):
-            produtos = dados
-        # Se for dict, pode estar em 'produtos' ou ser um único produto
+            produtos = [p for p in dados if isinstance(p, dict)]
         elif isinstance(dados, dict):
             if 'produtos' in dados and isinstance(dados['produtos'], list):
-                produtos = dados['produtos']
-            elif 'barcode' in dados:
+                produtos = [p for p in dados['produtos'] if isinstance(p, dict)]
+            elif 'products' in dados and isinstance(dados['products'], list):
+                produtos = [p for p in dados['products'] if isinstance(p, dict)]
+            elif any(k in dados for k in ('barcode', 'name', 'price')):
                 produtos = [dados]
-            else:
-                produtos = []
+        logging.info(f"[DEBUG] gerar_arquivo_precos: produtos extraidos tipo={type(produtos)}, quantidade={len(produtos)}")
+        sep = '|'
+        config_path = os.path.join(os.environ.get('LOCALAPPDATA', os.getcwd()), 'AgentePRECIX', 'config.json')
+        incluir_cabecalho_flag = False
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                sep = config.get('arquivo_separador', '|')
+                incluir_cabecalho_flag = config.get('arquivo_incluir_cabecalho', False)
+            except Exception:
+                pass
+        if incluir_cabecalho is not None:
+            incluir_cabecalho_flag = incluir_cabecalho
+        colunas_esperadas = ['barcode', 'name', 'price']
+        colunas_faltando = set()
+        for produto in produtos:
+            for col in colunas_esperadas:
+                if col not in produto:
+                    colunas_faltando.add(col)
+        if colunas_faltando:
+            logging.warning(f"[AVISO] Algumas colunas esperadas não existem nos dados: {colunas_faltando}. Primeiros produtos: {produtos[:3]}")
+        # Garante diretório do arquivo
+        if filename:
+            os.makedirs(os.path.dirname(filename), exist_ok=True)
         else:
-            produtos = []
-        # Correção: garantir layout e campos válidos
-        if not layout:
-            layout = 'barcode;name;price'
-        if not campos or not isinstance(campos, list):
-            campos = ['barcode', 'name', 'price']
-        # Garante que o separador do layout seja o mesmo do separador configurado
-        if sep not in layout:
-            # fallback: tenta split por ; ou |
-            if ';' in layout:
-                campos_layout = layout.split(';')
-            elif '|' in layout:
-                campos_layout = layout.split('|')
-            else:
-                campos_layout = layout.split(sep)
-        else:
-            campos_layout = layout.split(sep)
-        logging.info(f"Produtos extraídos: {type(produtos)} - Quantidade: {len(produtos) if produtos else 0}")
-        logging.info(f"Primeiros produtos: {str(produtos[:3])}")
-        if not produtos or len(produtos) == 0:
-            logging.error(f"Nenhum produto válido para gerar arquivo de preços. Dados recebidos: {str(dados)[:500]}")
-            return
-        with open(abs_path, 'w', encoding='utf-8') as f:
-            for produto in produtos:
-                if not isinstance(produto, dict):
-                    logging.error(f"Produto inválido (não é dict): {type(produto)} - {produto}")
-                    continue
-                linha = sep.join([str(produto.get(c, '')) for c in campos_layout]) + '\n'
+            raise ValueError('Nome de arquivo de saída inválido')
+        logging.info(f"[DEBUG] Caminho final do arquivo de saída (corrigido): {filename}")
+        with open(filename, 'w', encoding='utf-8') as f:
+            if incluir_cabecalho_flag:
+                f.write(sep.join(colunas_esperadas) + '\n')
+            if not produtos:
+                logging.warning(f"[AVISO] Nenhum produto válido para gerar arquivo de preços. Dados recebidos: {str(dados)[:500]}")
+            for i, produto in enumerate(produtos):
+                linha = sep.join([
+                    str(produto.get('barcode', '')),
+                    str(produto.get('name', '')),
+                    str(produto.get('price', ''))
+                ]) + '\n'
                 f.write(linha)
-        logging.info(f"Arquivo de preços gerado: {abs_path} | Loja: {loja_codigo} - {loja_nome} | Layout: {layout}")
-        if ia_ativo:
-            logging.info("Agno IA: Sugestão - Layout OK, campos exportados: " + ', '.join(campos))
+                if i < 5:
+                    logging.info(f"[DEBUG] Linha {i}: {linha.strip()}")
+        logging.info(f"[OK] Arquivo de preços gerado: {filename} | Quantidade de produtos: {len(produtos)} | Delimitador: {sep} | Cabecalho: {incluir_cabecalho_flag}")
+        print(f"[OK] Arquivo de preços gerado: {filename} | Quantidade de produtos: {len(produtos)} | Delimitador: {sep} | Cabecalho: {incluir_cabecalho_flag}")
     except Exception as e:
-        logging.error(f"Erro ao gerar arquivo de preços: {e}")
+        logging.exception(f"[ERRO] Erro ao gerar arquivo de preços: {e}")
+        print(f"[ERRO] Erro ao gerar arquivo de preços: {e}")
+
 
 def enviar_arquivo_automatico(filepath):
     """Envia o arquivo de preços conforme configuração da aba Envio (FTP/TCP/LOCAL)."""
-    import json
     import traceback
-    import datetime
     try:
-        with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-            config = json.load(f)
+        config = load_config()
     except Exception as e:
-        print(f'[ERRO][{datetime.datetime.now()}] Falha ao ler config: {e}\n{traceback.format_exc()}')
+        logging.exception('Falha ao ler config no envio automático')
         return
     metodo = config.get('envio_metodo', 'LOCAL')
     host = config.get('envio_host', '')
-    porta = int(config.get('envio_porta', 21))
+    porta = int(config.get('envio_porta', 21) or 21)
     usuario = config.get('envio_usuario', '')
     senha = config.get('envio_senha', '')
-    print(f'[INFO][{datetime.datetime.now()}] Iniciando envio automático: metodo={metodo}, host={host}, porta={porta}, usuario={usuario}, arquivo={filepath}')
+    logging.info(f'Iniciando envio automático: metodo={metodo}, host={host}, porta={porta}, usuario={usuario}, arquivo={filepath}')
     if metodo == 'FTP':
         try:
             ftp = ftplib.FTP()
             ftp.connect(host, porta, timeout=10)
-            print(f'[INFO][{datetime.datetime.now()}] Conectado ao FTP {host}:{porta}')
             ftp.login(usuario, senha)
-            print(f'[INFO][{datetime.datetime.now()}] Login FTP realizado com sucesso.')
-            ftp.cwd('/dist')
+            try:
+                ftp.cwd('/dist')
+            except Exception:
+                pass
             with open(filepath, 'rb') as f:
                 ftp.storbinary(f'STOR {os.path.basename(filepath)}', f)
-            print(f'[INFO][{datetime.datetime.now()}] Upload de {os.path.basename(filepath)} realizado com sucesso.')
             ftp.quit()
-        except Exception as e:
-            print(f'[ERRO][{datetime.datetime.now()}] Falha ao enviar via FTP: {e}\n{traceback.format_exc()}')
+            logging.info('Upload FTP realizado com sucesso')
+        except Exception:
+            logging.exception('Falha ao enviar via FTP; fallback para LOCAL')
+            return
     elif metodo == 'TCP':
         try:
             with open(filepath, 'rb') as f:
@@ -216,13 +211,97 @@ def enviar_arquivo_automatico(filepath):
             s.connect((host, porta))
             s.sendall(data)
             s.close()
-            print(f'[INFO][{datetime.datetime.now()}] Envio TCP realizado com sucesso.')
-        except Exception as e:
-            print(f'[ERRO][{datetime.datetime.now()}] Falha ao enviar via TCP: {e}\n{traceback.format_exc()}')
+            logging.info('Envio TCP realizado com sucesso')
+        except Exception:
+            logging.exception('Falha ao enviar via TCP')
     else:
-        print(f'[INFO][{datetime.datetime.now()}] Modo LOCAL: arquivo mantido localmente.')
+        logging.info('Modo LOCAL: arquivo mantido localmente')
 
-# Função para obter o IP local
+
+def enviar_para_api(dados):
+    """Enviar dados para uma API configurada (atualiza PWA / backend)."""
+    try:
+        if not dados:
+            logging.info('enviar_para_api: nenhum dado para enviar')
+            return
+        config = load_config()
+        # busca chaves possíveis para endpoint de atualização
+        api_destino = config.get('api_update') or config.get('api_destino') or config.get('backend_url') or config.get('api_externa') or config.get('api_url')
+        if not api_destino:
+            logging.info('Nenhum endpoint de API configurado para envio de preços (api_update/api_destino/backend_url)')
+            return
+        logging.info(f'enviar_para_api: enviando para {api_destino} | quantidade={len(dados) if isinstance(dados, list) else 1}')
+        try:
+            resp = requests.post(api_destino, json=dados, timeout=15)
+            resp.raise_for_status()
+            logging.info(f'enviar_para_api: envio concluido, status={resp.status_code}')
+        except Exception:
+            logging.exception('enviar_para_api: falha ao enviar dados para API')
+    except Exception:
+        logging.exception('enviar_para_api: erro inesperado')
+
+
+def buscar_dados_do_banco(config):
+    """Lê dados de preços de uma fonte de banco (SQLite) quando configurado.
+    Espera chaves em config: 'db_path' (caminho sqlite) e opcionalmente 'db_query'.
+    Retorna lista de dicionários ou None.
+    """
+    try:
+        db_tipo = (config.get('db_tipo') or 'SQLite').lower()
+        # Por enquanto, só implementamos SQLite local. Outros SGBDs serão adicionados conforme necessidade.
+        if db_tipo != 'sqlite' and db_tipo != 'sqlite3':
+            logging.info(f'buscar_dados_do_banco: tipo de BD solicitado ({db_tipo}) não suportado nesta versão')
+            return None
+
+        # aceitar várias chaves que a UI pode gravar
+        db_path = config.get('db_path') or config.get('db_nome') or config.get('db_file')
+        query = config.get('db_query') or config.get('db_sql') or "SELECT barcode, name, price FROM preco_view"
+
+        if not db_path:
+            logging.info('buscar_dados_do_banco: db_path/db_nome não configurado')
+            return None
+
+        # resolver caminhos relativos: tentamos valores absolutos e locais comuns
+        candidates = [db_path]
+        if not os.path.isabs(db_path):
+            base = os.path.dirname(__file__)
+            candidates.append(os.path.join(base, db_path))
+            candidates.append(os.path.join(base, 'dist', db_path))
+            candidates.append(os.path.join(os.getcwd(), db_path))
+            # também procurar no diretório de dados do usuário
+            candidates.append(os.path.join(os.path.dirname(CONFIG_PATH), db_path))
+
+        found = None
+        for p in candidates:
+            try:
+                if p and os.path.exists(p):
+                    found = p
+                    break
+            except Exception:
+                continue
+
+        if not found:
+            logging.info(f'buscar_dados_do_banco: arquivo sqlite não encontrado em candidatos: {candidates}')
+            return None
+
+        import sqlite3
+        conn = sqlite3.connect(found)
+        cur = conn.cursor()
+        cur.execute(query)
+        cols = [c[0] for c in cur.description] if cur.description else []
+        rows = cur.fetchall()
+        resultados = []
+        for r in rows:
+            linha = {cols[i]: r[i] for i in range(len(cols))}
+            resultados.append(linha)
+        conn.close()
+        logging.info(f'buscar_dados_do_banco: registros lidos={len(resultados)} from {found}')
+        return resultados
+    except Exception:
+        logging.exception('buscar_dados_do_banco: erro ao ler banco de dados')
+        return None
+
+
 def get_local_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -233,8 +312,9 @@ def get_local_ip():
     except Exception:
         return "-"
 
-# Caminho do arquivo de status no backend
-AGENTS_STATUS_PATH = r'd:\Sonda\Precix\backend\agents_status.json'
+
+AGENTS_STATUS_PATH = os.path.join(os.path.dirname(__file__), '..', 'backend', 'agents_status.json')
+
 
 def salvar_status_agente():
     status = {
@@ -246,153 +326,86 @@ def salvar_status_agente():
         "ultima_atualizacao": datetime.now().strftime("%d/%m/%Y, %H:%M:%S")
     }
     try:
+        os.makedirs(os.path.dirname(AGENTS_STATUS_PATH), exist_ok=True)
         with open(AGENTS_STATUS_PATH, 'w', encoding='utf-8') as f:
             json.dump([status], f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        logging.error(f"Erro ao salvar status do agente: {e}")
+    except Exception:
+        logging.exception('Erro ao salvar status do agente')
 
-# Exemplo de uso: salve o status a cada 10 segundos em thread separada
+
 def iniciar_status_heartbeat():
     import threading
+
     def loop():
         while True:
-            salvar_status_agente()
+            try:
+                salvar_status_agente()
+            except Exception:
+                logging.exception('Erro ao salvar status no heartbeat')
             time.sleep(10)
+
     t = threading.Thread(target=loop, daemon=True)
     t.start()
 
-# No início do main, chame iniciar_status_heartbeat()
-# Funções CRUD para lojas
-def editar_loja(codigo, novo_nome):
-    config = load_config()
-    lojas = config.get('lojas', [])
-    for loja in lojas:
-        if loja.get('codigo') == codigo:
-            loja['nome'] = novo_nome
-            logging.info(f"Loja editada: {codigo} -> {novo_nome}")
-            break
-    else:
-        logging.warning(f"Loja não encontrada para edição: {codigo}")
-    config['lojas'] = lojas
-    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=2)
 
-def excluir_loja(codigo):
-    config = load_config()
-    lojas = config.get('lojas', [])
-    novas_lojas = [l for l in lojas if l.get('codigo') != codigo]
-    if len(novas_lojas) < len(lojas):
-        logging.info(f"Loja excluída: {codigo}")
-    else:
-        logging.warning(f"Loja não encontrada para exclusão: {codigo}")
-    config['lojas'] = novas_lojas
-    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=2)
-
-# Funções CRUD para equipamentos
-def editar_equipamento(ip, porta, novo_ip=None, nova_porta=None, nova_descricao=None):
-    config = load_config()
-    equipamentos = config.get('equipamentos', [])
-    for eq in equipamentos:
-        if eq.get('ip') == ip and str(eq.get('porta')) == str(porta):
-            if novo_ip:
-                eq['ip'] = novo_ip
-            if nova_porta:
-                eq['porta'] = nova_porta
-            if nova_descricao:
-                eq['descricao'] = nova_descricao
-            logging.info(f"Equipamento editado: {ip}:{porta} -> {eq}")
-            break
-    else:
-        logging.warning(f"Equipamento não encontrado para edição: {ip}:{porta}")
-    config['equipamentos'] = equipamentos
-    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=2)
-
-def excluir_equipamento(ip, porta):
-    config = load_config()
-    equipamentos = config.get('equipamentos', [])
-    novos_equip = [eq for eq in equipamentos if not (eq.get('ip') == ip and str(eq.get('porta')) == str(porta))]
-    if len(novos_equip) < len(equipamentos):
-        logging.info(f"Equipamento excluído: {ip}:{porta}")
-    else:
-        logging.warning(f"Equipamento não encontrado para exclusão: {ip}:{porta}")
-    config['equipamentos'] = novos_equip
-    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=2)
-
-# Função de IA embarcada (estrutura inicial)
 def ia_supervisao(equipamento, status):
-    # Exemplo: ações automáticas e sugestão de correções
     if not status:
-        logging.warning(f"Falha detectada no equipamento {equipamento['ip']}:{equipamento['porta']}")
-        # Aqui pode-se implementar ações corretivas automáticas
-        # Exemplo: reiniciar serviço, reenviar arquivo, alertar suporte
-        # ...
+        logging.warning(f"Falha detectada no equipamento {equipamento.get('ip')}:{equipamento.get('porta')}")
     else:
-        logging.info(f"Equipamento OK: {equipamento['ip']}:{equipamento['porta']}")
+        logging.info(f"Equipamento OK: {equipamento.get('ip')}:{equipamento.get('porta')}")
 
-# Função para forçar atualização manual
+
 def forcar_atualizacao_manual():
-    """Força a geração e envio do pricetab.txt para todos os equipamentos."""
     config = load_config()
-    api_url = config.get('api_url', 'http://localhost:8000/api/produtos')
-    usuario = config.get('ftp_usuario', 'user')
-    senha = config.get('ftp_senha', 'pass')
+    api_url = config.get('api_externa') or config.get('api_url')
+    if not api_url:
+        logging.error('[ERRO] Nenhuma URL de API configurada no config.json!')
+        return
     dados = buscar_dados_precix(api_url)
-    historico = []
+    arquivo_saida = config.get('arquivo_local')
+    if arquivo_saida and arquivo_saida.count('pricetab.txt') > 1:
+        partes = arquivo_saida.split('pricetab.txt')
+        arquivo_saida = ''.join(partes[:-1]) + 'pricetab.txt'
+    logging.info(f"[DEBUG] Caminho final do arquivo de saída: {arquivo_saida}")
+    try:
+        if arquivo_saida and os.path.exists(arquivo_saida):
+            os.remove(arquivo_saida)
+    except Exception:
+        logging.warning('Não foi possível remover arquivo antigo')
     if dados:
         try:
-            gerar_arquivo_precos(dados, os.path.join(LOG_DIR, 'pricetab.txt'))
-        except Exception as e:
-            logging.error(f"Erro ao chamar gerar_arquivo_precos (manual): {e}")
+            os.makedirs(os.path.dirname(arquivo_saida), exist_ok=True)
+            gerar_arquivo_precos(dados, arquivo_saida)
+            # Após gerar o arquivo, enviar para a API e para o método configurado (FTP/TCP/LOCAL)
+            try:
+                enviar_para_api(dados)
+            except Exception:
+                logging.exception('Erro ao enviar dados para API (forcar_atualizacao_manual)')
+            try:
+                enviar_arquivo_automatico(arquivo_saida)
+            except Exception:
+                logging.exception('Erro ao executar envio automático (forcar_atualizacao_manual)')
+        except Exception:
+            logging.exception('Erro ao gerar arquivo (forçar)')
         equipamentos = config.get('equipamentos', [])
         for equipamento in equipamentos:
-            status = monitorar_equipamento(equipamento['ip'], int(equipamento['porta']))
-            equipamento['status'] = status
-            ia_supervisao(equipamento, status)
-            if status == 'OK' or status == 'OK (ping)':
-                enviado = enviar_arquivo_ftp(
-                    equipamento['ip'],
-                    int(equipamento['porta']),
-                    usuario,
-                    senha,
-                    os.path.join(LOG_DIR, 'pricetab.txt'),
-                    'pricetab.txt'
-                )
-                if enviado:
-                    historico.append(f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Atualização enviada para {equipamento['ip']}:{equipamento['porta']} [{status}]")
-                    logging.info(f"Atualização enviada para {equipamento['ip']}:{equipamento['porta']} [{status}]")
-                else:
-                    historico.append(f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Falha ao enviar para {equipamento['ip']}:{equipamento['porta']} [{status}]")
-            else:
-                historico.append(f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Equipamento offline {equipamento['ip']}:{equipamento['porta']} [{status}]")
-        # Salva status e histórico no config.json
+            ia_supervisao(equipamento, None)
         config['equipamentos'] = equipamentos
-        config['historico_atualizacoes'] = '\n'.join(historico)
         config['ultima_atualizacao'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2)
-    else:
-        logging.error("Falha ao buscar dados PRECIX para atualização manual.")
 
-# Função para enviar status do agente local para o backend PRECIX
+
 def enviar_status_agente():
-    """Envia status do agente local para o backend PRECIX."""
     config = load_config()
-    backend_url = config.get('backend_url')
-    if not backend_url:
-        backend_url = 'http://192.168.18.7:8000/admin/agents/status'
+    backend_url = config.get('backend_url') or 'http://192.168.18.7:8000/admin/agents/status'
     agent_id = config.get('agente_id') or str(uuid.getnode())
-    # Busca loja_codigo e loja_nome direto ou do primeiro item de 'lojas'
     loja_codigo = config.get('loja_codigo')
     loja_nome = config.get('loja_nome')
-    if (not loja_codigo or not loja_nome) and 'lojas' in config and isinstance(config['lojas'], list) and len(config['lojas']) > 0:
+    if (not loja_codigo or not loja_nome) and isinstance(config.get('lojas'), list) and len(config.get('lojas', [])) > 0:
         loja = config['lojas'][0]
-        if not loja_codigo:
-            loja_codigo = loja.get('codigo')
-        if not loja_nome:
-            loja_nome = loja.get('nome')
+        loja_codigo = loja_codigo or loja.get('codigo')
+        loja_nome = loja_nome or loja.get('nome')
     status_payload = {
         "agent_id": agent_id,
         "status": "online",
@@ -404,90 +417,114 @@ def enviar_status_agente():
         status_payload["loja_nome"] = loja_nome
     try:
         requests.post(backend_url, json=status_payload, timeout=5)
-    except Exception as e:
-        logging.error(f"Erro ao enviar status do agente local: {e}")
+    except Exception:
+        logging.exception('Erro ao enviar status do agente local')
 
-# Função principal expandida
+
 def main():
-    logging.basicConfig(filename=LOG_PATH, level=logging.INFO)
     print("Agente Local PRECIX iniciado.")
-    while True:
-        config = load_config()
-        intervalo = int(config.get('automacao_intervalo', 1))  # em minutos
-        forcar = config.get('forcar_atualizacao', False)
-        enviar_status_agente()  # Envia status a cada ciclo
-        fonte = config.get('tipo_integracao', 'Arquivo')
-        dados = None
-        if fonte == 'API':
-            # Usa sempre api_externa, se não existir, tenta api_url
-            api_url = config.get('api_externa') or config.get('api_url') or 'http://192.168.18.7:8000/product/all'
-            dados = buscar_dados_precix(api_url)
-        elif fonte == 'Arquivo':
-            arquivo = config.get('arquivo_origem', '')
-            if arquivo and os.path.exists(arquivo):
-                try:
-                    with open(arquivo, 'r', encoding='utf-8') as f:
-                        import csv
-                        reader = csv.DictReader(f, delimiter=config.get('arquivo_separador', ';'))
-                        dados = [row for row in reader]
-                except Exception as e:
-                    logging.error(f"Erro ao ler arquivo de origem: {e}")
-            else:
-                logging.error('Arquivo de origem não informado ou não encontrado.')
-        elif fonte == 'Banco de Dados':
-            dados = buscar_dados_banco()
-        else:
-            logging.error(f'Fonte de dados desconhecida: {fonte}')
+    try:
+        iniciar_status_heartbeat()
+    except Exception:
+        logging.exception('Falha ao iniciar heartbeat')
 
-        if forcar:
-            try:
-                logging.info(f"[DEBUG] Conteúdo de dados (forcar): {type(dados)} - {str(dados)[:500]}")
-                gerar_arquivo_precos(dados, os.path.join(LOG_DIR, 'pricetab.txt'))
-                logging.info("Atualização manual forçada executada com sucesso.")
-            except Exception as e:
-                logging.error(f"Erro ao executar atualização manual forçada: {e}")
-            # Sempre zera a flag, mesmo em caso de erro
-            config['forcar_atualizacao'] = False
-            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-                json.dump(config, f, indent=2)
-        else:
-            if dados:
+    while True:
+        try:
+            config = load_config()
+            intervalo = int(config.get('automacao_intervalo', 1))
+            forcar = config.get('forcar_atualizacao', False)
+            enviar_status_agente()
+            fonte = config.get('tipo_integracao', 'Arquivo')
+            dados = None
+            if fonte == 'API':
+                api_url = config.get('api_externa') or config.get('api_url')
+                if api_url:
+                    dados = buscar_dados_precix(api_url)
+                else:
+                    logging.error('[ERRO] Nenhuma URL de API configurada no config.json!')
+            elif fonte == 'Arquivo':
+                # aceita várias chaves possíveis que a UI pode gravar
+                arquivo = config.get('arquivo_origem') or config.get('arquivo_entrada') or config.get('arquivo_entrada_arquivo') or ''
+                sep = config.get('arquivo_separador') or config.get('arquivo_separador_custom') or '|'
+                layout = config.get('arquivo_layout') or 'barcode|name|price'
+                if arquivo and os.path.exists(arquivo):
+                    try:
+                        # Ler manualmente para suportar arquivos sem cabeçalho
+                        with open(arquivo, 'r', encoding='utf-8', errors='ignore') as f:
+                            lines = [ln.rstrip('\n') for ln in f if ln.strip()]
+                        dados_temp = []
+                        cols = [c.strip() for c in layout.split(sep)]
+                        for i, line in enumerate(lines):
+                            parts = [p for p in line.split(sep)]
+                            # pular header se for igual ao layout
+                            if i == 0 and [p.strip().lower() for p in parts] == [c.lower() for c in cols]:
+                                continue
+                            # construir dicionário baseado no layout por posição
+                            row = {}
+                            for idx, col in enumerate(cols):
+                                row[col] = parts[idx].strip() if idx < len(parts) else ''
+                            dados_temp.append(row)
+                        dados = dados_temp
+                    except Exception:
+                        logging.exception('Erro ao ler/processar arquivo de origem')
+                else:
+                    logging.info('Arquivo de origem não informado ou não encontrado.')
+            elif fonte == 'Banco de Dados':
+                # usa a função implementada para leitura de DB (SQLite por enquanto)
                 try:
-                    logging.info(f"[DEBUG] Conteúdo de dados: {type(dados)} - {str(dados)[:500]}")
-                    gerar_arquivo_precos(dados, os.path.join(LOG_DIR, 'pricetab.txt'))
-                except Exception as e:
-                    logging.error(f"Erro ao chamar gerar_arquivo_precos: {e}")
-                historico = []
-                equipamentos = config.get('equipamentos', [])
-                for equipamento in equipamentos:
-                    status = monitorar_equipamento(equipamento['ip'], int(equipamento['porta']))
-                    equipamento['status'] = status
-                    ia_supervisao(equipamento, status)
-                    if status == 'OK' or status == 'OK (ping)':
-                        enviado = enviar_arquivo_ftp(
-                            equipamento['ip'],
-                            int(equipamento['porta']),
-                            config.get('ftp_usuario', 'user'),
-                            config.get('ftp_senha', 'pass'),
-                            os.path.join(LOG_DIR, 'pricetab.txt'),
-                            'pricetab.txt'
-                        )
-                        if enviado:
-                            historico.append(f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Atualização enviada para {equipamento['ip']}:{equipamento['porta']} [{status}]")
-                            logging.info(f"Atualização enviada para {equipamento['ip']}:{equipamento['porta']} [{status}]")
-                        else:
-                            historico.append(f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Falha ao enviar para {equipamento['ip']}:{equipamento['porta']} [{status}]")
-                    else:
-                        historico.append(f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Equipamento offline {equipamento['ip']}:{equipamento['porta']} [{status}]")
-                # Salva status e histórico no config.json
-                config['equipamentos'] = equipamentos
-                config['historico_atualizacoes'] = '\n'.join(historico)
-                config['ultima_atualizacao'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+                    dados = buscar_dados_do_banco(config)
+                except Exception:
+                    logging.exception('Erro ao buscar dados do banco (fluxo principal)')
+                    dados = None
+
+            arquivo_saida = config.get('arquivo_local') or os.path.join(os.getcwd(), 'pricetab.txt')
+            arquivo_saida = os.path.normpath(arquivo_saida)
+            if arquivo_saida.lower().count('pricetab.txt') > 1:
+                arquivo_saida = arquivo_saida.lower().split('pricetab.txt')[-2] + 'pricetab.txt'
+            logging.info(f"[DEBUG] Caminho final do arquivo de saída (normalizado): {arquivo_saida}")
+            os.makedirs(os.path.dirname(arquivo_saida), exist_ok=True)
+
+            if forcar:
+                try:
+                    if dados:
+                        gerar_arquivo_precos(dados, arquivo_saida)
+                        # Após gerar o arquivo automático, enviar para API e enviar conforme método
+                        try:
+                            enviar_para_api(dados)
+                        except Exception:
+                            logging.exception('Erro ao enviar dados para API (loop principal)')
+                        try:
+                            enviar_arquivo_automatico(arquivo_saida)
+                        except Exception:
+                            logging.exception('Erro ao executar envio automático (loop principal)')
+                        logging.info('Atualização manual forçada executada com sucesso.')
+                except Exception:
+                    logging.exception('Erro ao executar atualização manual forçada')
+                config['forcar_atualizacao'] = False
                 with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
                     json.dump(config, f, indent=2)
-        time.sleep(intervalo * 60)
+            else:
+                if dados:
+                    try:
+                        gerar_arquivo_precos(dados, arquivo_saida)
+                    except Exception:
+                        logging.exception('Erro ao chamar gerar_arquivo_precos')
 
-if __name__ == "__main__":
-    # Garante que só roda como serviço
-    iniciar_status_heartbeat()
-    main()
+        except Exception:
+            logging.exception('Erro inesperado no loop principal')
+
+        try:
+            time.sleep(intervalo * 60)
+        except Exception:
+            time.sleep(60)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        print('Interrompido pelo usuário')
+    except Exception:
+        logging.exception('Falha fatal ao iniciar o Agente')
+
+

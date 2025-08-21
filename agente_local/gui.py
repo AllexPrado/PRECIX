@@ -1,7 +1,4 @@
-from PyQt5.QtWidgets import QApplication
 import sys
-if QApplication.instance() is None:
-    _app = QApplication(sys.argv)
 """
 Interface gráfica (GUI) do Agente Local PRECIX
 Este arquivo deve ser executado apenas para interface, nunca importar ou executar loops do serviço.
@@ -304,6 +301,10 @@ class ConfiguracaoArquivoWidget(QWidget):
         self.layout.addWidget(self.barcode_cb)
         self.layout.addWidget(self.name_cb)
         self.layout.addWidget(self.price_cb)
+        # Checkbox para incluir cabeçalho
+        self.cabecalho_cb = QCheckBox('Incluir cabeçalho no arquivo de preços')
+        self.cabecalho_cb.setChecked(False)
+        self.layout.addWidget(self.cabecalho_cb)
         # Botão de teste
         self.gerar_btn = QPushButton('Gerar arquivo de teste')
         self.gerar_btn.clicked.connect(self.gerar_arquivo_teste)
@@ -367,6 +368,7 @@ class ConfiguracaoArquivoWidget(QWidget):
             self.price_cb.setChecked('price' in config.get('arquivo_campos', ['barcode', 'name', 'price']))
             self.ia_cb.setChecked(config.get('ia_ativo', False))
             self.layout_input.setText(config.get('arquivo_layout', 'barcode;name;price'))
+            self.cabecalho_cb.setChecked(config.get('arquivo_incluir_cabecalho', False))
         except Exception:
             pass
 
@@ -403,15 +405,15 @@ class ConfiguracaoArquivoWidget(QWidget):
         config['arquivo_entrada'] = self.input_file_path.text().strip()
         config['ia_ativo'] = ia_ativo
         config['arquivo_layout'] = layout
+        config['arquivo_incluir_cabecalho'] = self.cabecalho_cb.isChecked()
         with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2)
         QMessageBox.information(self, 'Configuração', 'Configuração do arquivo salva com sucesso!')
 
     def processar_arquivo_entrada_automatico(self):
         # Rotina automática chamada pelo timer
-        import requests
-        import importlib
         try:
+            from main import gerar_arquivo_precos, enviar_arquivo_automatico
             # Carrega config para saber a fonte de dados
             if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
                 with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
@@ -419,13 +421,12 @@ class ConfiguracaoArquivoWidget(QWidget):
             else:
                 config = {}
             fonte = config.get('tipo_integracao', 'Arquivo')
-            campos = config.get('arquivo_campos', ['barcode', 'name', 'price'])
-            sep = config.get('arquivo_separador', ';')
             saida = config.get('arquivo_local', self.path_input.text().strip() or os.getcwd())
-            if os.path.isdir(saida):
-                arquivo_saida = os.path.join(saida, 'pricetab.txt')
-            else:
-                arquivo_saida = saida
+            arquivo_saida = saida
+            # Corrige duplicidade de nome de arquivo
+            if arquivo_saida and arquivo_saida.count('pricetab.txt') > 1:
+                partes = arquivo_saida.split('pricetab.txt')
+                arquivo_saida = ''.join(partes[:-1]) + 'pricetab.txt'
             produtos = []
             if fonte == 'Arquivo':
                 entrada = config.get('arquivo_entrada', self.input_file_path.text().strip())
@@ -441,18 +442,18 @@ class ConfiguracaoArquivoWidget(QWidget):
                     arquivo_cliente = entrada
                 with open(arquivo_cliente, 'r', encoding='utf-8') as f:
                     conteudo = f.read()
-                # Tenta converter para lista de produtos se possível, senão salva como está
                 linhas = [l.strip() for l in conteudo.splitlines() if l.strip()]
+                campos = config.get('arquivo_campos', ['barcode', 'name', 'price'])
+                sep = config.get('arquivo_separador', ';')
                 for linha in linhas:
                     partes = linha.split(sep)
                     if len(partes) == len(campos):
                         produtos.append(dict(zip(campos, partes)))
+                # Se não conseguiu converter, salva como texto puro
                 if not produtos:
-                    # fallback: salva o conteúdo bruto
-                    with open(arquivo_saida, 'w', encoding='utf-8') as f:
-                        f.write(conteudo)
-                        produtos = None
+                    produtos = conteudo
             elif fonte == 'API':
+                import requests
                 url = config.get('api_externa', '')
                 usuario = config.get('api_usuario', '')
                 senha = config.get('api_senha', '')
@@ -466,9 +467,12 @@ class ConfiguracaoArquivoWidget(QWidget):
                 r = requests.get(url, headers=headers, auth=auth, timeout=15)
                 r.raise_for_status()
                 data = r.json()
-                # Espera-se que data seja uma lista de produtos
-                produtos = data if isinstance(data, list) else data.get('produtos', [])
+                print('[DEBUG] Resposta da API:', str(data)[:500])
+                # Passa o dicionário completo para gerar_arquivo_precos
+                produtos = None
+                dados = data
             elif fonte == 'Banco de Dados':
+                import importlib
                 tipo = config.get('db_tipo', 'SQLite')
                 host = config.get('db_host', '')
                 porta = config.get('db_porta', '')
@@ -522,15 +526,14 @@ class ConfiguracaoArquivoWidget(QWidget):
                         cur.execute(sql)
                         produtos = [dict(zip([d[0] for d in cur.description], row)) for row in cur.fetchall()]
                         conn.close()
-            # Geração do arquivo texto para equipamentos legados
-            if produtos is not None:
-                with open(arquivo_saida, 'w', encoding='utf-8') as f:
-                    for p in produtos:
-                        linha = sep.join([str(p.get(c, '')) for c in campos]) + '\n'
-                        f.write(linha)
+            # Geração do arquivo texto para equipamentos legados usando main.py
+            if fonte == 'API' and dados is not None:
+                print('[DEBUG] Dados enviados para gerar_arquivo_precos:', str(dados)[:500])
+                gerar_arquivo_precos(dados, arquivo_saida, incluir_cabecalho=config.get('arquivo_incluir_cabecalho', False))
+            else:
+                gerar_arquivo_precos(produtos, arquivo_saida, incluir_cabecalho=config.get('arquivo_incluir_cabecalho', False))
             # Envio automático após gerar arquivo
             try:
-                from main import enviar_arquivo_automatico
                 enviar_arquivo_automatico(arquivo_saida)
             except Exception as e:
                 print(f'Erro ao enviar arquivo automaticamente: {e}')
@@ -539,11 +542,12 @@ class ConfiguracaoArquivoWidget(QWidget):
 
     def processar_arquivo_entrada(self):
         from PyQt5.QtWidgets import QMessageBox
-        entrada = self.input_file_path.text().strip()
-        if not entrada:
-            QMessageBox.warning(self, 'Atenção', 'Selecione o arquivo ou pasta de entrada do cliente.')
-            return
         try:
+            from main import gerar_arquivo_precos, enviar_arquivo_automatico
+            entrada = self.input_file_path.text().strip()
+            if not entrada:
+                QMessageBox.warning(self, 'Atenção', 'Selecione o arquivo ou pasta de entrada do cliente.')
+                return
             if os.path.isdir(entrada):
                 arquivos = [f for f in os.listdir(entrada) if f.lower().endswith('.txt')]
                 if not arquivos:
@@ -555,16 +559,30 @@ class ConfiguracaoArquivoWidget(QWidget):
                 arquivo_cliente = entrada
             with open(arquivo_cliente, 'r', encoding='utf-8') as f:
                 conteudo = f.read()
-            saida = self.path_input.text().strip() or os.getcwd()
-            if os.path.isdir(saida):
-                arquivo_saida = os.path.join(saida, 'pricetab.txt')
+            linhas = [l.strip() for l in conteudo.splitlines() if l.strip()]
+            # Carrega config para campos e separador
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
             else:
-                arquivo_saida = saida
-            with open(arquivo_saida, 'w', encoding='utf-8') as f:
-                f.write(conteudo)
-            # Envio automático após gerar arquivo
+                config = {}
+            campos = config.get('arquivo_campos', ['barcode', 'name', 'price'])
+            sep = config.get('arquivo_separador', ';')
+            produtos = []
+            for linha in linhas:
+                partes = linha.split(sep)
+                if len(partes) == len(campos):
+                    produtos.append(dict(zip(campos, partes)))
+            # Se não conseguiu converter, salva como texto puro
+            if not produtos:
+                produtos = conteudo
+            saida = self.path_input.text().strip() or os.getcwd()
+            arquivo_saida = saida
+            if arquivo_saida and arquivo_saida.count('pricetab.txt') > 1:
+                partes = arquivo_saida.split('pricetab.txt')
+                arquivo_saida = ''.join(partes[:-1]) + 'pricetab.txt'
+            gerar_arquivo_precos(produtos, arquivo_saida, incluir_cabecalho=config.get('arquivo_incluir_cabecalho', False))
             try:
-                from main import enviar_arquivo_automatico
                 enviar_arquivo_automatico(arquivo_saida)
             except Exception as e:
                 print(f'Erro ao enviar arquivo automaticamente: {e}')
@@ -576,30 +594,24 @@ class ConfiguracaoArquivoWidget(QWidget):
         sep = self.get_separador()
         campos = self.get_campos()
         path = self.path_input.text() or '.'
-        # Se o usuário já forneceu um arquivo, usa direto; se for pasta, adiciona pricetab.txt
-        if os.path.isdir(path):
-            filename = os.path.join(path, 'pricetab.txt')
-        else:
-            filename = path
+        filename = path
+        if filename and filename.count('pricetab.txt') > 1:
+            partes = filename.split('pricetab.txt')
+            filename = ''.join(partes[:-1]) + 'pricetab.txt'
         produtos = [
             {'barcode': '123', 'name': 'Produto A', 'price': 10.5},
             {'barcode': '456', 'name': 'Produto B', 'price': 20.0}
         ]
         try:
-            with open(filename, 'w', encoding='utf-8') as f:
-                for p in produtos:
-                    linha = sep.join([str(p.get(c, '')) for c in campos]) + '\n'
-                    f.write(linha)
-            # Envio automático após gerar arquivo
+            from main import gerar_arquivo_precos, enviar_arquivo_automatico
+            gerar_arquivo_precos(produtos, filename, incluir_cabecalho=self.cabecalho_cb.isChecked())
             try:
-                from main import enviar_arquivo_automatico
                 enviar_arquivo_automatico(filename)
             except Exception as e:
                 print(f'Erro ao enviar arquivo automaticamente: {e}')
             QMessageBox.information(self, 'Arquivo gerado', f'Arquivo de teste gerado em: {filename}')
         except Exception as e:
             QMessageBox.critical(self, 'Erro', f'Falha ao gerar arquivo: {str(e)}')
-        # Não altera config.json!
         if self.ia_cb.isChecked():
             self.ia_output.setText('Agno IA: Sugestão - Layout OK, campos exportados: ' + ', '.join(campos))
         else:
