@@ -41,3 +41,26 @@ build/
 *.exe
 *.msi
 *.iss
+
+# Agente local (não versionar arquivos de configuração e dados sensíveis gerados localmente)
+agente_local/config.json
+agente_local/acks.jsonl
+agente_local/agent_status.json
+agente_local/agente.log
+agente_local/dist/nssm/
+
+# Dados locais do usuário (não versionar AppData, credenciais, tokens)
+# Note: o instalador e artefatos de build controlam quais arquivos finais são empacotados.
+C:\Users\*/AppData/Local/AgentePRECIX/
+
+# Arquivos de configuração gerados por instaladores e ambientes locais
+*.localconfig
+*.secret
+secrets/
+.credentials
+
+# Ignore config files that may exist outside agente_local
+config.json
+*.key
+*.pem
+*.pfx
