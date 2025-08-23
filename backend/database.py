@@ -38,6 +38,50 @@ def get_product_by_barcode(barcode: str) -> Optional[Dict]:
     return None
 
 
+def upsert_products(products: list):
+    """Insere ou atualiza produtos em lote.
+
+    products: lista de dicionários com, pelo menos, 'barcode' e 'price'.
+    Retorna um dicionário com contadores: inserted, updated, ignored.
+    """
+    if not products:
+        return {'inserted': 0, 'updated': 0, 'ignored': 0}
+    conn = get_db_connection()
+    cur = conn.cursor()
+    inserted = 0
+    updated = 0
+    ignored = 0
+    for p in products:
+        try:
+            if not isinstance(p, dict):
+                ignored += 1
+                continue
+            barcode = str(p.get('barcode') or p.get('codigo') or '').strip()
+            if not barcode:
+                ignored += 1
+                continue
+            name = p.get('name') or p.get('nome') or ''
+            try:
+                price = float(p.get('price') if p.get('price') is not None else 0)
+            except Exception:
+                price = 0.0
+            promo = p.get('promo') or p.get('promocao') or None
+            # detecta presença
+            cur.execute('SELECT 1 FROM products WHERE barcode = ?', (barcode,))
+            if cur.fetchone():
+                cur.execute('UPDATE products SET name = ?, price = ?, promo = ? WHERE barcode = ?', (name, price, promo, barcode))
+                updated += 1
+            else:
+                cur.execute('INSERT INTO products (barcode, name, price, promo) VALUES (?, ?, ?, ?)', (barcode, name, price, promo))
+                inserted += 1
+        except Exception:
+            ignored += 1
+            continue
+    conn.commit()
+    conn.close()
+    return {'inserted': inserted, 'updated': updated, 'ignored': ignored}
+
+
 # Função para inicializar o banco (criação das tabelas)
 def init_db():
     conn = get_db_connection()

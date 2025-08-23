@@ -16,10 +16,11 @@ import time
 import requests
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Body, Depends, Query
+from typing import List, Dict
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from database import get_product_by_barcode, init_db, populate_example_data, get_db_connection, authenticate_admin, get_system_status, export_products_to_txt, get_all_stores, add_store, update_store, delete_store, get_all_devices, add_device, update_device, delete_device, set_device_online, set_device_offline, add_audit_log, get_audit_logs, get_device_audit_logs, upsert_agent_status, get_all_agents_status
+from database import get_product_by_barcode, init_db, populate_example_data, get_db_connection, authenticate_admin, get_system_status, export_products_to_txt, get_all_stores, add_store, update_store, delete_store, get_all_devices, add_device, update_device, delete_device, set_device_online, set_device_offline, add_audit_log, get_audit_logs, get_device_audit_logs, upsert_agent_status, get_all_agents_status, upsert_products
 from static_middleware import mount_frontend
 from ai_agent_integration import notify_ai_agent
 from ia_event_log import router as ia_event_router
@@ -229,6 +230,31 @@ def list_banners(store_id: str = Query(None)):
             filtered.append({"filename": f, "url": f"/admin/banners/{f}"})
     logging.info(f"[BANNERS] Retornando {len(filtered)} banners para store_id={store_id}")
     return filtered
+
+
+# Endpoint para receber atualizações em lote (bulk) de produtos
+@app.post('/admin/products/bulk')
+def admin_products_bulk(payload: List[Dict] = Body(...), username: str = Depends(get_current_user)):
+    """Recebe uma lista de produtos e faz upsert no banco local.
+
+    Requer autenticação via token Bearer (get_current_user).
+    """
+    try:
+        # valida formato
+        if not isinstance(payload, list):
+            raise HTTPException(status_code=400, detail='Payload deve ser uma lista de produtos')
+        result = upsert_products(payload)
+        # registra auditoria
+        try:
+            add_audit_log(None, None, 'PRODUCTS_BULK_UPSERT', json.dumps({'user': username, 'result': result}, ensure_ascii=False))
+        except Exception:
+            pass
+        return JSONResponse(content={'success': True, 'result': result})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.exception('Erro no endpoint admin/products/bulk')
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Endpoint para servir banner individual
 @app.get('/admin/banners/{filename}')

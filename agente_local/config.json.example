@@ -1,0 +1,34 @@
+{
+  "# Example 1 - Arquivo (production):": "Arquivo de entrada explícito",
+  "tipo_integracao": "Arquivo",
+  "arquivo_entrada": "D:\\Sonda\\Precix\\cliente\\pricetab_entrada.txt",
+  "arquivo_local": "D:\\Sonda\\Precix\\agente_local\\dist\\pricetab.txt",
+  "arquivo_separador": "|",
+  "arquivo_layout": "barcode|name|price",
+  "arquivo_incluir_cabecalho": true,
+
+  "# Example 2 - API (production):": "Integração direta com API do PRECIX",
+  "tipo_integracao_api_example": {
+    "tipo_integracao": "API",
+    "api_externa": "http://192.168.18.7:8000/product/all",
+    "api_token": "",
+    "timeout": 10
+  },
+
+  "# Example 3 - Banco de Dados (production):": "SQLite local apontando para o DB do cliente",
+  "tipo_integracao_db_example": {
+    "tipo_integracao": "Banco de Dados",
+    "db_tipo": "SQLite",
+    "db_nome": "D:\\Sonda\\Precix\\sync\\products.db",
+    "db_sql": "SELECT barcode AS barcode, name AS name, price AS price FROM products",
+    "arquivo_local": "D:\\Sonda\\Precix\\agente_local\\dist\\pricetab.txt"
+  }
+  ,
+  "# ACK and HTTP admin server (optional)": "Settings for ACK endpoints and admin HTTP server",
+  "http_port": 8010,
+  "ack_enabled": true,
+  "ack_token": "replace-with-a-strong-random-token-keep-secret",
+  "backend_aggregator_url": "http://127.0.0.1:9000",
+  "backend_aggregator_token": "replace-with-aggregator-token",
+  "# note": "When ack_enabled is true, set ack_token to a strong secret. The GUI and devices must provide X-ACK-Token or Authorization: Bearer <token> to post ACKs. Do NOT enable without setting ack_token when exposing the admin port to untrusted networks."
+}

@@ -20,6 +20,9 @@ import uuid
 from datetime import datetime
 import shutil
 import sys
+from wsgiref.simple_server import make_server
+from urllib.parse import parse_qs
+from logging.handlers import RotatingFileHandler
 
 # Configuração inicial
 USER_CONFIG_DIR = os.path.join(os.environ.get('LOCALAPPDATA', os.getcwd()), 'AgentePRECIX')
@@ -31,13 +34,24 @@ CONFIG_PATH = os.path.join(USER_CONFIG_DIR, 'config.json')
 LOG_DIR = USER_CONFIG_DIR
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG_PATH = os.path.join(LOG_DIR, 'agente.log')
-# Configura logging global já no início
+# Configura logging global já no início com rotação
 logging.basicConfig(
-    filename=LOG_PATH,
     level=logging.INFO,
     format='%(asctime)s %(levelname)s:%(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+# RotatingFileHandler para não encher disco
+try:
+    rh = RotatingFileHandler(LOG_PATH, maxBytes=5 * 1024 * 1024, backupCount=5, encoding='utf-8')
+    rh.setLevel(logging.INFO)
+    rh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s:%(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+    root_logger = logging.getLogger()
+    # remove duplicate handlers if any
+    has_file = any(isinstance(h, RotatingFileHandler) for h in root_logger.handlers)
+    if not has_file:
+        root_logger.addHandler(rh)
+except Exception:
+    pass
 
 # Se não houver StreamHandler, adiciona um para exibir logs no console (útil em builds de debug)
 root_logger = logging.getLogger()
@@ -146,28 +160,69 @@ def gerar_arquivo_precos(dados, filename, incluir_cabecalho=None):
                     colunas_faltando.add(col)
         if colunas_faltando:
             logging.warning(f"[AVISO] Algumas colunas esperadas não existem nos dados: {colunas_faltando}. Primeiros produtos: {produtos[:3]}")
-        # Garante diretório do arquivo
-        if filename:
-            os.makedirs(os.path.dirname(filename), exist_ok=True)
-        else:
+        # Garante diretório do arquivo e escrita atômica (temp -> replace)
+        if not filename:
             raise ValueError('Nome de arquivo de saída inválido')
+        filename = os.path.normpath(filename)
+        dirpath = os.path.dirname(filename)
+        os.makedirs(dirpath, exist_ok=True)
         logging.info(f"[DEBUG] Caminho final do arquivo de saída (corrigido): {filename}")
-        with open(filename, 'w', encoding='utf-8') as f:
-            if incluir_cabecalho_flag:
-                f.write(sep.join(colunas_esperadas) + '\n')
-            if not produtos:
-                logging.warning(f"[AVISO] Nenhum produto válido para gerar arquivo de preços. Dados recebidos: {str(dados)[:500]}")
-            for i, produto in enumerate(produtos):
-                linha = sep.join([
-                    str(produto.get('barcode', '')),
-                    str(produto.get('name', '')),
-                    str(produto.get('price', ''))
-                ]) + '\n'
-                f.write(linha)
-                if i < 5:
-                    logging.info(f"[DEBUG] Linha {i}: {linha.strip()}")
+        tmpname = filename + '.tmp'
+        try:
+            with open(tmpname, 'w', encoding='utf-8') as f:
+                if incluir_cabecalho_flag:
+                    f.write(sep.join(colunas_esperadas) + '\n')
+                if not produtos:
+                    logging.warning(f"[AVISO] Nenhum produto válido para gerar arquivo de preços. Dados recebidos: {str(dados)[:1000]}")
+                    # Em produção não escrevemos marcadores no arquivo final; gravamos amostra no log e deixamos o arquivo vazio
+                    # para manter compatibilidade com leitores que esperam apenas linhas de produto.
+                    sample = None
+                    try:
+                        sample = str(dados)[:2000]
+                        logging.info(f"[DIAG_SAMPLE] {sample}")
+                    except Exception:
+                        pass
+                else:
+                    for i, produto in enumerate(produtos):
+                        linha = sep.join([
+                            str(produto.get('barcode', '')),
+                            str(produto.get('name', '')),
+                            str(produto.get('price', ''))
+                        ]) + '\n'
+                        f.write(linha)
+                        if i < 5:
+                            logging.info(f"[DEBUG] Linha {i}: {linha.strip()}")
+            # Substitui de forma atômica
+            try:
+                os.replace(tmpname, filename)
+            except Exception:
+                # fallback para sistemas que não suportam replace atômico
+                shutil.move(tmpname, filename)
+        finally:
+            # garante que não fica .tmp se algo falhou
+            try:
+                if os.path.exists(tmpname):
+                    os.remove(tmpname)
+            except Exception:
+                pass
         logging.info(f"[OK] Arquivo de preços gerado: {filename} | Quantidade de produtos: {len(produtos)} | Delimitador: {sep} | Cabecalho: {incluir_cabecalho_flag}")
         print(f"[OK] Arquivo de preços gerado: {filename} | Quantidade de produtos: {len(produtos)} | Delimitador: {sep} | Cabecalho: {incluir_cabecalho_flag}")
+        try:
+            update_agent_status({'last_generated': datetime.now().isoformat(), 'last_generated_count': len(produtos), 'last_generated_file': filename})
+            # also persist into config for backward compatibility
+            try:
+                if os.path.exists(CONFIG_PATH):
+                    with open(CONFIG_PATH, 'r', encoding='utf-8') as fh:
+                        cfg = json.load(fh) or {}
+                else:
+                    cfg = {}
+                cfg['ultima_atualizacao'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+                with open(CONFIG_PATH, 'w', encoding='utf-8') as fh:
+                    json.dump(cfg, fh, indent=2)
+            except Exception:
+                pass
+        except Exception:
+            pass
     except Exception as e:
         logging.exception(f"[ERRO] Erro ao gerar arquivo de preços: {e}")
         print(f"[ERRO] Erro ao gerar arquivo de preços: {e}")
@@ -187,35 +242,69 @@ def enviar_arquivo_automatico(filepath):
     usuario = config.get('envio_usuario', '')
     senha = config.get('envio_senha', '')
     logging.info(f'Iniciando envio automático: metodo={metodo}, host={host}, porta={porta}, usuario={usuario}, arquivo={filepath}')
-    if metodo == 'FTP':
+    max_attempts = int(config.get('envio_retries', 3))
+    backoff_base = float(config.get('envio_backoff', 2))
+    success = False
+    last_err = None
+    for attempt in range(1, max_attempts + 1):
         try:
-            ftp = ftplib.FTP()
-            ftp.connect(host, porta, timeout=10)
-            ftp.login(usuario, senha)
-            try:
-                ftp.cwd('/dist')
-            except Exception:
-                pass
-            with open(filepath, 'rb') as f:
-                ftp.storbinary(f'STOR {os.path.basename(filepath)}', f)
-            ftp.quit()
-            logging.info('Upload FTP realizado com sucesso')
-        except Exception:
-            logging.exception('Falha ao enviar via FTP; fallback para LOCAL')
-            return
-    elif metodo == 'TCP':
-        try:
-            with open(filepath, 'rb') as f:
-                data = f.read()
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.connect((host, porta))
-            s.sendall(data)
-            s.close()
-            logging.info('Envio TCP realizado com sucesso')
-        except Exception:
-            logging.exception('Falha ao enviar via TCP')
-    else:
-        logging.info('Modo LOCAL: arquivo mantido localmente')
+            if metodo == 'FTP':
+                host = config.get('envio_host')
+                user = config.get('envio_usuario')
+                passwd = config.get('envio_senha')
+                ftp_remote_name = config.get('envio_arquivo_remoto') or os.path.basename(filepath)
+                with ftplib.FTP(host, timeout=10) as ftp:
+                    ftp.login(user, passwd)
+                    with open(filepath, 'rb') as f:
+                        ftp.storbinary(f'STOR {ftp_remote_name}', f)
+                    logging.info('[OK] Enviado por FTP')
+                success = True
+            elif metodo == 'TCP':
+                with open(filepath, 'rb') as f:
+                    data = f.read()
+                s = socket.create_connection((host, porta), timeout=10)
+                s.sendall(data)
+                s.close()
+                logging.info('Envio TCP realizado com sucesso')
+                success = True
+            elif metodo == 'API':
+                # enviar para endpoint configurado
+                api_dest = config.get('api_update') or config.get('api_destino') or config.get('backend_url')
+                if api_dest:
+                    with open(filepath, 'r', encoding='utf-8', errors='ignore') as fh:
+                        text = fh.read()
+                    resp = requests.post(api_dest, data=text.encode('utf-8'), timeout=15)
+                    resp.raise_for_status()
+                    logging.info('Envio via API realizado com sucesso')
+                    success = True
+                else:
+                    logging.error('Envio via API selecionado, mas api_update/api_destino não configurado')
+                    break
+            else:
+                logging.info('Modo LOCAL: arquivo mantido localmente')
+                success = True
+        except ftplib.error_perm as perm_err:
+            last_err = perm_err
+            logging.error(f"[FTP_ERRO] Permissão/Autenticação falhou: {perm_err}")
+            # perm errors are unlikely to change with retries
+            break
+        except Exception as e:
+            last_err = e
+            logging.exception(f'Erro ao enviar arquivo (attempt {attempt}): {e}')
+            # backoff
+            if attempt < max_attempts:
+                wait = backoff_base ** (attempt - 1)
+                logging.info(f'Waiting {wait}s before retry')
+                time.sleep(wait)
+            continue
+        finally:
+            if success:
+                update_agent_status({'last_send': datetime.now().isoformat(), 'last_send_method': metodo})
+                break
+
+    if not success:
+        logging.error(f'Falha ao enviar arquivo apos {max_attempts} tentativas: {last_err}')
+        update_agent_status({'last_send_error': str(last_err) if last_err else 'unknown'})
 
 
 def enviar_para_api(dados):
@@ -230,13 +319,57 @@ def enviar_para_api(dados):
         if not api_destino:
             logging.info('Nenhum endpoint de API configurado para envio de preços (api_update/api_destino/backend_url)')
             return
-        logging.info(f'enviar_para_api: enviando para {api_destino} | quantidade={len(dados) if isinstance(dados, list) else 1}')
+        # Avoid spamming a read-only endpoint: try POST, if 405 then try PUT once.
+        logging.info(f'enviar_para_api: tentando enviar para {api_destino} | quantidade={len(dados) if isinstance(dados, list) else 1}')
         try:
-            resp = requests.post(api_destino, json=dados, timeout=15)
-            resp.raise_for_status()
-            logging.info(f'enviar_para_api: envio concluido, status={resp.status_code}')
+            # prepare headers: include Bearer token if configured
+            headers = {}
+            token = config.get('backend_token') or config.get('api_token') or config.get('api_update_token')
+            if token:
+                headers['Authorization'] = f'Bearer {token}'
+            resp = requests.post(api_destino, json=dados, timeout=15, headers=headers)
+            if resp.status_code == 405:
+                logging.warning('enviar_para_api: POST retornou 405 Method Not Allowed, tentando PUT como fallback...')
+                try:
+                    resp_put = requests.put(api_destino, json=dados, timeout=15, headers=headers)
+                    resp_put.raise_for_status()
+                    logging.info(f'enviar_para_api: PUT concluido, status={resp_put.status_code}')
+                    # mark supported
+                    try:
+                        update_agent_status({'api_write_supported': True})
+                    except Exception:
+                        pass
+                    return
+                except Exception:
+                    logging.exception('enviar_para_api: PUT falhou')
+                    # fall through to handling below
+            else:
+                resp.raise_for_status()
+                logging.info(f'enviar_para_api: POST/PUT envio concluido, status={resp.status_code}')
+                try:
+                    update_agent_status({'api_write_supported': True})
+                except Exception:
+                    pass
+                return
+            # If we reach here, both POST and PUT failed or returned non-success
+            logging.error('enviar_para_api: tentativa de escrita via API falhou (POST/PUT). Marcando api_write_supported=false e mantendo fallback local.')
+            try:
+                update_agent_status({'api_write_supported': False, 'api_write_error': 'post_or_put_failed'})
+            except Exception:
+                pass
+            return
+        except requests.exceptions.HTTPError as http_err:
+            logging.exception(f'enviar_para_api: HTTP error ao enviar dados para API: {http_err}')
+            try:
+                update_agent_status({'api_write_supported': False, 'api_write_error': str(http_err)})
+            except Exception:
+                pass
         except Exception:
             logging.exception('enviar_para_api: falha ao enviar dados para API')
+            try:
+                update_agent_status({'api_write_supported': False, 'api_write_error': 'exception'})
+            except Exception:
+                pass
     except Exception:
         logging.exception('enviar_para_api: erro inesperado')
 
@@ -261,21 +394,34 @@ def buscar_dados_do_banco(config):
             logging.info('buscar_dados_do_banco: db_path/db_nome não configurado')
             return None
 
-        # resolver caminhos relativos: tentamos valores absolutos e locais comuns
+        # resolver caminhos relativos: tentamos valores absolutos e locais comuns (inclui sync/ e backend)
         candidates = [db_path]
         if not os.path.isabs(db_path):
             base = os.path.dirname(__file__)
             candidates.append(os.path.join(base, db_path))
             candidates.append(os.path.join(base, 'dist', db_path))
             candidates.append(os.path.join(os.getcwd(), db_path))
+            candidates.append(os.path.join(os.path.dirname(__file__), '..', 'sync', db_path))
+            candidates.append(os.path.join(os.path.dirname(__file__), '..', 'backend', db_path))
             # também procurar no diretório de dados do usuário
             candidates.append(os.path.join(os.path.dirname(CONFIG_PATH), db_path))
 
         found = None
         for p in candidates:
             try:
-                if p and os.path.exists(p):
-                    found = p
+                if not p:
+                    continue
+                pnorm = os.path.normpath(p)
+                if os.path.exists(pnorm):
+                    # ignore files vazios (possível artifacto de build)
+                    try:
+                        if os.path.getsize(pnorm) == 0:
+                            logging.warning(f'buscar_dados_do_banco: candidato encontrado mas está vazio: {pnorm}')
+                            continue
+                    except Exception:
+                        pass
+                    found = pnorm
+                    logging.info(f'buscar_dados_do_banco: usando arquivo sqlite: {found}')
                     break
             except Exception:
                 continue
@@ -315,6 +461,64 @@ def get_local_ip():
 
 AGENTS_STATUS_PATH = os.path.join(os.path.dirname(__file__), '..', 'backend', 'agents_status.json')
 
+# Acks persistence
+ACKS_PATH = os.path.join(USER_CONFIG_DIR, 'acks.jsonl')
+STATUS_PATH = os.path.join(USER_CONFIG_DIR, 'agent_status.json')
+
+def append_ack(record: dict):
+    try:
+        os.makedirs(os.path.dirname(ACKS_PATH), exist_ok=True)
+        with open(ACKS_PATH, 'a', encoding='utf-8') as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + '\n')
+        # update quick status for monitoramento
+        try:
+            update_agent_status({'last_ack': datetime.now().isoformat()})
+        except Exception:
+            pass
+    except Exception:
+        logging.exception('Falha ao persistir ACK')
+    # optional forward to aggregator
+    try:
+        cfg = load_config()
+        agg_url = cfg.get('backend_aggregator_url')
+        agg_token = cfg.get('backend_aggregator_token')
+        if agg_url:
+            try:
+                headers = {}
+                if agg_token:
+                    headers['X-Api-Token'] = agg_token
+                # send as POST /api/agents/acks
+                payload = {
+                    'agent_id': cfg.get('agente_id') or str(uuid.getnode()),
+                    'type': record.get('type'),
+                    'payload': record.get('payload'),
+                    'ts': record.get('ts')
+                }
+                requests.post(agg_url.rstrip('/') + '/api/agents/acks', json=payload, headers=headers, timeout=5)
+            except Exception:
+                logging.exception('Falha ao encaminhar ACK para agregador')
+    except Exception:
+        pass
+
+
+def update_agent_status(data: dict):
+    """Merge basic status fields into STATUS_PATH JSON for /health and UI."""
+    try:
+        os.makedirs(os.path.dirname(STATUS_PATH), exist_ok=True)
+        existing = {}
+        if os.path.exists(STATUS_PATH):
+            try:
+                with open(STATUS_PATH, 'r', encoding='utf-8') as fh:
+                    existing = json.load(fh) or {}
+            except Exception:
+                existing = {}
+        existing.update(data)
+        existing['updated_at'] = datetime.now().isoformat()
+        with open(STATUS_PATH, 'w', encoding='utf-8') as fh:
+            json.dump(existing, fh, ensure_ascii=False, indent=2)
+    except Exception:
+        logging.exception('Falha ao atualizar STATUS_PATH')
+
 
 def salvar_status_agente():
     status = {
@@ -348,6 +552,233 @@ def iniciar_status_heartbeat():
     t.start()
 
 
+def _wsgi_app(environ, start_response):
+    try:
+        path = environ.get('PATH_INFO', '')
+        method = environ.get('REQUEST_METHOD', 'GET')
+        query = parse_qs(environ.get('QUERY_STRING', ''))
+        # simple in-memory rate limiter per IP for admin endpoints (allow bursts)
+        try:
+            if not hasattr(_wsgi_app, '_rate'): _wsgi_app._rate = {}
+            ip = environ.get('REMOTE_ADDR', 'local')
+            now_ts = time.time()
+            bucket = _wsgi_app._rate.get(ip, [])
+            # keep only last 60s
+            bucket = [t for t in bucket if now_ts - t < 60]
+            if len(bucket) > 200:
+                start_response('429 Too Many Requests', [('Content-Type', 'application/json')])
+                return [json.dumps({'error': 'rate_limited'}).encode('utf-8')]
+            bucket.append(now_ts)
+            _wsgi_app._rate[ip] = bucket
+        except Exception:
+            pass
+
+        # load runtime config for auth settings
+        try:
+            cfg = load_config()
+        except Exception:
+            cfg = {}
+        ack_enabled = bool(cfg.get('ack_enabled', False))
+        ack_token = cfg.get('ack_token')
+
+        # simple /logs endpoint
+        if path == '/logs' and method == 'GET':
+            lines = int(query.get('lines', ['200'])[0])
+            try:
+                with open(LOG_PATH, 'r', encoding='utf-8', errors='ignore') as fh:
+                    content = fh.read().splitlines()
+                out = content[-lines:]
+            except Exception:
+                out = []
+            payload = json.dumps({'lines': out}, ensure_ascii=False).encode('utf-8')
+            start_response('200 OK', [('Content-Type', 'application/json; charset=utf-8')])
+            return [payload]
+
+        # health endpoint
+        if path == '/health' and method == 'GET':
+            try:
+                # basic health info
+                last_generated = None
+                try:
+                    if os.path.exists(CONFIG_PATH):
+                        with open(CONFIG_PATH, 'r', encoding='utf-8') as fh:
+                            cfg = json.load(fh)
+                            last_generated = cfg.get('ultima_atualizacao') or cfg.get('automacao_ultima')
+                except Exception:
+                    last_generated = None
+                # include agent status file contents if available
+                status_info = {}
+                try:
+                    if os.path.exists(STATUS_PATH):
+                        with open(STATUS_PATH, 'r', encoding='utf-8') as fh:
+                            status_info = json.load(fh) or {}
+                except Exception:
+                    status_info = {}
+                payload = json.dumps({'status': 'ok', 'last_generated': last_generated, 'status': status_info}, ensure_ascii=False).encode('utf-8')
+                start_response('200 OK', [('Content-Type', 'application/json; charset=utf-8')])
+                return [payload]
+            except Exception:
+                start_response('500 Internal Server Error', [('Content-Type', 'application/json')])
+                return [json.dumps({'status': 'error'}).encode('utf-8')]
+
+        # read persisted ACKs
+        if path == '/acks' and method == 'GET':
+            try:
+                lines = int(query.get('lines', ['200'])[0])
+                ack_type = query.get('type', [None])[0]
+                out = []
+                try:
+                    if os.path.exists(ACKS_PATH):
+                        with open(ACKS_PATH, 'r', encoding='utf-8', errors='ignore') as fh:
+                            all_lines = [l.strip() for l in fh if l.strip()]
+                        selected = all_lines[-lines:]
+                        for l in selected:
+                            try:
+                                obj = json.loads(l)
+                                if ack_type and obj.get('type') != ack_type:
+                                    continue
+                                out.append(obj)
+                            except Exception:
+                                continue
+                except Exception:
+                    out = []
+                payload = json.dumps({'acks': out}, ensure_ascii=False).encode('utf-8')
+                start_response('200 OK', [('Content-Type', 'application/json; charset=utf-8')])
+                return [payload]
+            except Exception:
+                start_response('500 Internal Server Error', [('Content-Type', 'application/json')])
+                return [json.dumps({'status': 'error'}).encode('utf-8')]
+
+        # helper: validate token when ACKs protection active
+        def _validate_ack_auth():
+            if not ack_enabled:
+                return True
+            if not ack_token:
+                # configured to require ack but no token present => deny
+                logging.error('ACK endpoint enabled but no ack_token configured; denying access')
+                return False
+            provided = None
+            try:
+                provided = environ.get('HTTP_X_ACK_TOKEN') or environ.get('HTTP_AUTHORIZATION')
+                if provided and isinstance(provided, str) and provided.lower().startswith('bearer '):
+                    provided = provided.split(' ', 1)[1]
+            except Exception:
+                provided = None
+            if not provided or provided != ack_token:
+                return False
+            return True
+
+        # ack endpoints
+        if path == '/ack/update' and method == 'POST':
+            try:
+                if not _validate_ack_auth():
+                    remote = environ.get('REMOTE_ADDR', 'unknown')
+                    logging.warning(f"Unauthorized ACK access attempt to /ack/update from {remote}")
+                    start_response('401 Unauthorized', [('Content-Type', 'application/json')])
+                    return [json.dumps({'status': 'unauthorized'}).encode('utf-8')]
+                size = int(environ.get('CONTENT_LENGTH') or 0)
+                body = environ['wsgi.input'].read(size).decode('utf-8')
+                obj = json.loads(body)
+                obj['_received_at'] = datetime.now().isoformat()
+                logging.info(f"[ACK_UPDATE] {obj}")
+                append_ack({'type': 'update', 'payload': obj, 'ts': datetime.now().isoformat()})
+                start_response('200 OK', [('Content-Type', 'application/json')])
+                return [json.dumps({'status': 'ok'}).encode('utf-8')]
+            except Exception:
+                logging.exception('Falha ao processar /ack/update')
+                start_response('500 Internal Server Error', [('Content-Type', 'application/json')])
+                return [json.dumps({'status': 'error'}).encode('utf-8')]
+
+        if path == '/ack/price-query' and method == 'POST':
+            try:
+                if not _validate_ack_auth():
+                    remote = environ.get('REMOTE_ADDR', 'unknown')
+                    logging.warning(f"Unauthorized ACK access attempt to /ack/price-query from {remote}")
+                    start_response('401 Unauthorized', [('Content-Type', 'application/json')])
+                    return [json.dumps({'status': 'unauthorized'}).encode('utf-8')]
+                size = int(environ.get('CONTENT_LENGTH') or 0)
+                body = environ['wsgi.input'].read(size).decode('utf-8')
+                obj = json.loads(body)
+                obj['_received_at'] = datetime.now().isoformat()
+                logging.info(f"[ACK_QUERY] {obj}")
+                append_ack({'type': 'query', 'payload': obj, 'ts': datetime.now().isoformat()})
+                start_response('200 OK', [('Content-Type', 'application/json')])
+                return [json.dumps({'status': 'ok'}).encode('utf-8')]
+            except Exception:
+                logging.exception('Falha ao processar /ack/price-query')
+                start_response('500 Internal Server Error', [('Content-Type', 'application/json')])
+                return [json.dumps({'status': 'error'}).encode('utf-8')]
+
+        # export persisted ACKs as a downloadable blob
+        if path == '/acks/export' and method == 'GET':
+            try:
+                # require auth if acks are protected
+                if not _validate_ack_auth():
+                    start_response('401 Unauthorized', [('Content-Type', 'application/json')])
+                    return [json.dumps({'status': 'unauthorized'}).encode('utf-8')]
+                if not os.path.exists(ACKS_PATH):
+                    start_response('200 OK', [('Content-Type', 'application/octet-stream'), ('Content-Disposition', 'attachment; filename="acks.jsonl"')])
+                    return [b'']
+                with open(ACKS_PATH, 'rb') as fh:
+                    data = fh.read()
+                headers = [('Content-Type', 'application/octet-stream'), ('Content-Disposition', 'attachment; filename="acks.jsonl"')]
+                start_response('200 OK', headers)
+                return [data]
+            except Exception:
+                logging.exception('Falha ao exportar ACKs')
+                start_response('500 Internal Server Error', [('Content-Type', 'application/json')])
+                return [json.dumps({'status': 'error'}).encode('utf-8')]
+
+        # clear persisted ACKs (destructive) - requires auth when enabled
+        if path == '/acks/clear' and method == 'POST':
+            try:
+                if not _validate_ack_auth():
+                    start_response('401 Unauthorized', [('Content-Type', 'application/json')])
+                    return [json.dumps({'status': 'unauthorized'}).encode('utf-8')]
+                try:
+                    # truncate the file
+                    open(ACKS_PATH, 'w', encoding='utf-8').close()
+                except Exception:
+                    # fallback: remove file
+                    try:
+                        if os.path.exists(ACKS_PATH):
+                            os.remove(ACKS_PATH)
+                    except Exception:
+                        logging.exception('Erro ao remover arquivo de ACKs')
+                logging.info('ACKs persisted cleared via /acks/clear')
+                start_response('200 OK', [('Content-Type', 'application/json')])
+                return [json.dumps({'status': 'ok'}).encode('utf-8')]
+            except Exception:
+                logging.exception('Falha ao processar /acks/clear')
+                start_response('500 Internal Server Error', [('Content-Type', 'application/json')])
+                return [json.dumps({'status': 'error'}).encode('utf-8')]
+
+        start_response('404 Not Found', [('Content-Type', 'application/json')])
+        return [json.dumps({'error': 'not_found'}).encode('utf-8')]
+    except Exception:
+        logging.exception('Erro no WSGI app')
+        start_response('500 Internal Server Error', [('Content-Type', 'application/json')])
+        return [json.dumps({'error': 'internal'}).encode('utf-8')]
+
+
+def start_http_server():
+    import threading
+    cfg = load_config()
+    port = int(cfg.get('http_port', 8010) or 8010)
+    host = str(cfg.get('http_host', '127.0.0.1') or '127.0.0.1')
+
+    def run():
+        try:
+            httpd = make_server(host, port, _wsgi_app)
+            logging.info(f'HTTP admin server listening on {host}:{port}')
+            httpd.serve_forever()
+        except Exception:
+            logging.exception('Falha ao iniciar HTTP admin server')
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+
+
 def ia_supervisao(equipamento, status):
     if not status:
         logging.warning(f"Falha detectada no equipamento {equipamento.get('ip')}:{equipamento.get('porta')}")
@@ -362,10 +793,26 @@ def forcar_atualizacao_manual():
         logging.error('[ERRO] Nenhuma URL de API configurada no config.json!')
         return
     dados = buscar_dados_precix(api_url)
-    arquivo_saida = config.get('arquivo_local')
-    if arquivo_saida and arquivo_saida.count('pricetab.txt') > 1:
-        partes = arquivo_saida.split('pricetab.txt')
-        arquivo_saida = ''.join(partes[:-1]) + 'pricetab.txt'
+    # Resolve caminho de saída de maneira robusta: aceita diretório ou caminho completo
+    def resolve_pricetab_path(value):
+        if not value:
+            return os.path.join(os.getcwd(), 'pricetab.txt')
+        v = os.path.normpath(value)
+        # Se for um diretório existente, junta o nome do arquivo
+        if os.path.isdir(v):
+            return os.path.join(v, 'pricetab.txt')
+        # Se terminar com separador, trata como diretório
+        if value.endswith(os.sep) or value.endswith('/') or value.endswith('\\'):
+            return os.path.join(v, 'pricetab.txt')
+        # Se contém mais de uma ocorrência de pricetab.txt, remove duplicações
+        lower = v.lower()
+        if lower.count('pricetab.txt') > 1:
+            parts = v.split('pricetab.txt')
+            base = ''.join(parts[:-1])
+            return os.path.join(base, 'pricetab.txt')
+        return v
+
+    arquivo_saida = resolve_pricetab_path(config.get('arquivo_local'))
     logging.info(f"[DEBUG] Caminho final do arquivo de saída: {arquivo_saida}")
     try:
         if arquivo_saida and os.path.exists(arquivo_saida):
@@ -416,7 +863,30 @@ def enviar_status_agente():
     if loja_nome:
         status_payload["loja_nome"] = loja_nome
     try:
-        requests.post(backend_url, json=status_payload, timeout=5)
+        # post to configured backend URL
+        try:
+            requests.post(backend_url, json=status_payload, timeout=5)
+        except Exception:
+            logging.exception('Erro ao enviar status para backend_url primário')
+        # optional forward to aggregator service
+        agg_url = config.get('backend_aggregator_url')
+        agg_token = config.get('backend_aggregator_token')
+        if agg_url:
+            try:
+                headers = {}
+                if agg_token:
+                    headers['X-Api-Token'] = agg_token
+                agg_payload = {
+                    'agent_id': agent_id,
+                    'hostname': socket.gethostname(),
+                    'loja_codigo': loja_codigo,
+                    'status': 'online',
+                    'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'ip': get_local_ip()
+                }
+                requests.post(agg_url.rstrip('/') + '/api/agents/status', json=agg_payload, headers=headers, timeout=5)
+            except Exception:
+                logging.exception('Erro ao enviar status para agregador')
     except Exception:
         logging.exception('Erro ao enviar status do agente local')
 
@@ -427,6 +897,10 @@ def main():
         iniciar_status_heartbeat()
     except Exception:
         logging.exception('Falha ao iniciar heartbeat')
+    try:
+        start_http_server()
+    except Exception:
+        logging.exception('Falha ao iniciar servidor HTTP admin')
 
     while True:
         try:
@@ -444,10 +918,82 @@ def main():
                     logging.error('[ERRO] Nenhuma URL de API configurada no config.json!')
             elif fonte == 'Arquivo':
                 # aceita várias chaves possíveis que a UI pode gravar
-                arquivo = config.get('arquivo_origem') or config.get('arquivo_entrada') or config.get('arquivo_entrada_arquivo') or ''
+                arquivo_cfg = config.get('arquivo_origem') or config.get('arquivo_entrada') or config.get('arquivo_entrada_arquivo') or config.get('arquivo_entrada_path') or ''
                 sep = config.get('arquivo_separador') or config.get('arquivo_separador_custom') or '|'
                 layout = config.get('arquivo_layout') or 'barcode|name|price'
-                if arquivo and os.path.exists(arquivo):
+
+                # resolver input de forma tolerante: tenta variações e pastas comuns
+                def resolve_input_file(cfg_value):
+                    if not cfg_value:
+                        return None
+                    cand = os.path.normpath(cfg_value)
+                    # caminho direto
+                    try:
+                        if os.path.exists(cand) and os.path.getsize(cand) > 0:
+                            logging.info(f"Arquivo de entrada encontrado (direto): {cand}")
+                            return cand
+                    except Exception:
+                        pass
+                    # variações de nomes comuns
+                    base = os.path.dirname(cand) or os.getcwd()
+                    name = os.path.basename(cand)
+                    alt_names = [name, name.replace('.txt', '_entrada.txt'), name.replace('.txt', 'entrada.txt'), 'pricetab_entrada.txt', 'pricetab.txt']
+                    for an in alt_names:
+                        p = os.path.join(base, an)
+                        try:
+                            if os.path.exists(p) and os.path.getsize(p) > 0:
+                                logging.info(f"Arquivo de entrada encontrado (variação): {p}")
+                                return p
+                        except Exception:
+                            continue
+                    # se cfg for diretório, procurar por arquivos compatíveis
+                    try:
+                        if os.path.isdir(cand):
+                            for fn in os.listdir(cand):
+                                if fn.lower().startswith('pricetab') and fn.lower().endswith('.txt'):
+                                    p = os.path.join(cand, fn)
+                                    try:
+                                        if os.path.getsize(p) > 0:
+                                            logging.info(f"Arquivo de entrada encontrado na pasta: {p}")
+                                            return p
+                                    except Exception:
+                                        continue
+                    except Exception:
+                        pass
+                    # procurar em pastas comuns do projeto
+                    common = [os.path.join(os.path.dirname(__file__), '..', 'sync', name), os.path.join(os.path.dirname(__file__), '..', 'backend', name), os.path.join(os.getcwd(), name)]
+                    for p in common:
+                        p = os.path.normpath(p)
+                        try:
+                            if os.path.exists(p) and os.path.getsize(p) > 0:
+                                logging.info(f"Arquivo de entrada encontrado em pasta comum: {p}")
+                                return p
+                        except Exception:
+                            continue
+                    return None
+
+                arquivo = resolve_input_file(arquivo_cfg)
+                # se encontramos um arquivo alternativo, persiste para evitar procura repetida
+                try:
+                    if arquivo and arquivo != (arquivo_cfg or ''):
+                        try:
+                            # write directly to CONFIG_PATH
+                            existing = {}
+                            if os.path.exists(CONFIG_PATH):
+                                with open(CONFIG_PATH, 'r', encoding='utf-8') as fh:
+                                    try:
+                                        existing = json.load(fh) or {}
+                                    except Exception:
+                                        existing = {}
+                            existing['arquivo_entrada'] = arquivo
+                            with open(CONFIG_PATH, 'w', encoding='utf-8') as fh:
+                                json.dump(existing, fh, indent=2)
+                            logging.info(f"arquivo de entrada resolvido e salvo em config: {arquivo}")
+                        except Exception:
+                            logging.exception('Falha interna ao persistir arquivo_entrada no config')
+                except Exception:
+                    logging.exception('Falha ao persistir arquivo_entrada resolvido no config')
+                if arquivo:
                     try:
                         # Ler manualmente para suportar arquivos sem cabeçalho
                         with open(arquivo, 'r', encoding='utf-8', errors='ignore') as f:
@@ -468,19 +1014,40 @@ def main():
                     except Exception:
                         logging.exception('Erro ao ler/processar arquivo de origem')
                 else:
-                    logging.info('Arquivo de origem não informado ou não encontrado.')
+                    logging.info(f'Arquivo de origem não informado ou não encontrado (config: {arquivo_cfg}).')
             elif fonte == 'Banco de Dados':
-                # usa a função implementada para leitura de DB (SQLite por enquanto)
-                try:
-                    dados = buscar_dados_do_banco(config)
-                except Exception:
-                    logging.exception('Erro ao buscar dados do banco (fluxo principal)')
+                # exige configuração explícita do banco em produção
+                db_path = config.get('db_path') or config.get('db_nome') or config.get('db_file')
+                if not db_path:
+                    logging.error('[ERRO] Modo "Banco de Dados" selecionado, mas nenhum caminho de DB foi informado (db_nome/db_path). Em produção, configure o caminho absoluto no config.json para evitar heurísticas.')
                     dados = None
+                else:
+                    # se o path não for absoluto, avisar (mas ainda permitir)
+                    if not os.path.isabs(db_path):
+                        logging.warning(f'[AVISO] db_path não está em formato absoluto: {db_path} - recomenda-se usar caminho absoluto para produção')
+                    try:
+                        dados = buscar_dados_do_banco(config)
+                    except Exception:
+                        logging.exception('Erro ao buscar dados do banco (fluxo principal)')
+                        dados = None
 
-            arquivo_saida = config.get('arquivo_local') or os.path.join(os.getcwd(), 'pricetab.txt')
-            arquivo_saida = os.path.normpath(arquivo_saida)
-            if arquivo_saida.lower().count('pricetab.txt') > 1:
-                arquivo_saida = arquivo_saida.lower().split('pricetab.txt')[-2] + 'pricetab.txt'
+            # resolve path robustamente (aceita diretório ou arquivo)
+            def resolve_pricetab_path(value):
+                if not value:
+                    return os.path.join(os.getcwd(), 'pricetab.txt')
+                v = os.path.normpath(value)
+                if os.path.isdir(v):
+                    return os.path.join(v, 'pricetab.txt')
+                if value.endswith(os.sep) or value.endswith('/') or value.endswith('\\'):
+                    return os.path.join(v, 'pricetab.txt')
+                lower = v.lower()
+                if lower.count('pricetab.txt') > 1:
+                    parts = v.split('pricetab.txt')
+                    base = ''.join(parts[:-1])
+                    return os.path.join(base, 'pricetab.txt')
+                return v
+
+            arquivo_saida = resolve_pricetab_path(config.get('arquivo_local'))
             logging.info(f"[DEBUG] Caminho final do arquivo de saída (normalizado): {arquivo_saida}")
             os.makedirs(os.path.dirname(arquivo_saida), exist_ok=True)
 
