@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import (
     QTableWidget, QTableWidgetItem, QLineEdit, QLabel, QMessageBox,
     QComboBox, QFileDialog, QCheckBox, QTabWidget, QTextEdit
 )
-from PyQt5.QtGui import QIcon, QPixmap
+from PyQt5.QtGui import QIcon, QPixmap, QTextCursor
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtCore import Qt
@@ -369,6 +369,39 @@ class ConfiguracaoArquivoWidget(QWidget):
             self.ia_cb.setChecked(config.get('ia_ativo', False))
             self.layout_input.setText(config.get('arquivo_layout', 'barcode;name;price'))
             self.cabecalho_cb.setChecked(config.get('arquivo_incluir_cabecalho', False))
+        except Exception:
+            pass
+
+    def _gerar_token_into(self, widget):
+        """Generate a 32-byte hex token and insert into the given QLineEdit widget.
+        Safe to call from the UI thread.
+        """
+        try:
+            import secrets
+            token = secrets.token_hex(32)
+            try:
+                widget.setText(token)
+            except Exception:
+                # widget might be a plain callable that accepts text
+                try:
+                    widget.set_value(token)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _copy_to_clipboard(self, text):
+        """Copy given text to the system clipboard using QApplication clipboard."""
+        try:
+            from PyQt5.QtWidgets import QApplication
+            cb = QApplication.clipboard()
+            cb.clear(mode=cb.Clipboard)
+            cb.setText(text, mode=cb.Clipboard)
+            # optional user feedback: set status label if present
+            try:
+                self.status_output.setText('Token copiado para a área de transferência')
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -851,6 +884,37 @@ class IntegracaoPrecixWidget(QWidget):
         self.token_input = QLineEdit()
         self.token_input.setPlaceholderText('Token (opcional)')
         self.layout.addWidget(self.token_input)
+        # Tokens administrativos
+        self.ack_token_label = QLabel('ACK token (admin HTTP):')
+        self.ack_token_input = QLineEdit()
+        self.ack_token_input.setPlaceholderText('X-ACK-Token para proteger endpoints /acks')
+        ack_row = QHBoxLayout()
+        ack_row.addWidget(self.ack_token_input)
+        self.ack_gen_btn = QPushButton('Gerar')
+        self.ack_gen_btn.setToolTip('Gerar token aleatório (32 bytes)')
+        self.ack_gen_btn.clicked.connect(lambda: self._gerar_token_into(self.ack_token_input))
+        ack_row.addWidget(self.ack_gen_btn)
+        self.ack_copy_btn = QPushButton('Copiar')
+        self.ack_copy_btn.setToolTip('Copiar token para área de transferência')
+        self.ack_copy_btn.clicked.connect(lambda: self._copy_to_clipboard(self.ack_token_input.text()))
+        ack_row.addWidget(self.ack_copy_btn)
+        self.layout.addWidget(self.ack_token_label)
+        self.layout.addLayout(ack_row)
+        self.backend_token_label = QLabel('Backend write token (Bearer):')
+        self.backend_token_input = QLineEdit()
+        self.backend_token_input.setPlaceholderText('Token para autorizar escrita no backend')
+        backend_row = QHBoxLayout()
+        backend_row.addWidget(self.backend_token_input)
+        self.backend_gen_btn = QPushButton('Gerar')
+        self.backend_gen_btn.setToolTip('Gerar token aleatório (32 bytes)')
+        self.backend_gen_btn.clicked.connect(lambda: self._gerar_token_into(self.backend_token_input))
+        backend_row.addWidget(self.backend_gen_btn)
+        self.backend_copy_btn = QPushButton('Copiar')
+        self.backend_copy_btn.setToolTip('Copiar token para área de transferência')
+        self.backend_copy_btn.clicked.connect(lambda: self._copy_to_clipboard(self.backend_token_input.text()))
+        backend_row.addWidget(self.backend_copy_btn)
+        self.layout.addWidget(self.backend_token_label)
+        self.layout.addLayout(backend_row)
         # Status e última sync
         self.status_label = QLabel('Status da conexão:')
         self.status_output = QLabel('-')
@@ -875,6 +939,35 @@ class IntegracaoPrecixWidget(QWidget):
         # Carregar config existente
         self.carregar_config()
 
+    def _gerar_token_into(self, widget):
+        """Generate a 32-byte hex token and insert into the given QLineEdit widget."""
+        try:
+            import secrets
+            token = secrets.token_hex(32)
+            try:
+                widget.setText(token)
+            except Exception:
+                try:
+                    widget.set_value(token)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _copy_to_clipboard(self, text):
+        """Copy given text to the system clipboard using QApplication clipboard."""
+        try:
+            from PyQt5.QtWidgets import QApplication
+            cb = QApplication.clipboard()
+            cb.clear(mode=cb.Clipboard)
+            cb.setText(text, mode=cb.Clipboard)
+            try:
+                self.status_output.setText('Token copiado para a área de transferência')
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def salvar_config(self):
         porta = self.porta_input.text().strip() or '8000'
         timeout = int(self.timeout_input.text().strip() or '10')
@@ -897,7 +990,12 @@ class IntegracaoPrecixWidget(QWidget):
         config['api_externa'] = api_externa
         config['api_usuario'] = usuario
         config['api_senha'] = senha
+        # persist both API token (used for reading) and backend write token (used by agent for POST/PUT)
         config['api_token'] = token
+        if self.ack_token_input.text().strip():
+            config['ack_token'] = self.ack_token_input.text().strip()
+        if self.backend_token_input.text().strip():
+            config['backend_token'] = self.backend_token_input.text().strip()
         config['tipo_integracao'] = 'API'
         from datetime import datetime
         config['ultima_sync'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
@@ -1022,6 +1120,9 @@ class IntegracaoPrecixWidget(QWidget):
             self.user_input.setText(config.get('api_usuario', ''))
             self.pass_input.setText(config.get('api_senha', ''))
             self.token_input.setText(config.get('api_token', ''))
+            # admin/admin-write tokens
+            self.ack_token_input.setText(config.get('ack_token', ''))
+            self.backend_token_input.setText(config.get('backend_token', ''))
             self.status_output.setText(config.get('status_conexao', '-'))
             self.ultima_output.setText(config.get('ultima_sync', '-'))
         except Exception:
@@ -1447,11 +1548,35 @@ class MonitoramentoWidget(QWidget):
         self.hist_output = QTextEdit()
         self.hist_output.setReadOnly(True)
         self.layout.addWidget(self.hist_output)
+        # Table to display recent ACKs
+        # Controls for ACKs: table + export/clear
+        self.acks_table = QTableWidget()
+        self.acks_table.setColumnCount(3)
+        self.acks_table.setHorizontalHeaderLabels(['Tipo', 'TS', 'Payload'])
+        self.layout.addWidget(self.acks_table)
+        # Export / Clear buttons
+        self.acks_btn_layout = QHBoxLayout()
+        self.export_btn = QPushButton('Exportar ACKs')
+        self.export_btn.setToolTip('Exporta os ACKs persistidos para um arquivo')
+        self.export_btn.clicked.connect(self.export_acks)
+        self.clear_btn = QPushButton('Limpar ACKs')
+        self.clear_btn.setToolTip('Limpa os ACKs persistidos no agente')
+        self.clear_btn.clicked.connect(self.clear_acks)
+        self.acks_btn_layout.addWidget(self.export_btn)
+        self.acks_btn_layout.addWidget(self.clear_btn)
+        self.layout.addLayout(self.acks_btn_layout)
         self.alerta_label = QLabel('Alertas:')
         self.layout.addWidget(self.alerta_label)
         self.alerta_output = QLabel('-')
         self.alerta_output.setWordWrap(True)
         self.layout.addWidget(self.alerta_output)
+        # API write support status (from agent_status.json)
+        self.api_status_label = QLabel('API write suportado: -')
+        self.api_status_label.setWordWrap(True)
+        self.layout.addWidget(self.api_status_label)
+        self.api_error_label = QLabel('API write error: -')
+        self.api_error_label.setWordWrap(True)
+        self.layout.addWidget(self.api_error_label)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.carregar_status)
         self.carregar_status()
@@ -1461,6 +1586,7 @@ class MonitoramentoWidget(QWidget):
             self.timer.start(30000)  # 30 segundos
         else:
             self.timer.stop()
+
     def carregar_status(self):
         try:
             with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
@@ -1476,22 +1602,64 @@ class MonitoramentoWidget(QWidget):
                 status = eq.get('status', 'Desconhecido')
                 item_status = QTableWidgetItem(status)
                 # Colorir status
-                if status.lower() in ['ok', 'online', 'ativo']:
-                    item_status.setBackground(Qt.green)
-                elif status.lower() in ['desconhecido', 'erro', 'offline', 'inativo']:
-                    item_status.setBackground(Qt.red)
-                else:
-                    item_status.setBackground(Qt.yellow)
+                try:
+                    if status.lower() in ['ok', 'online', 'ativo']:
+                        item_status.setBackground(Qt.green)
+                    elif status.lower() in ['desconhecido', 'erro', 'offline', 'inativo']:
+                        item_status.setBackground(Qt.red)
+                    else:
+                        item_status.setBackground(Qt.yellow)
+                except Exception:
+                    pass
                 self.status_table.setItem(i, 3, item_status)
-            # Exibir histórico formatado
-            historico = config.get('historico_atualizacoes', '')
-            if isinstance(historico, list):
-                texto_hist = '\n'.join([
+            # Exibir histórico formatado (config) e também trazer ACKs recentes do agente
+            historico = config.get('historico_atualizacoes', [])
+            texto_parts = []
+            if isinstance(historico, list) and historico:
+                texto_parts.append('Historico (config):')
+                texto_parts.extend([
                     f"[{h.get('data', '')}] {h.get('evento', h)}" if isinstance(h, dict) else str(h)
                     for h in historico
                 ])
-            else:
-                texto_hist = str(historico)
+            # Tentar buscar ACKs do servidor HTTP admin local
+            try:
+                port = int(config.get('http_port', 8010) or 8010)
+                url = f'http://127.0.0.1:{port}/acks?lines=100'
+                headers = {}
+                token = config.get('ack_token')
+                if token:
+                    headers['X-ACK-Token'] = token
+                resp = requests.get(url, headers=headers, timeout=3)
+                if resp.status_code == 200:
+                    j = resp.json()
+                    acks = j.get('acks', [])
+                    if acks:
+                        texto_parts.append('\nACKs recentes:')
+                        for a in acks:
+                            ts = a.get('ts') or a.get('payload', {}).get('_received_at', '')
+                            tipo = a.get('type')
+                            payload = a.get('payload')
+                            texto_parts.append(f"[{ts}] {tipo}: {payload}")
+                            # populate acks table
+                            try:
+                                row = self.acks_table.rowCount()
+                                self.acks_table.insertRow(row)
+                                self.acks_table.setItem(row, 0, QTableWidgetItem(str(tipo)))
+                                self.acks_table.setItem(row, 1, QTableWidgetItem(str(ts)))
+                                self.acks_table.setItem(row, 2, QTableWidgetItem(json.dumps(payload, ensure_ascii=False)))
+                            except Exception:
+                                pass
+            except Exception:
+                # não bloquear se falhar ao buscar ACKs
+                pass
+
+            # keep the table limited to 500 rows
+            try:
+                while self.acks_table.rowCount() > 500:
+                    self.acks_table.removeRow(0)
+            except Exception:
+                pass
+            texto_hist = '\n'.join(texto_parts)
             self.hist_output.setText(texto_hist)
             # Destacar alerta
             alertas = config.get('alertas', '-')
@@ -1501,10 +1669,71 @@ class MonitoramentoWidget(QWidget):
             else:
                 self.alerta_output.setText('-')
                 self.alerta_output.setStyleSheet('')
+            # Mostrar status de escrita API a partir de agent_status.json
+            try:
+                agent_status_path = os.path.join(os.environ.get('LOCALAPPDATA', os.getcwd()), 'AgentePRECIX', 'agent_status.json')
+                api_supported = '-'
+                api_error = '-'
+                if os.path.exists(agent_status_path):
+                    with open(agent_status_path, 'r', encoding='utf-8') as fh:
+                        st = json.load(fh) or {}
+                    api_supported = str(st.get('api_write_supported', '-'))
+                    api_error = str(st.get('api_write_error', '-'))
+                self.api_status_label.setText(f'API write suportado: {api_supported}')
+                self.api_error_label.setText(f'API write error: {api_error}')
+            except Exception:
+                pass
         except Exception as e:
             self.hist_output.setText('Erro ao carregar monitoramento: ' + str(e))
             self.alerta_output.setText('-')
             self.alerta_output.setStyleSheet('')
+
+    def export_acks(self):
+        try:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                cfg = json.load(f)
+        except Exception:
+            cfg = {}
+        port = int(cfg.get('http_port', 8010) or 8010)
+        url = f'http://127.0.0.1:{port}/acks/export'
+        headers = {}
+        token = cfg.get('ack_token')
+        if token:
+            headers['X-ACK-Token'] = token
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                # ask user where to save
+                from PyQt5.QtWidgets import QFileDialog
+                fname, _ = QFileDialog.getSaveFileName(self, 'Salvar ACKs como', 'acks.jsonl', 'JSONL Files (*.jsonl);;All Files (*)')
+                if fname:
+                    with open(fname, 'wb') as fh:
+                        fh.write(resp.content)
+        except Exception as e:
+            QMessageBox.warning(self, 'Erro', f'Falha ao exportar ACKs: {e}')
+
+    def clear_acks(self):
+        try:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                cfg = json.load(f)
+        except Exception:
+            cfg = {}
+        port = int(cfg.get('http_port', 8010) or 8010)
+        url = f'http://127.0.0.1:{port}/acks/clear'
+        headers = {}
+        token = cfg.get('ack_token')
+        if token:
+            headers['X-ACK-Token'] = token
+        try:
+            resp = requests.post(url, headers=headers, timeout=5)
+            if resp.status_code == 200:
+                QMessageBox.information(self, 'OK', 'ACKs limpos com sucesso')
+                # refresh view
+                self.carregar_status()
+            else:
+                QMessageBox.warning(self, 'Erro', f'Falha ao limpar ACKs: {resp.status_code}')
+        except Exception as e:
+            QMessageBox.warning(self, 'Erro', f'Falha ao limpar ACKs: {e}')
 
 class LogsWidget(QWidget):
     def __init__(self):
@@ -1533,23 +1762,50 @@ class LogsWidget(QWidget):
     def carregar_logs(self):
         import os
         try:
-            if not os.path.exists('agente.log') or os.path.getsize('agente.log') == 0:
-                self.logs_output.setText('Nenhum evento registrado.')
-                return
-            with open('agente.log', 'r', encoding='utf-8') as f:
-                lines = f.readlines()
+            # tentar via HTTP admin endpoint primeiro
+            cfg = {}
+            try:
+                if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                    with open(CONFIG_PATH, 'r', encoding='utf-8') as fh:
+                        cfg = json.load(fh)
+            except Exception:
+                cfg = {}
+            port = int(cfg.get('http_port', 8010) or 8010)
+            url = f'http://127.0.0.1:{port}/logs?lines=500'
+            headers = {}
+            token = cfg.get('ack_token')
+            if token:
+                headers['X-ACK-Token'] = token
+            try:
+                resp = requests.get(url, headers=headers, timeout=3)
+                if resp.status_code == 200:
+                    j = resp.json()
+                    lines = j.get('lines', [])
+                else:
+                    lines = []
+            except Exception:
+                lines = []
+
+            # fallback para arquivo local se nao tiver linhas
+            if not lines:
+                if not os.path.exists('agente.log') or os.path.getsize('agente.log') == 0:
+                    self.logs_output.setText('Nenhum evento registrado.')
+                    return
+                with open('agente.log', 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
             # Limitar a 500 últimas linhas
             if len(lines) > 500:
                 lines = lines[-500:]
             # Destacar erros/avisos
             html = ''
             for line in lines:
-                if 'ERROR' in line:
-                    html += f'<span style="color:#b00;font-weight:bold;">{line.strip()}</span><br>'
-                elif 'WARNING' in line:
-                    html += f'<span style="color:#e69500;">{line.strip()}</span><br>'
+                l = line if isinstance(line, str) else str(line)
+                if 'ERROR' in l.upper():
+                    html += f'<span style="color:#b00;font-weight:bold;">{l.strip()}</span><br>'
+                elif 'WARNING' in l.upper():
+                    html += f'<span style="color:#e69500;">{l.strip()}</span><br>'
                 else:
-                    html += f'{line.strip()}<br>'
+                    html += f'{l.strip()}<br>'
             self.logs_output.setHtml(html)
             # Auto-rolagem para o final
             self.logs_output.moveCursor(self.logs_output.textCursor().End)
