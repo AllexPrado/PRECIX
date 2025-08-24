@@ -84,14 +84,14 @@ sys.excepthook = _global_excepthook
 def load_config():
     try:
         if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
-            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+            with open(CONFIG_PATH, 'r', encoding='utf-8-sig') as f:
                 return json.load(f)
         # fallback: try to copy default config next to the app
         default_path = os.path.join(os.path.dirname(__file__), 'config.json')
         if os.path.exists(default_path):
             try:
                 shutil.copy(default_path, CONFIG_PATH)
-                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                with open(CONFIG_PATH, 'r', encoding='utf-8-sig') as f:
                     return json.load(f)
             except Exception:
                 pass
@@ -144,7 +144,7 @@ def gerar_arquivo_precos(dados, filename, incluir_cabecalho=None):
         incluir_cabecalho_flag = False
         if os.path.exists(config_path):
             try:
-                with open(config_path, 'r', encoding='utf-8') as f:
+                with open(config_path, 'r', encoding='utf-8-sig') as f:
                     config = json.load(f)
                 sep = config.get('arquivo_separador', '|')
                 incluir_cabecalho_flag = config.get('arquivo_incluir_cabecalho', False)
@@ -541,11 +541,62 @@ def iniciar_status_heartbeat():
     import threading
 
     def loop():
+        # além de salvar o status local a cada 10s, envia heartbeat ao backend (~30s)
+        last_sent = 0
+        last_devices_sent = 0
+        # loga uma batida de vida a cada ~60s para diagnóstico
+        last_alive_log = 0
         while True:
             try:
                 salvar_status_agente()
             except Exception:
                 logging.exception('Erro ao salvar status no heartbeat')
+
+            # envia ping para o backend com um intervalo curto para manter painel online
+            try:
+                now = time.time()
+                # tornar intervalos configuráveis, com padrão de 30s
+                try:
+                    cfg = load_config()
+                except Exception:
+                    cfg = {}
+                try:
+                    hb_interval = int(cfg.get('agent_heartbeat_sec', 30) or 30)
+                except Exception:
+                    hb_interval = 30
+                try:
+                    devices_interval = int(cfg.get('devices_push_interval_sec', 30) or 30)
+                except Exception:
+                    devices_interval = 30
+                # log inicial dos intervalos
+                if last_alive_log == 0:
+                    logging.info(f"[HEARTBEAT] Thread iniciada. hb_interval={hb_interval}s devices_interval={devices_interval}s")
+
+                if now - last_sent >= hb_interval:
+                    try:
+                        logging.info('[HEARTBEAT] Enviando status do agente...')
+                        enviar_status_agente()
+                        logging.info('[HEARTBEAT] Status enviado.')
+                    except Exception:
+                        logging.exception('Erro ao enviar heartbeat para backend')
+                    last_sent = now
+                # envia lista de dispositivos legados no mesmo compasso do heartbeat (padrão 30s)
+                if now - last_devices_sent >= devices_interval:
+                    try:
+                        logging.info('[DEVICES] Enviando lista de dispositivos legados...')
+                        enviar_dispositivos_legados()
+                        logging.info('[DEVICES] Dispositivos enviados.')
+                    except Exception:
+                        logging.exception('Erro ao enviar dispositivos legados para backend')
+                    last_devices_sent = now
+                # log de vida periódico
+                if now - last_alive_log >= 60:
+                    logging.info('[ALIVE] Loop de heartbeat ativo.')
+                    last_alive_log = now
+            except Exception:
+                # nunca deixa o loop morrer, mas registra o erro
+                logging.exception('Erro inesperado no loop de heartbeat')
+
             time.sleep(10)
 
     t = threading.Thread(target=loop, daemon=True)
@@ -601,7 +652,7 @@ def _wsgi_app(environ, start_response):
                 last_generated = None
                 try:
                     if os.path.exists(CONFIG_PATH):
-                        with open(CONFIG_PATH, 'r', encoding='utf-8') as fh:
+                        with open(CONFIG_PATH, 'r', encoding='utf-8-sig') as fh:
                             cfg = json.load(fh)
                             last_generated = cfg.get('ultima_atualizacao') or cfg.get('automacao_ultima')
                 except Exception:
@@ -614,7 +665,9 @@ def _wsgi_app(environ, start_response):
                             status_info = json.load(fh) or {}
                 except Exception:
                     status_info = {}
-                payload = json.dumps({'status': 'ok', 'last_generated': last_generated, 'status': status_info}, ensure_ascii=False).encode('utf-8')
+                # avoid duplicate keys: expose detailed status under 'agent_status'
+                payload_obj = {'status': 'ok', 'last_generated': last_generated, 'agent_status': status_info}
+                payload = json.dumps(payload_obj, ensure_ascii=False).encode('utf-8')
                 start_response('200 OK', [('Content-Type', 'application/json; charset=utf-8')])
                 return [payload]
             except Exception:
@@ -852,7 +905,8 @@ def enviar_status_agente():
     if (not loja_codigo or not loja_nome) and isinstance(config.get('lojas'), list) and len(config.get('lojas', [])) > 0:
         loja = config['lojas'][0]
         loja_codigo = loja_codigo or loja.get('codigo')
-        loja_nome = loja_nome or loja.get('nome')
+        # aceita tanto 'nome' quanto 'name' vindos da UI
+        loja_nome = loja_nome or (loja.get('nome') or loja.get('name'))
     status_payload = {
         "agent_id": agent_id,
         "status": "online",
@@ -862,10 +916,27 @@ def enviar_status_agente():
         status_payload["loja_codigo"] = loja_codigo
     if loja_nome:
         status_payload["loja_nome"] = loja_nome
+    # Envia lista completa de lojas vinculadas, se houver
+    try:
+        lojas_cfg = config.get('lojas') or []
+        lojas_slim = []
+        for lj in lojas_cfg:
+            if not isinstance(lj, dict):
+                continue
+            cod = lj.get('codigo')
+            nom = lj.get('nome') or lj.get('name')
+            if not cod and not nom:
+                continue
+            lojas_slim.append({'codigo': cod, 'nome': nom})
+        if lojas_slim:
+            status_payload['lojas'] = lojas_slim
+    except Exception:
+        pass
     try:
         # post to configured backend URL
         try:
-            requests.post(backend_url, json=status_payload, timeout=5)
+            resp = requests.post(backend_url, json=status_payload, timeout=5)
+            logging.info(f"[HEARTBEAT] POST {backend_url} -> {resp.status_code}")
         except Exception:
             logging.exception('Erro ao enviar status para backend_url primário')
         # optional forward to aggregator service
@@ -884,11 +955,72 @@ def enviar_status_agente():
                     'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                     'ip': get_local_ip()
                 }
-                requests.post(agg_url.rstrip('/') + '/api/agents/status', json=agg_payload, headers=headers, timeout=5)
+                r2 = requests.post(agg_url.rstrip('/') + '/api/agents/status', json=agg_payload, headers=headers, timeout=5)
+                logging.info(f"[HEARTBEAT] Aggregator POST -> {r2.status_code}")
             except Exception:
                 logging.exception('Erro ao enviar status para agregador')
     except Exception:
         logging.exception('Erro ao enviar status do agente local')
+
+def _backend_base_from_status_url(url: str) -> str:
+    try:
+        u = (url or '').rstrip('/')
+        suffix = '/admin/agents/status'
+        if u.endswith(suffix):
+            return u[:-len(suffix)]
+        return u
+    except Exception:
+        return url or ''
+
+def enviar_dispositivos_legados():
+    """Envia a lista de dispositivos (legados) do agente para o backend.
+    Backend: POST {base}/admin/agents/{agent_id}/devices  Body: { devices: [ {identifier, name?, tipo?, status?, ip?, last_update?} ] }
+    """
+    config = load_config()
+    backend_status_url = config.get('backend_url') or 'http://127.0.0.1:8000/admin/agents/status'
+    base = _backend_base_from_status_url(backend_status_url)
+    agent_id = config.get('agente_id') or str(uuid.getnode())
+    devices_url = f"{base}/admin/agents/{agent_id}/devices"
+    equipamentos = config.get('equipamentos', []) or []
+    payload_devices = []
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    for eq in equipamentos:
+        try:
+            ip = str(eq.get('ip') or '').strip()
+            porta = str(eq.get('porta') or '').strip()
+            desc = (eq.get('descricao') or eq.get('name') or '').strip()
+            status = (eq.get('status') or 'online').strip()
+            loja_cod = eq.get('loja') or eq.get('loja_codigo') or None
+            loja_nom = eq.get('loja_nome') or None
+            # catalago (se a GUI estiver preenchendo)
+            last_cat = eq.get('last_catalog_sync') or None
+            cat_count = eq.get('catalog_count') or None
+            if not ip:
+                continue
+            identifier = f"{ip}:{porta}" if porta else ip
+            payload_devices.append({
+                'identifier': identifier,
+                'name': desc or identifier,
+                'tipo': 'LEGACY',
+                'status': status or 'online',
+                'ip': ip,
+                'last_update': now_str,
+                'store_code': loja_cod,
+                'store_name': loja_nom,
+                'last_catalog_sync': last_cat,
+                'catalog_count': cat_count
+            })
+        except Exception:
+            continue
+    try:
+        if not payload_devices:
+            logging.info('[DEVICES] Nenhum dispositivo legado configurado para enviar.')
+            return
+        logging.info(f"[DEVICES] POST {devices_url} (count={len(payload_devices)})")
+        resp = requests.post(devices_url, json={'devices': payload_devices}, timeout=8)
+        logging.info(f"[DEVICES] Resposta -> {resp.status_code}")
+    except Exception:
+        logging.exception('Falha ao enviar dispositivos legados')
 
 
 def main():
@@ -1074,6 +1206,15 @@ def main():
                 if dados:
                     try:
                         gerar_arquivo_precos(dados, arquivo_saida)
+                        # Após gerar, também envia para API (atualizar PWA) e conforme método configurado (FTP/TCP/LOCAL/API)
+                        try:
+                            enviar_para_api(dados)
+                        except Exception:
+                            logging.exception('Erro ao enviar dados para API (loop regular)')
+                        try:
+                            enviar_arquivo_automatico(arquivo_saida)
+                        except Exception:
+                            logging.exception('Erro ao executar envio automático (loop regular)')
                     except Exception:
                         logging.exception('Erro ao chamar gerar_arquivo_precos')
 

@@ -8,7 +8,10 @@
         </div>
         <div class="summary-item">
           <span class="summary-title">Última sincronização</span>
-          <span class="summary-value nowrap">{{ formatDateTime(status.last_sync) }}</span>
+          <span class="summary-value nowrap">
+            <span>{{ formatTS(status.last_sync) }}</span>
+            <small v-if="status.last_sync" class="muted"> ({{ fromNow(status.last_sync) }})</small>
+          </span>
         </div>
         <div class="summary-item">
           <span class="summary-title">Status do Sistema</span>
@@ -16,7 +19,10 @@
         </div>
         <div class="summary-item">
           <span class="summary-title">Último backup</span>
-          <span class="summary-value nowrap">{{ formatDateTime(status.last_backup) }}</span>
+          <span class="summary-value nowrap">
+            <span>{{ formatTS(status.last_backup) }}</span>
+            <small v-if="status.last_backup" class="muted"> ({{ fromNow(status.last_backup) }})</small>
+          </span>
         </div>
       </div>
     </div>
@@ -26,15 +32,24 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
+import dayjs from 'dayjs'
+import relativeTime from 'dayjs/plugin/relativeTime'
+import 'dayjs/locale/pt-br'
+
+dayjs.extend(relativeTime)
+dayjs.locale('pt-br')
 
 const status = ref({})
 
-function formatDateTime(dt) {
-  if (!dt) return '---';
-  // Aceita ISO e retorna DD/MM/YYYY HH:mm:ss
-  const d = new Date(dt);
-  if (isNaN(d)) return dt;
-  return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR');
+function formatTS(ts) {
+  if (!ts) return '---'
+  const d = dayjs(ts)
+  return d.isValid() ? d.format('DD/MM/YYYY HH:mm:ss') : String(ts)
+}
+function fromNow(ts) {
+  if (!ts) return ''
+  const d = dayjs(ts)
+  return d.isValid() ? d.fromNow() : ''
 }
 
 onMounted(async () => {
@@ -42,7 +57,7 @@ onMounted(async () => {
     const res = await axios.get('/admin/status')
     status.value = res.data
   } catch (e) {
-    // handle error
+    // noop
   }
 })
 </script>
@@ -65,10 +80,10 @@ html, body {
   background: #fff;
   border-radius: 10px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  padding: 4px 0 4px 0;
-  margin: 0 0 0 0;
-  width: 90vw;
-  max-width: 820px;
+  padding: 6px 0;
+  margin: 0;
+  width: 94vw;
+  max-width: 980px;
   min-width: 320px;
   display: flex;
   flex-direction: column;
@@ -79,9 +94,10 @@ html, body {
   flex-direction: row;
   justify-content: center;
   align-items: stretch;
-  gap: 32px;
+  gap: 20px;
   width: 100%;
-  margin-top: 18px;
+  margin-top: 12px;
+  flex-wrap: wrap;
 }
 .summary-item {
   background: #fff;
@@ -91,11 +107,11 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 110px;
-  max-width: 160px;
-  padding: 6px 6px 6px 6px;
+  min-width: 120px;
+  max-width: 260px;
+  padding: 8px;
   margin: 0;
-  height: 60px;
+  min-height: 56px;
 }
 .summary-title {
   color: #ff6600;
@@ -105,42 +121,34 @@ html, body {
   text-align: center;
 }
 .summary-value {
-  font-size: 1.08rem;
-  font-weight: bold;
+  font-size: 1.06rem;
+  font-weight: 700;
   margin-top: 1px;
   letter-spacing: 0.2px;
   text-align: center;
   word-break: keep-all;
 }
-.nowrap {
-  white-space: nowrap;
-}
-.online-status {
-  font-size: 1.08rem;
-}
-.online {
-  color: #1a7f37;
-}
-.offline {
-  color: #b91c1c;
-}
+.nowrap { white-space: nowrap; }
+.muted { color: #6b7280; font-weight: 500; }
+.online-status { font-size: 1.06rem; }
+.online { color: #1a7f37; }
+.offline { color: #b91c1c; }
 @media (max-width: 700px) {
   .dashboard-card-light {
     width: 98vw;
     min-width: 0;
-    padding: 4px 0;
+    padding: 6px 0;
   }
   .dashboard-summary-row {
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
     align-items: stretch;
-    margin-top: 8px;
+    margin-top: 6px;
   }
   .summary-item {
     min-width: 0;
     max-width: 100%;
     width: 100%;
-    margin-bottom: 4px;
     height: auto;
   }
 }

@@ -139,6 +139,8 @@ def init_db():
             last_sync TEXT,
             online INTEGER DEFAULT 0,
             identifier TEXT,
+            last_catalog_sync TEXT,
+            catalog_count INTEGER,
             FOREIGN KEY(store_id) REFERENCES stores(id)
         )
     ''')
@@ -148,6 +150,13 @@ def init_db():
     if 'identifier' not in columns:
         logging.info("[DB] Adicionando coluna 'identifier' na tabela devices")
         cur.execute('ALTER TABLE devices ADD COLUMN identifier TEXT')
+    # MIGRAÇÃO: adiciona colunas de catálogo
+    if 'last_catalog_sync' not in columns:
+        logging.info("[DB] Adicionando coluna 'last_catalog_sync' na tabela devices")
+        cur.execute('ALTER TABLE devices ADD COLUMN last_catalog_sync TEXT')
+    if 'catalog_count' not in columns:
+        logging.info("[DB] Adicionando coluna 'catalog_count' na tabela devices")
+        cur.execute('ALTER TABLE devices ADD COLUMN catalog_count INTEGER')
     # Tabela de auditoria/logs
     cur.execute('''
         CREATE TABLE IF NOT EXISTS audit_log (
@@ -160,6 +169,28 @@ def init_db():
             FOREIGN KEY(device_id) REFERENCES devices(id)
         )
     ''')
+    # Tabela de dispositivos legados gerenciados por agentes locais
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS agent_devices (
+            agent_id TEXT NOT NULL,
+            identifier TEXT NOT NULL,
+            name TEXT,
+            tipo TEXT DEFAULT 'LEGACY',
+            status TEXT,
+            last_update TEXT,
+            ip TEXT,
+            last_catalog_sync TEXT,
+            catalog_count INTEGER,
+            PRIMARY KEY (agent_id, identifier)
+        )
+    ''')
+    # Migração: acrescenta colunas de loja se não existirem
+    cur.execute("PRAGMA table_info(agent_devices)")
+    ad_cols = [row[1] for row in cur.fetchall()]
+    if 'store_code' not in ad_cols:
+        cur.execute('ALTER TABLE agent_devices ADD COLUMN store_code TEXT')
+    if 'store_name' not in ad_cols:
+        cur.execute('ALTER TABLE agent_devices ADD COLUMN store_name TEXT')
     # Tabela de status dos agentes locais (persistência)
     cur.execute('''
         CREATE TABLE IF NOT EXISTS agents_status (
@@ -169,6 +200,15 @@ def init_db():
             status TEXT,
             last_update TEXT,
             ip TEXT
+        )
+    ''')
+    # Tabela de lojas vinculadas por agente (para múltiplas lojas)
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS agent_stores (
+            agent_id TEXT NOT NULL,
+            loja_codigo TEXT,
+            loja_nome TEXT,
+            PRIMARY KEY(agent_id, loja_codigo)
         )
     ''')
     conn.commit()
@@ -321,11 +361,11 @@ def get_all_devices():
     for row in rows:
         device = dict(row)
         last_sync = device.get('last_sync')
-        # Considera online se o último heartbeat (last_sync) foi há menos de 30 segundos
+        # Considera online se o último heartbeat (last_sync) foi há menos de 120 segundos
         if last_sync:
             try:
                 dt = datetime.fromisoformat(last_sync)
-                device['online'] = int((now - dt) < timedelta(seconds=30))
+                device['online'] = int((now - dt) < timedelta(seconds=120))
             except Exception:
                 device['online'] = 0
         else:
@@ -421,6 +461,41 @@ def set_device_online(identifier: str):
             from database import add_device
             add_device(default_store_id, default_name, identifier=identifier, last_sync=now, online=1)
 
+def get_device_by_identifier(identifier: str):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM devices WHERE identifier = ?', (identifier,))
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def update_device_catalog_sync(identifier: str, total_products: int = None, timestamp: str = None):
+    """Atualiza colunas de sincronização de catálogo por identifier."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Define timestamp
+    if not timestamp:
+        from datetime import datetime
+        timestamp = datetime.utcnow().isoformat()
+    # Garante que o device existe
+    cur.execute('SELECT id FROM devices WHERE identifier = ?', (identifier,))
+    row = cur.fetchone()
+    if not row:
+        # cria placeholder
+        default_name = f"Novo Equipamento {identifier[:8]}"
+        cur.execute('SELECT id FROM stores ORDER BY id LIMIT 1')
+        store_row = cur.fetchone()
+        default_store_id = store_row['id'] if store_row else None
+        cur.execute('INSERT INTO devices (store_id, name, status, last_sync, online, identifier, last_catalog_sync, catalog_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                    (default_store_id, default_name, 'ativo', timestamp, 1, identifier, timestamp, total_products or 0))
+        conn.commit()
+        conn.close()
+        return
+    # Atualiza existentes
+    cur.execute('UPDATE devices SET last_catalog_sync = ?, catalog_count = ? WHERE identifier = ?', (timestamp, total_products, identifier))
+    conn.commit()
+    conn.close()
+
 def set_device_offline(device_id: int):
     conn = get_db_connection()
     cur = conn.cursor()
@@ -491,6 +566,34 @@ def upsert_agent_status(agent_id: str, loja_codigo: str = None, loja_nome: str =
         logging.error(f"[DB][upsert_agent_status] Erro ao inserir/atualizar agente: {e}")
         raise
 
+def replace_agent_stores(agent_id: str, lojas: list):
+    """Substitui a lista de lojas vinculadas a um agente."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('DELETE FROM agent_stores WHERE agent_id = ?', (agent_id,))
+        for lj in lojas or []:
+            if not isinstance(lj, dict):
+                continue
+            codigo = (lj.get('codigo') or '').strip()
+            nome = (lj.get('nome') or lj.get('name') or '').strip()
+            if not codigo and not nome:
+                continue
+            cur.execute('INSERT OR REPLACE INTO agent_stores (agent_id, loja_codigo, loja_nome) VALUES (?, ?, ?)', (agent_id, codigo or None, nome or None))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logging.error(f"[DB][replace_agent_stores] {e}")
+        raise
+
+def get_agent_stores(agent_id: str):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT loja_codigo, loja_nome FROM agent_stores WHERE agent_id = ? ORDER BY loja_codigo', (agent_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
 def get_all_agents_status():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -499,6 +602,38 @@ def get_all_agents_status():
     conn.close()
     return [dict(row) for row in rows]
 
+def delete_agent_status(agent_id: str):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('DELETE FROM agents_status WHERE agent_id = ?', (agent_id,))
+    conn.commit()
+    conn.close()
+
+def update_agent_status(agent_id: str, loja_codigo: str = None, loja_nome: str = None, status: str = None, ip: str = None, last_update: str = None):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Busca valores atuais
+    cur.execute('SELECT loja_codigo, loja_nome, status, last_update, ip FROM agents_status WHERE agent_id = ?', (agent_id,))
+    row = cur.fetchone()
+    if not row:
+        # Se não existir, cria com os dados fornecidos
+        conn.close()
+        upsert_agent_status(agent_id, loja_codigo=loja_codigo, loja_nome=loja_nome, status=status, last_update=last_update, ip=ip)
+        return
+    current = dict(row)
+    new_loja_codigo = loja_codigo if loja_codigo is not None else current.get('loja_codigo')
+    new_loja_nome = loja_nome if loja_nome is not None else current.get('loja_nome')
+    new_status = status if status is not None else current.get('status')
+    new_last_update = last_update if last_update is not None else current.get('last_update')
+    new_ip = ip if ip is not None else current.get('ip')
+    cur.execute('''
+        UPDATE agents_status
+           SET loja_codigo = ?, loja_nome = ?, status = ?, last_update = ?, ip = ?
+         WHERE agent_id = ?
+    ''', (new_loja_codigo, new_loja_nome, new_status, new_last_update, new_ip, agent_id))
+    conn.commit()
+    conn.close()
+
 def get_all_users():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -506,6 +641,100 @@ def get_all_users():
     rows = cur.fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+# --- Agent Devices (legacy) ---
+def upsert_agent_device(agent_id: str, identifier: str, name: str = None, tipo: str = 'LEGACY', status: str = None, last_update: str = None, ip: str = None, last_catalog_sync: str = None, catalog_count: int = None, store_code: str = None, store_name: str = None):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('''
+    INSERT INTO agent_devices (agent_id, identifier, name, tipo, status, last_update, ip, last_catalog_sync, catalog_count, store_code, store_name)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(agent_id, identifier) DO UPDATE SET
+            name=COALESCE(excluded.name, agent_devices.name),
+            tipo=COALESCE(excluded.tipo, agent_devices.tipo),
+            status=COALESCE(excluded.status, agent_devices.status),
+            last_update=COALESCE(excluded.last_update, agent_devices.last_update),
+            ip=COALESCE(excluded.ip, agent_devices.ip),
+            last_catalog_sync=COALESCE(excluded.last_catalog_sync, agent_devices.last_catalog_sync),
+        catalog_count=COALESCE(excluded.catalog_count, agent_devices.catalog_count),
+        store_code=COALESCE(excluded.store_code, agent_devices.store_code),
+        store_name=COALESCE(excluded.store_name, agent_devices.store_name)
+    ''', (agent_id, identifier, name, tipo, status, last_update, ip, last_catalog_sync, catalog_count, store_code, store_name))
+    conn.commit()
+    conn.close()
+
+def bulk_upsert_agent_devices(agent_id: str, devices: list):
+    from datetime import datetime
+    now = datetime.utcnow().isoformat()
+    for d in devices or []:
+        upsert_agent_device(
+            agent_id=agent_id,
+            identifier=str(d.get('identifier') or '').strip(),
+            name=d.get('name'),
+            tipo=d.get('tipo') or 'LEGACY',
+            status=d.get('status') or 'online',
+            last_update=d.get('last_update') or now,
+            ip=d.get('ip'),
+            last_catalog_sync=d.get('last_catalog_sync'),
+            catalog_count=d.get('catalog_count'),
+            store_code=d.get('store_code') or d.get('loja') or d.get('loja_codigo'),
+            store_name=d.get('store_name') or d.get('loja_nome')
+        )
+
+def get_agent_devices(agent_id: str):
+    """Lista dispositivos de um agente com status calculado por frescor de last_update.
+    Regra: online se last_update dentro da janela de 120s (mesma lógica do PWA/heartbeat).
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM agent_devices WHERE agent_id = ? ORDER BY name, identifier', (agent_id,))
+    rows = cur.fetchall()
+    conn.close()
+    devices = []
+    try:
+        from datetime import datetime, timedelta
+        # Usa horário local para comparar com last_update enviado pelo agente (também local)
+        now = datetime.now()
+    except Exception:
+        now = None
+    for row in rows:
+        d = dict(row)
+        # normaliza status textual legado
+        raw_status = (d.get('status') or '').strip().lower()
+        mapped = None
+        if raw_status in ('ok', 'online', 'ligado', 'ativo'):
+            mapped = 'online'
+        elif raw_status in ('desconhecido', 'unknown', 'offline', 'desligado', 'inativo'):
+            mapped = 'offline'
+        # Regra: se mapeado explicitamente como offline/unknown, respeita isso.
+        # Caso contrário, usa frescor de last_update para decidir online/offline.
+        final_status = mapped
+        if final_status != 'offline':
+            lu = d.get('last_update')
+            if lu and now:
+                try:
+                    # aceita ISO 8601 ou 'YYYY-mm-dd HH:MM:SS'
+                    try:
+                        dt = datetime.fromisoformat(str(lu))
+                    except Exception:
+                        from datetime import datetime as _dt
+                        dt = _dt.strptime(str(lu), '%Y-%m-%d %H:%M:%S')
+                    final_status = 'online' if (now - dt) <= timedelta(seconds=120) else 'offline'
+                except Exception:
+                    pass
+        # aplica cálculo (fallback para valor já salvo)
+        d['status'] = final_status or (d.get('status') or 'offline')
+        # opcional: booleano para facilitar UI futuras
+        d['online'] = 1 if (d.get('status') or '').lower() == 'online' else 0
+        devices.append(d)
+    return devices
+
+def delete_agent_device(agent_id: str, identifier: str):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('DELETE FROM agent_devices WHERE agent_id = ? AND identifier = ?', (agent_id, identifier))
+    conn.commit()
+    conn.close()
 
 def add_user(username: str, password: str, role: str = 'operador', store_id: int = None, permissoes: str = None):
     conn = get_db_connection()

@@ -132,6 +132,17 @@ async function syncCatalog() {
     if (Array.isArray(response.data)) {
       await clearProducts()
       await saveProducts(response.data)
+      // Notifica backend sobre sync do catálogo
+      try {
+        const identifier = deviceUUID?.value || ''
+        if (identifier) {
+          await fetch(`${API_BASE}/admin/devices/events/catalog-sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier, total_products: response.data.length })
+          })
+        }
+      } catch {}
     } else {
       // debug removido
     }
@@ -161,12 +172,34 @@ async function checkPrice() {
   const localProduct = await getProduct(code)
   if (localProduct && localProduct.name) {
     product.value = localProduct
+    // Emite evento de consulta OK (offline/local)
+    try {
+      const identifier = deviceUUID?.value || ''
+      if (identifier) {
+        await fetch(`${API_BASE}/admin/devices/events/price-query`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier, barcode: code, ok: true, price: localProduct.price })
+        })
+      }
+    } catch {}
     return
   }
   // Se offline, nunca tenta consultar API
   if (!isOnline.value) {
     product.value = null
     alert('Produto não encontrado! (offline)')
+    // Emite evento de consulta FAIL (offline)
+    try {
+      const identifier = deviceUUID?.value || ''
+      if (identifier) {
+        await fetch(`${API_BASE}/admin/devices/events/price-query`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier, barcode: code, ok: false, error: 'offline' })
+        })
+      }
+    } catch {}
     return
   }
   // Consulta API se online
@@ -176,13 +209,44 @@ async function checkPrice() {
     if (response.data && response.data.name) {
       product.value = response.data
       await saveProduct(response.data)
+      // Emite evento OK (API)
+      try {
+        const identifier = deviceUUID?.value || ''
+        if (identifier) {
+          await fetch(`${API_BASE}/admin/devices/events/price-query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier, barcode: code, ok: true, price: response.data.price })
+          })
+        }
+      } catch {}
     } else {
       product.value = null
       alert('Produto não encontrado!')
+      try {
+        const identifier = deviceUUID?.value || ''
+        if (identifier) {
+          await fetch(`${API_BASE}/admin/devices/events/price-query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier, barcode: code, ok: false, error: 'not_found' })
+          })
+        }
+      } catch {}
     }
   } catch (error) {
     product.value = null
     alert('Produto não encontrado! (erro de rede)')
+    try {
+      const identifier = deviceUUID?.value || ''
+      if (identifier) {
+        await fetch(`${API_BASE}/admin/devices/events/price-query`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier, barcode: code, ok: false, error: 'network' })
+        })
+      }
+    } catch {}
   }
 }
 </script>

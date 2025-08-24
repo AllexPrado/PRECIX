@@ -82,12 +82,16 @@
             </div>
             <div class="device-col lastsync">
               <span class="device-label">Último sinal:</span>
-              <span v-if="device.last_sync">{{ formatLastHeartbeat(device.last_sync) }} ({{ offlineSeconds(device) }}s)</span>
+              <span v-if="device.last_sync">{{ formatLastHeartbeat(device.last_sync) }} <span class="muted">({{ fromNow(device.last_sync) }})</span></span>
               <span v-else>Nunca conectado</span>
+              <span class="device-label"> | Catálogo:</span>
+              <span v-if="device.last_catalog_sync">{{ formatLastHeartbeat(device.last_catalog_sync) }} <span class="muted">({{ fromNow(device.last_catalog_sync) }})</span> ({{ device.catalog_count || 0 }} itens)</span>
+              <span v-else>Sem sync</span>
             </div>
             <div class="device-col actions">
               <button v-if="userRole === 'admin'" @click="openEditModal(device)">Editar</button>
               <button v-if="userRole === 'admin'" @click="deleteDevice(device.id)">Excluir</button>
+              <button @click="openEvents(device.identifier)">Eventos</button>
             </div>
           </li>
         </ul>
@@ -101,7 +105,11 @@ import { ref, onMounted, computed } from 'vue'
 import { getUserRole } from '../auth.js'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
+import relativeTime from 'dayjs/plugin/relativeTime'
+import ptBr from 'dayjs/locale/pt-br'
 dayjs.extend(utc)
+dayjs.extend(relativeTime)
+dayjs.locale(ptBr)
 
 const devices = ref([])
 const stores = ref([])
@@ -242,6 +250,14 @@ async function deleteDevice(id) {
 function formatLastHeartbeat(ts) {
   return dayjs(ts).format('DD/MM/YYYY HH:mm:ss')
 }
+function fromNow(ts) {
+  return dayjs(ts).fromNow()
+}
+
+function openEvents(identifier) {
+  if (!identifier) return
+  window.open(`#${'/device-events'}?identifier=${encodeURIComponent(identifier)}`, '_blank')
+}
 
 
 function offlineSeconds(device) {
@@ -268,11 +284,11 @@ onMounted(() => {
 }
 .device-manager-card {
   background: #fff;
-  border-radius: 18px;
-  box-shadow: 0 8px 32px #ff66001a;
-  padding: 36px 28px;
-  min-width: 340px;
-  max-width: 900px;
+  border-radius: 14px;
+  box-shadow: 0 2px 12px #ff660014;
+  padding: 20px 18px;
+  min-width: 320px;
+  max-width: 100%;
   width: 100%;
 }
 header {
@@ -345,13 +361,13 @@ ul {
 }
 .device-item {
   display: grid;
-  grid-template-columns: 2fr 1.5fr 1.5fr 2fr 1fr;
+  grid-template-columns: 2fr 1.4fr 1.2fr 2fr 0.9fr;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 10px;
   background: #f8f9fa;
   border-radius: 8px;
-  padding: 12px 8px;
+  padding: 10px 8px;
   box-shadow: 0 2px 8px #ff66001a;
 }
 .device-col {
@@ -369,6 +385,7 @@ ul {
   font-size: 0.92em;
   margin-right: 2px;
 }
+.muted { color:#888; font-size:0.86em }
 .status-online {
   color: green;
   font-weight: bold;
@@ -390,6 +407,17 @@ ul {
   padding: 2px 8px;
   font-size: 0.85em;
   margin-left: 6px;
+}
+@media (max-width: 1080px) {
+  .device-item { grid-template-columns: 1.8fr 1.1fr 1.1fr 1.8fr 1fr; }
+}
+@media (max-width: 900px) {
+  .device-item { grid-template-columns: 1.8fr 1fr; }
+  .device-col.actions { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; }
+  .device-col.lastsync { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  .device-item { grid-template-columns: 1fr; }
 }
 .modal-bg {
   position: fixed;

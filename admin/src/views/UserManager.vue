@@ -291,14 +291,13 @@ function closeUserModal() {
 
 <style scoped>
 .user-manager {
-  max-width: 540px;
-  min-width: 340px;
-  margin: 72px auto 40px auto;
+  max-width: 920px;
+  min-width: 300px;
+  margin: 24px auto;
   background: #fff;
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: 0 4px 24px #ff66001a;
-  padding: 32px 24px 24px 24px;
-  /* Garante que nada saia do card */
+  padding: 16px 14px 14px 14px;
   overflow: hidden;
 }
 .back-btn-row {
@@ -323,8 +322,8 @@ function closeUserModal() {
 }
 .user-manager h2 {
   color: #FF6600;
-  margin-bottom: 18px;
-  font-size: 1.3rem;
+  margin-bottom: 12px;
+  font-size: 1.2rem;
 }
 .add-user-btn {
   background: #FF6600;
@@ -341,7 +340,7 @@ function closeUserModal() {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 .user-manager input,
 .user-manager select {
@@ -372,8 +371,8 @@ function closeUserModal() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14px;
-  padding-bottom: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
   border-bottom: 1px solid #eee;
   gap: 12px;
   /* Garante que os botões não ultrapassem o card */
@@ -403,8 +402,8 @@ function closeUserModal() {
 }
 .user-btns button {
   min-width: 90px;
-  font-size: 0.98rem;
-  padding: 7px 10px;
+  font-size: 0.96rem;
+  padding: 6px 10px;
   white-space: nowrap;
 }
 .dialog {
@@ -417,10 +416,10 @@ function closeUserModal() {
 }
 .dialog-content {
   background: #fff;
-  padding: 24px 18px;
+  padding: 16px 14px;
   border-radius: 10px;
   box-shadow: 0 2px 16px #ff66001a;
-  min-width: 260px;
+  min-width: 280px;
 }
 .error-msg {
   color: #c00;

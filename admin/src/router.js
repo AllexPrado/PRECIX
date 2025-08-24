@@ -7,6 +7,7 @@ import IALogView from './views/IALogView.vue'
 import AgentManager from './views/AgentManager.vue'
 import StoreManager from './views/StoreManager.vue'
 import DeviceManager from './views/DeviceManager.vue'
+import DeviceEvents from './views/DeviceEvents.vue'
 import AuditLog from './views/AuditLog.vue'
 import UserManager from './views/UserManager.vue'
 import IntegrationConfig from './views/IntegrationConfig.vue' // Tela de configuração de integrações
@@ -46,6 +47,7 @@ const routes = [
       { path: '/ia-logs', component: IALogView },
       { path: '/stores', component: StoreManager },
       { path: '/devices', component: DeviceManager },
+  { path: '/device-events', component: DeviceEvents },
       { path: '/audit', component: AuditLog },
       { path: '/users', component: UserManager },
   { path: '/agents', component: AgentManager },

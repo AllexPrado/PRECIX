@@ -1,66 +1,100 @@
-# Python
+###############
+# OS/Editors  #
+###############
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+###############
+# Node/Vite   #
+###############
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+dist-ssr/
+*.local
+**/.vite/
+**/.vite/deps/
+
+###############
+# Logs        #
+###############
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+###############
+# Python      #
+###############
 __pycache__/
+**/__pycache__/
+.pytest_cache/
+**/.pytest_cache/
 *.pyc
 *.pyo
 *.pyd
-*.db
-*.sqlite3
+*.egg-info/
+.venv/
+.venv-*/
+env/
+venv/
 
-# Node
-node_modules/
-dist/
+######################
+# Build/Installers   #
+######################
+build/
+**/build/
+*.exe
+*.msi
 
-# VSCode
-.vscode/
-
-# Env/Secrets
+######################
+# Secrets/Configs    #
+######################
 .env
 .env.*
 *.env
-
-# Outros arquivos sensíveis
-*.bak
-*.log
-*.tps
-*.tpsbak
-*.pemhon
+*.secret
+secrets/
+.credentials
 *.key
-*.crtcache__/
-*.ini.env
-*.xml
-*.state.xml
-*.db-journal.DS_Store
+*.pem
+*.pfx
+*.crt
 
-# Ignorar completamente a pasta Kiosk (não faz parte do projeto)
+######################
+# Data files         #
+######################
+*.db
+*.sqlite3
+*.db-journal
+*.bak
+
+######################
+# Project-specific   #
+######################
+# Grandes pastas/artefatos não versionados
 Kiosk/
+Imagens/
+Imagens2/
+Precos/
 
-# PyInstaller/Build
-*.spec
-dist/
-build/
-*.exe
-*.msi
-*.iss
-
-# Agente local (não versionar arquivos de configuração e dados sensíveis gerados localmente)
+# Agente Local: artefatos e configs locais
 agente_local/config.json
 agente_local/acks.jsonl
 agente_local/agent_status.json
 agente_local/agente.log
-agente_local/dist/nssm/
+agente_local/build/
+agente_local/dist/
 
-# Dados locais do usuário (não versionar AppData, credenciais, tokens)
-# Note: o instalador e artefatos de build controlam quais arquivos finais são empacotados.
-C:\Users\*/AppData/Local/AgentePRECIX/
+# Backend: caches e estados voláteis
+backend/__pycache__/
+backend/agents_status.json
 
-# Arquivos de configuração gerados por instaladores e ambientes locais
-*.localconfig
-*.secret
-secrets/
-.credentials
-
-# Ignore config files that may exist outside agente_local
-config.json
-*.key
-*.pem
-*.pfx
+# Ambientes locais de usuário (garantia extra)
+**/AppData/Local/AgentePRECIX/

@@ -48,6 +48,11 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
 import dayjs from 'dayjs'
+import relativeTime from 'dayjs/plugin/relativeTime'
+import 'dayjs/locale/pt-br'
+
+dayjs.extend(relativeTime)
+dayjs.locale('pt-br')
 
 const logs = ref([])
 const filterAction = ref('')
@@ -85,7 +90,9 @@ function refreshLogs() {
 }
 
 function formatTime(timestamp) {
-  return dayjs(timestamp).format('DD/MM/YYYY HH:mm:ss')
+  const d = dayjs(timestamp)
+  if (!d.isValid()) return String(timestamp)
+  return `${d.format('DD/MM/YYYY HH:mm:ss')} (${d.fromNow()})`
 }
 
 function getActionText(action) {
@@ -121,23 +128,8 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.audit-log-bg {
-  min-height: 100vh;
-  background: #fff3e0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-.audit-log-card {
-  background: #fff;
-  border-radius: 18px;
-  box-shadow: 0 8px 32px #ff66001a;
-  padding: 36px 28px;
-  min-width: 600px;
-  max-width: 900px;
-  width: 100%;
-}
+.audit-log-bg { min-height: 100vh; background: #fff3e0; display: flex; align-items: center; justify-content: center; padding: 14px; }
+.audit-log-card { background: #fff; border-radius: 14px; box-shadow: 0 6px 24px #ff66001a; padding: 16px; min-width: 300px; max-width: 1100px; width: 100%; }
 header {
   display: flex;
   align-items: center;
@@ -188,10 +180,7 @@ button {
   text-align: center;
   padding: 20px;
 }
-.logs-container {
-  max-height: 500px;
-  overflow-y: auto;
-}
+.logs-container { max-height: 60vh; overflow-y: auto; }
 .log-item {
   border: 1px solid #e0e0e0;
   border-radius: 8px;

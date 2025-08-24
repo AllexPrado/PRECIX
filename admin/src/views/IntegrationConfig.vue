@@ -244,39 +244,10 @@ onMounted(() => {
   background: #8e0000;
 }
 /* Layout principal */
-.integration-config-bg {
-  min-height: 100vh;
-  background: #fff3e0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 40px;
-}
-.integration-config-card {
-  background: #fff;
-  border-radius: 18px;
-  box-shadow: 0 8px 32px #ff66001a;
-  padding: 36px 28px 24px 28px;
-  min-width: 340px;
-  max-width: 900px;
-  width: 100%;
-}
-.integration-header-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 18px;
-}
-.add-btn {
-  background: #ff6600;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 8px 18px;
-  font-weight: bold;
-  font-size: 1em;
-  cursor: pointer;
-}
+.integration-config-bg { min-height: 100vh; background: #fff3e0; display: flex; align-items: flex-start; justify-content: center; padding: 14px; }
+.integration-config-card { background: #fff; border-radius: 14px; box-shadow: 0 6px 24px #ff66001a; padding: 16px; min-width: 300px; max-width: 1100px; width: 100%; }
+.integration-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.add-btn { background: #ff6600; color: #fff; border: none; border-radius: 6px; padding: 8px 14px; font-weight: 700; font-size: 0.98em; cursor: pointer; }
 .add-btn:hover {
   background: #e65100;
 }
@@ -290,16 +261,8 @@ onMounted(() => {
   font-weight: bold;
   margin-left: 18px;
 }
-.integration-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-bottom: 18px;
-}
-.integration-table th, .integration-table td {
-  border: 1px solid #e0e0e0;
-  padding: 8px;
-  text-align: left;
-}
+.integration-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+.integration-table th, .integration-table td { border: 1px solid #e0e0e0; padding: 8px; text-align: left; }
 .integration-table th {
   background: #ffe0b2;
   color: #ff6600;
@@ -325,22 +288,11 @@ button:hover {
   justify-content: center;
   z-index: 1000;
 }
-.modal-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 24px 28px;
-  min-width: 420px;
-  box-shadow: 0 4px 16px #ff660033;
-}
+.modal-card { background: #fff; border-radius: 12px; padding: 16px 18px; min-width: 380px; box-shadow: 0 4px 16px #ff660033; }
 .modal-integration {
   max-width: 600px;
 }
-.modal-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px;
-  margin-bottom: 12px;
-}
+.modal-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; }
 .modal-col {
   flex: 1 1 180px;
   display: flex;
@@ -352,12 +304,7 @@ button:hover {
   gap: 8px;
   align-items: center;
 }
-.modal-actions {
-  display: flex;
-  gap: 12px;
-  margin-top: 18px;
-  justify-content: flex-end;
-}
+.modal-actions { display: flex; gap: 10px; margin-top: 12px; justify-content: flex-end; }
 .edit-btn {
   background: #ff9800;
   color: #fff;

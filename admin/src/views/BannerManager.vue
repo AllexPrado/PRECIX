@@ -16,7 +16,7 @@
       <div v-if="loading" class="bm-loading">Carregando...</div>
       <div v-if="error" class="bm-error">{{ error }}</div>
       <div v-if="banners.length === 0 && !loading" class="bm-empty">Nenhum banner cadastrado.</div>
-      <div class="bm-grid">
+  <div class="bm-grid">
         <div v-for="banner in banners" :key="banner.filename" class="bm-banner">
           <img :src="backendUrl + banner.url" :alt="banner.filename" />
           <div class="bm-banner-info">
@@ -199,20 +199,8 @@ export default {
 </script>
 
 <style scoped>
-.banner-manager-bg {
-  min-height: 100vh;
-  background: #fff7ef;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.banner-manager-card {
-  background: #fff;
-  border-radius: 18px;
-  box-shadow: 0 4px 32px #ff66001a;
-  padding: 32px 32px 32px 32px;
-  max-width: 800px;
-}
+.banner-manager-bg { min-height: 100vh; background: #fff7ef; display: flex; align-items: center; justify-content: center; padding: 14px; }
+.banner-manager-card { background: #fff; border-radius: 14px; box-shadow: 0 4px 24px #ff66001a; padding: 16px; width: 94vw; max-width: 980px; }
 .bm-header {
   display: flex;
   align-items: center;
@@ -273,22 +261,8 @@ export default {
   text-align: center;
   margin: 24px 0;
 }
-.bm-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 18px;
-}
-.bm-banner {
-  background: #fff7ef;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px #ff66001a;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 180px;
-}
+.bm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.bm-banner { background: #fff7ef; border-radius: 12px; box-shadow: 0 2px 8px #ff66001a; padding: 12px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; min-height: 160px; }
 .bm-banner img {
   max-width: 180px;
   max-height: 90px;

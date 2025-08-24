@@ -1,0 +1,46 @@
+{
+  "agente_id": "<AGENT_ID_OR_EMPTY>",
+  "loja_codigo": "<LOJA_CODIGO>",
+  "loja_nome": "<LOJA_NOME>",
+
+  "http_host": "127.0.0.1",
+  "http_port": 8010,
+  "ack_enabled": true,
+  "ack_token": "<ACK_TOKEN>",
+
+  "backend_url": "https://SEU-BACKEND/admin/agents/status",
+  "backend_aggregator_url": "",
+  "backend_aggregator_token": "",
+
+  "tipo_integracao": "Arquivo",
+
+  "arquivo_entrada": "",
+  "arquivo_separador": "|",
+  "arquivo_layout": "barcode|name|price",
+  "arquivo_local": "C:/PRECIX/pricetab.txt",
+  "arquivo_incluir_cabecalho": false,
+
+  "api_url": "https://SEU-BACKEND/product/all",
+  "api_externa": "",
+
+  "db_tipo": "SQLite",
+  "db_path": "",
+  "db_query": "SELECT barcode, name, price FROM preco_view",
+
+  "envio_metodo": "LOCAL",
+  "envio_host": "",
+  "envio_porta": 21,
+  "envio_usuario": "",
+  "envio_senha": "",
+  "envio_arquivo_remoto": "",
+  "envio_retries": 3,
+  "envio_backoff": 2,
+
+  "api_update": "",
+  "api_destino": "",
+  "backend_token": "",
+  "api_token": "",
+  "api_update_token": "",
+
+  "automacao_intervalo": 1
+}

@@ -4,10 +4,12 @@ body {
   font-family: 'Segoe UI', Arial, sans-serif;
   background: linear-gradient(135deg, #fff 60%, #fff3e0 100%);
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 #app {
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 .ia-central-root {
@@ -269,6 +271,11 @@ body {
     gap: 14px;
   }
 }
+/* Helpers globais para responsividade */
+img { max-width: 100%; height: auto; }
+table { width: 100%; border-collapse: collapse; }
+.scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.nowrap { white-space: nowrap; }
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }

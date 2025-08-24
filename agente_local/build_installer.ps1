@@ -18,12 +18,16 @@ if (Test-Path "service_wrapper.py") {
     Write-Host "service_wrapper.py não encontrado; certifique-se de ter gerado ServicePRECIX.exe anteriormente" -ForegroundColor Yellow
 }
 
-# Ensure NSSM is present under dist\nssm\win64
+# Ensure NSSM is present under dist\nssm\win64 (nssm.exe diretamente neste caminho)
 if (Test-Path "download_nssm.ps1") {
-    Write-Host "Downloadando NSSM para dist\\nssm\\win64..."
+    Write-Host "Garantindo NSSM em dist\\nssm\\win64..."
     .\download_nssm.ps1
+    if (-not (Test-Path "dist\\nssm\\win64\\nssm.exe")) {
+        $alt = Get-ChildItem -Recurse -Filter nssm.exe "dist\\nssm" | Select-Object -First 1
+        if ($alt) { Copy-Item $alt.FullName -Destination "dist\\nssm\\win64\\nssm.exe" -Force }
+    }
 } else {
-    Write-Host "download_nssm.ps1 não encontrado; coloque nssm em dist\\nssm\\win64 manualmente se necessário" -ForegroundColor Yellow
+    Write-Host "download_nssm.ps1 não encontrado; coloque nssm.exe em dist\\nssm\\win64 manualmente" -ForegroundColor Yellow
 }
 
 if ($LASTEXITCODE -ne 0) {
