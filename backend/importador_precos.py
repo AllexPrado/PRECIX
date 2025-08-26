@@ -10,9 +10,15 @@ import os
 import json
 import sqlite3
 import requests
-from integration_config import get_integrations
-from database import get_db_connection
 from datetime import datetime
+
+# Suporte a import dual-mode (pacote ou script)
+try:
+    from .integration_config import get_integrations
+    from .database import get_db_connection
+except ImportError:  # quando carregado fora de pacote (ex: reloader)
+    from integration_config import get_integrations
+    from database import get_db_connection
 
 # Função principal: executa a importação para todas as integrações ativas
 def importar_todos_precos():
@@ -104,21 +110,50 @@ def importar_banco(config):
     except Exception as e:
         log_importacao(config, False, f'Erro: {e}')
 
-# Atualiza o preço de um produto no banco local
+# Atualiza o preço de um produto no banco local (compatível com nosso schema products)
 def atualizar_preco(dados, loja_id):
     """
-    Atualiza o preço de um produto no banco local, conforme dados e loja.
-    Retorna True se atualizado com sucesso.
+    Atualiza ou insere preço no schema atual:
+    - Tabela products(barcode TEXT PK, name TEXT, price REAL, promo TEXT)
+    - Mapeia campos de entrada flexíveis: codigo|barcode, descricao|name, preco|price, promocao|promo
+    Retorna True se houve update/insert.
     """
     try:
+        # Normaliza campos
+        barcode = str(dados.get('barcode') or dados.get('codigo') or '').strip()
+        if not barcode:
+            return False
+        name = dados.get('name') or dados.get('descricao') or dados.get('produto') or ''
+        try:
+            price = float(dados.get('price') if dados.get('price') is not None else dados.get('preco'))
+        except Exception:
+            # tenta converter strings com vírgula
+            raw = dados.get('price') or dados.get('preco')
+            try:
+                price = float(str(raw).replace(',', '.'))
+            except Exception:
+                price = None
+        promo = dados.get('promo') or dados.get('promocao')
+
+        if price is None:
+            return False
+
         conn = get_db_connection()
         cur = conn.cursor()
-        # Exemplo: atualizar tabela products (ajustar conforme modelo real)
-        cur.execute('''UPDATE products SET preco = ? WHERE codigo = ? AND (store_id = ? OR ? IS NULL)''',
-                    (dados.get('preco'), dados.get('codigo'), loja_id, loja_id))
+        # Verifica existência
+        cur.execute('SELECT 1 FROM products WHERE barcode = ?', (barcode,))
+        exists = cur.fetchone() is not None
+        if exists:
+            # Atualiza somente o que veio
+            if name:
+                cur.execute('UPDATE products SET name = ?, price = ?, promo = COALESCE(?, promo) WHERE barcode = ?', (name, price, promo, barcode))
+            else:
+                cur.execute('UPDATE products SET price = ?, promo = COALESCE(?, promo) WHERE barcode = ?', (price, promo, barcode))
+        else:
+            cur.execute('INSERT INTO products (barcode, name, price, promo) VALUES (?, ?, ?, ?)', (barcode, name or f'Produto {barcode}', price, promo))
         conn.commit()
         conn.close()
-        return cur.rowcount > 0
+        return True
     except Exception:
         return False
 
@@ -126,16 +161,39 @@ def atualizar_preco(dados, loja_id):
 # Log de importação: salva também na tabela de auditoria para integração com painel
 def log_importacao(config, sucesso, mensagem):
     """
-    Registra log da importação: salva na tabela de auditoria (audit_log) e imprime para debug.
+    Registra log da importação na tabela audit_log e imprime para debug.
+    Evita dependência de função inexistente get_store_name: busca nome/código diretamente.
     """
-    from database import add_audit_log, get_store_name
-    loja_id = config.get('loja_id')
-    tipo = config.get('tipo')
-    status = 'IMPORT_OK' if sucesso else 'IMPORT_FAIL'
-    detalhes = f"[{tipo}] {mensagem}"
-    # device_id e device_name ficam None para logs de importação
-    add_audit_log(None, get_store_name(loja_id) if loja_id else 'Global', status, detalhes)
-    print(f"[{datetime.now()}] Loja {loja_id or 'Global'} - {tipo} - Sucesso: {sucesso} - {mensagem}")
+    try:
+        try:
+            from .database import add_audit_log, get_db_connection
+        except ImportError:
+            from database import add_audit_log, get_db_connection
+        loja_id = config.get('loja_id')
+        tipo = config.get('tipo')
+        status = 'IMPORT_OK' if sucesso else 'IMPORT_FAIL'
+        # Resolve nome/código da loja se houver loja_id
+        store_label = 'Global'
+        if loja_id is not None:
+            try:
+                conn = get_db_connection()
+                cur = conn.cursor()
+                cur.execute('SELECT codigo, name FROM stores WHERE id = ?', (loja_id,))
+                row = cur.fetchone()
+                conn.close()
+                if row:
+                    store_label = f"{row['codigo']}-{row['name']}"
+                else:
+                    store_label = f"Loja {loja_id}"
+            except Exception:
+                store_label = f"Loja {loja_id}"
+        detalhes = f"[{tipo}] {mensagem}"
+        # device_id e device_name ficam None para logs de importação
+        add_audit_log(None, store_label, status, detalhes)
+        print(f"[{datetime.now()}] {store_label} - {tipo} - Sucesso: {sucesso} - {mensagem}")
+    except Exception:
+        # fallback de print apenas
+        print(f"[{datetime.now()}] IMPORT_LOG (falha ao salvar em audit_log): {mensagem}")
 
 # Exemplo de execução manual
 if __name__ == '__main__':

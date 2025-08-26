@@ -1,3 +1,4 @@
+import sqlite3
 from typing import Optional
 # Atualiza uma configuração de integração pelo id
 def update_integration_by_id(id_: int, loja_id: Optional[int], tipo: str, parametro1: str, parametro2: str, ativo: int = 1, layout: Optional[str] = None):
@@ -60,7 +61,6 @@ Este módulo é utilizado pelos endpoints REST do backend para permitir configur
 Todas as funções são comentadas para facilitar manutenção e integração futura.
 """
 
-import sqlite3
 from typing import Optional, List, Dict
 
 DB_PATH = r'd:\Sonda\Precix\sync\products.db'  # Caminho do banco de dados principal

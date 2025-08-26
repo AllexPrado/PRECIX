@@ -50,6 +50,7 @@ import { ref, onMounted, computed, watch } from 'vue'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import 'dayjs/locale/pt-br'
+import { api } from '../apiBase.js'
 
 dayjs.extend(relativeTime)
 dayjs.locale('pt-br')
@@ -78,7 +79,7 @@ const filteredLogs = computed(() => {
 
 async function fetchLogs() {
   try {
-    const res = await fetch(`http://localhost:8000/admin/audit-logs?limit=${logLimit.value}`)
+  const res = await fetch(api(`/admin/audit-logs?limit=${logLimit.value}`))
     logs.value = await res.json()
   } catch (error) {
     console.error('Erro ao buscar logs:', error)

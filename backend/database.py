@@ -1,4 +1,5 @@
 import sqlite3
+import os
 from typing import Optional, Dict
 import logging
 import bcrypt  # Adicionado para hash de senha
@@ -20,9 +21,52 @@ def get_system_status():
         'last_sync': last_sync
     }
 
-DB_PATH = r'd:\Sonda\Precix\sync\products.db'
+DB_PATH = None
+
+def _resolve_db_path():
+    # 1) Env var wins
+    env = os.environ.get('PRECIX_DB_PATH')
+    if env:
+        return env
+    # 2) Candidates (prefer the one with devices data)
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    candidate_sync = os.path.join(repo_root, 'sync', 'products.db')
+    candidate_backend = os.path.join(os.path.dirname(__file__), 'products.db')
+    candidates = [candidate_backend, candidate_sync]
+    best = None
+    best_devices = -1
+    for path in candidates:
+        try:
+            if not os.path.exists(path):
+                continue
+            conn = sqlite3.connect(path)
+            cur = conn.cursor()
+            # Check table exists
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='devices'")
+            has_table = cur.fetchone() is not None
+            devices_count = 0
+            if has_table:
+                try:
+                    cur.execute('SELECT COUNT(*) FROM devices')
+                    devices_count = cur.fetchone()[0]
+                except Exception:
+                    devices_count = 0
+            conn.close()
+            # Prefer the DB with more devices
+            if has_table and devices_count > best_devices:
+                best_devices = devices_count
+                best = path
+            elif best is None:
+                # Fallback to the first existing candidate
+                best = path
+        except Exception:
+            continue
+    return best or candidate_sync
 
 def get_db_connection():
+    global DB_PATH
+    if not DB_PATH:
+        DB_PATH = _resolve_db_path()
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn

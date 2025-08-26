@@ -60,6 +60,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import 'dayjs/locale/pt-br'
+import { api } from '../apiBase.js'
 
 dayjs.extend(relativeTime)
 dayjs.locale('pt-br')
@@ -80,7 +81,7 @@ async function fetchEvents() {
   p.set('limit', String(limit.value))
   if (identifier.value) p.set('identifier', identifier.value)
   if (storeId.value) p.set('store_id', String(storeId.value))
-  const res = await fetch(`http://localhost:8000/admin/devices/events?${p.toString()}`)
+    const res = await fetch(api(`/admin/devices/events?${p.toString()}`))
   events.value = await res.json()
 }
 

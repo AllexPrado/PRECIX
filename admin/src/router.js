@@ -73,6 +73,7 @@ const routePermMap = {
   '/ia-logs': 'central_ia',
   '/users': 'usuarios',
   '/agents': 'agentes',
+  '/integracoes': 'integracoes',
 };
 
 router.beforeEach((to, from, next) => {

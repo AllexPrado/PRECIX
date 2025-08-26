@@ -80,7 +80,7 @@ export default {
     },
     async fetchStores() {
       try {
-        const res = await authFetch('http://localhost:8000/admin/stores');
+  const res = await authFetch(api('/admin/stores'));
         const data = await res.json();
         // Padroniza o campo de código da loja para string
         this.stores = (Array.isArray(data) ? data : (data.stores || [])).map(store => ({

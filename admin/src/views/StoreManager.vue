@@ -28,13 +28,14 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { api } from '../apiBase.js'
 const stores = ref([])
 const newStore = ref('')
 const newCodigo = ref('')
 
 async function fetchStores() {
   try {
-    const res = await fetch('http://localhost:8000/admin/stores')
+  const res = await fetch(api('/admin/stores'))
     const data = await res.json()
     if (Array.isArray(data)) {
       stores.value = data
@@ -48,7 +49,7 @@ async function fetchStores() {
 
 async function addStore() {
   if (!newStore.value.trim() || !newCodigo.value.trim()) return
-  await fetch('http://localhost:8000/admin/stores', {
+  await fetch(api('/admin/stores'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ codigo: newCodigo.value, name: newStore.value })
@@ -59,7 +60,7 @@ async function addStore() {
 }
 
 async function updateStore(store) {
-  await fetch(`http://localhost:8000/admin/stores/${store.id}`, {
+  await fetch(api(`/admin/stores/${store.id}`), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ codigo: store.codigo, name: store.name, status: store.status })
@@ -68,7 +69,7 @@ async function updateStore(store) {
 }
 
 async function deleteStore(id) {
-  await fetch(`http://localhost:8000/admin/stores/${id}`, { method: 'DELETE' })
+  await fetch(api(`/admin/stores/${id}`), { method: 'DELETE' })
   await fetchStores()
 }
 

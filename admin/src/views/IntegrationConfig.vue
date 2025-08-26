@@ -4,10 +4,16 @@
       <h2>Configuração de Integrações</h2>
       <p>Gerencie aqui como o sistema irá importar e atualizar os preços de cada loja.</p>
       <div class="integration-header-row">
-        <button class="add-btn" @click="openAddModal">Adicionar Integração</button>
+        <div class="left-actions">
+          <button class="add-btn" @click="openAddModal">Adicionar Integração</button>
+          <button class="secondary-btn" :disabled="importLoading" @click="importNow">
+            {{ importLoading ? 'Importando...' : 'Importar agora' }}
+          </button>
+        </div>
         <span v-if="feedback" :class="{'feedback-success': feedback.success, 'feedback-error': !feedback.success}">{{ feedback.message }}</span>
       </div>
-      <table class="integration-table">
+      <div class="scroll-x">
+        <table class="integration-table">
         <thead>
           <tr>
             <th>Loja</th>
@@ -31,7 +37,15 @@
             </td>
           </tr>
         </tbody>
-      </table>
+        </table>
+      </div>
+      <div class="logs-panel" v-if="logs.length">
+        <div class="logs-header">
+          <h4>Logs recentes de importação</h4>
+          <button class="secondary-btn" @click="fetchLogs">Atualizar</button>
+        </div>
+        <pre class="logs-pre">{{ logs.join('') }}</pre>
+      </div>
       <!-- Modal de edição/adicionar -->
       <div v-if="showModal" class="modal-bg">
         <div class="modal-card modal-integration">
@@ -112,22 +126,23 @@
 </template>
 
 <script setup>
+// Tela de configuração de integrações de preço
+// Permite cadastrar, editar e visualizar integrações por loja ou global
+// Cores e layout seguem padrão do cliente
+import { ref, onMounted } from 'vue'
+import axios from 'axios'
+import { api } from '../apiBase.js'
 // Função para excluir integração
 async function deleteConfig(config) {
   if (!confirm(`Deseja realmente excluir esta integração?`)) return;
   try {
-    await axios.delete(`http://localhost:8000/admin/integracoes/${config.id}`);
+    await axios.delete(api(`/admin/integracoes/${config.id}`));
     feedback.value = { success: true, message: 'Integração excluída com sucesso!' };
     await fetchConfigs();
   } catch {
     feedback.value = { success: false, message: 'Erro ao excluir integração.' };
   }
 }
-// Tela de configuração de integrações de preço
-// Permite cadastrar, editar e visualizar integrações por loja ou global
-// Cores e layout seguem padrão do cliente
-import { ref, onMounted } from 'vue'
-import axios from 'axios'
 const configs = ref([])
 const stores = ref([])
 const showModal = ref(false)
@@ -137,6 +152,8 @@ const showLayoutModal = ref(false)
 const layout = ref({ separador: ';', colunas: 'codigo\ndescricao\npreco', exemplo: '1234;Arroz;10.99' })
 const fileInput = ref(null)
 const feedback = ref(null)
+const importLoading = ref(false)
+const logs = ref([])
 function triggerFileInput() {
   fileInput.value && fileInput.value.click()
 }
@@ -179,7 +196,7 @@ function getStoreName(id) {
 
 async function fetchConfigs() {
   try {
-    const resp = await axios.get('http://localhost:8000/admin/integracoes')
+  const resp = await axios.get(api('/admin/integracoes'))
     configs.value = (resp.data || []).map((c, idx) => ({ ...c, id: c.id || idx }))
   } catch {
     configs.value = []
@@ -187,10 +204,37 @@ async function fetchConfigs() {
 }
 async function fetchStores() {
   try {
-    const resp = await axios.get('http://localhost:8000/admin/stores')
-    stores.value = resp.data || []
+  const resp = await axios.get(api('/admin/stores'))
+    const data = resp.data
+    // Aceita tanto {stores: [...]} quanto array simples
+    stores.value = Array.isArray(data) ? data : (data?.stores || [])
   } catch {
     stores.value = []
+  }
+}
+async function fetchLogs() {
+  try {
+  const resp = await axios.get(api('/admin/importar-precos/logs'))
+    logs.value = resp.data?.logs || []
+  } catch {
+    logs.value = []
+  }
+}
+async function importNow() {
+  importLoading.value = true
+  feedback.value = null
+  try {
+  const resp = await axios.post(api('/admin/importar-precos'))
+    if (resp.data?.success) {
+      feedback.value = { success: true, message: 'Importação executada.' }
+    } else {
+      feedback.value = { success: false, message: resp.data?.message || 'Falha ao importar.' }
+    }
+  } catch (e) {
+    feedback.value = { success: false, message: 'Erro ao acionar importação.' }
+  } finally {
+    importLoading.value = false
+    fetchLogs()
   }
 }
 function openAddModal() {
@@ -215,7 +259,7 @@ async function saveConfig() {
     const payload = { ...form.value }
     if (payload.loja_id === null || payload.loja_id === 'null') payload.loja_id = null
     payload.ativo = payload.ativo ? 1 : 0
-    await axios.post('http://localhost:8000/admin/integracoes', payload)
+  await axios.post(api('/admin/integracoes'), payload)
     feedback.value = { success: true, message: 'Integração salva com sucesso!' }
     showModal.value = false
     await fetchConfigs()
@@ -227,6 +271,7 @@ async function saveConfig() {
 onMounted(() => {
   fetchConfigs()
   fetchStores()
+  fetchLogs()
 })
 </script>
 
@@ -246,11 +291,14 @@ onMounted(() => {
 /* Layout principal */
 .integration-config-bg { min-height: 100vh; background: #fff3e0; display: flex; align-items: flex-start; justify-content: center; padding: 14px; }
 .integration-config-card { background: #fff; border-radius: 14px; box-shadow: 0 6px 24px #ff66001a; padding: 16px; min-width: 300px; max-width: 1100px; width: 100%; }
-.integration-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.integration-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap; }
+.left-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .add-btn { background: #ff6600; color: #fff; border: none; border-radius: 6px; padding: 8px 14px; font-weight: 700; font-size: 0.98em; cursor: pointer; }
 .add-btn:hover {
   background: #e65100;
 }
+.secondary-btn { background: #fff; color: #ff6600; border: 2px solid #ff6600; border-radius: 6px; padding: 8px 14px; font-weight: 700; font-size: 0.98em; cursor: pointer; }
+.secondary-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .feedback-success {
   color: #388e3c;
   font-weight: bold;
@@ -316,5 +364,14 @@ button:hover {
 }
 .edit-btn:hover {
   background: #e65100;
+}
+/* Logs */
+.logs-panel { background: #fffef9; border: 1px solid #ffe0b2; border-radius: 10px; padding: 10px; margin-top: 12px; }
+.logs-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.logs-pre { max-height: 220px; overflow: auto; background: #fff; border: 1px dashed #ffd699; padding: 8px; border-radius: 8px; white-space: pre-wrap; }
+/* Responsivo: tabela scrollável em telas estreitas */
+@media (max-width: 720px) {
+  .integration-config-card { padding: 12px; }
+  .integration-table th, .integration-table td { white-space: nowrap; }
 }
 </style>

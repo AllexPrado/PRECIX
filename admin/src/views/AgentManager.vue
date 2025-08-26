@@ -109,6 +109,7 @@ import axios from 'axios'
 import dayjs from 'dayjs'
 import ptBr from 'dayjs/locale/pt-br'
 import relativeTime from 'dayjs/plugin/relativeTime'
+import { api } from '../apiBase.js'
 dayjs.extend(relativeTime)
 dayjs.locale(ptBr)
 
@@ -151,8 +152,8 @@ async function fetchAgents() {
     loading.value = true
     error.value = false
     const [listRes, sumRes] = await Promise.all([
-      axios.get('http://localhost:8000/admin/agents'),
-      axios.get('http://localhost:8000/admin/agents/summary').catch(() => ({ data: null }))
+      axios.get(api('/admin/agents')),
+      axios.get(api('/admin/agents/summary')).catch(() => ({ data: null }))
     ])
     agents.value = Array.isArray(listRes.data) ? listRes.data : []
     summary.value = sumRes?.data || null
@@ -192,7 +193,7 @@ function closeEdit() {
 async function saveEdit() {
   try {
     saving.value = true
-    await axios.put(`http://localhost:8000/admin/agents/${encodeURIComponent(form.value.id)}`, {
+  await axios.put(api(`/admin/agents/${encodeURIComponent(form.value.id)}`), {
       loja_codigo: form.value.loja_codigo || null,
       loja_nome: form.value.loja_nome || null,
       status: form.value.status || null,
@@ -210,7 +211,7 @@ async function confirmDelete(agent) {
   const ok = window.confirm(`Excluir agente ${agent.id}?`)
   if (!ok) return
   try {
-    await axios.delete(`http://localhost:8000/admin/agents/${encodeURIComponent(agent.id)}`)
+  await axios.delete(api(`/admin/agents/${encodeURIComponent(agent.id)}`))
     await fetchAgents()
   } catch (e) {
     // noop
@@ -232,7 +233,7 @@ async function removeAgentDevice(agentId, identifier) {
   const ok = window.confirm(`Remover dispositivo ${identifier} do agente ${agentId}?`)
   if (!ok) return
   try {
-    await axios.delete(`http://localhost:8000/admin/agents/${encodeURIComponent(agentId)}/devices/${encodeURIComponent(identifier)}`)
+  await axios.delete(api(`/admin/agents/${encodeURIComponent(agentId)}/devices/${encodeURIComponent(identifier)}`))
     await fetchAgents()
   } catch {}
 }

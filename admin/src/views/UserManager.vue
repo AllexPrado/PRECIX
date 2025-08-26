@@ -94,6 +94,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { authFetch, getUserRole } from '../auth.js'
+import { api } from '../apiBase.js'
 
 const router = useRouter()
 const users = ref([])
@@ -106,9 +107,12 @@ const newPermissoes = ref([])
 const permissoesDisponiveis = [
   { value: 'dashboard', label: 'Dashboard' },
   { value: 'banners', label: 'Banners' },
+  { value: 'lojas', label: 'Lojas' },
   { value: 'equipamentos', label: 'Equipamentos' },
   { value: 'auditoria', label: 'Auditoria' },
   { value: 'central_ia', label: 'Central de IAs' },
+  { value: 'agentes', label: 'Agentes Locais' },
+  { value: 'integracoes', label: 'Integrações' },
   { value: 'usuarios', label: 'Usuários' }
 ]
 const error = ref('')
@@ -146,8 +150,13 @@ function getStoreName(storeId) {
 
 async function fetchStores() {
   try {
-    const res = await authFetch('http://localhost:8000/admin/stores')
-    const data = await res.json()
+    const res = await authFetch(api('/admin/stores'))
+    if (!res.ok) {
+      // Mesmo que falhe, não quebre a tela
+      stores.value = []
+      return
+    }
+    const data = await res.json().catch(() => ({}))
     // Aceita tanto {stores: [...]} quanto array simples
     stores.value = Array.isArray(data) ? data : (data.stores || [])
   } catch (e) {
@@ -157,10 +166,19 @@ async function fetchStores() {
 
 async function fetchUsers() {
   try {
-    const res = await authFetch('http://localhost:8000/admin/users')
-    const data = await res.json()
-    users.value = data.users
+    const res = await authFetch(api('/admin/users'))
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      // Mantém lista vazia e mostra detalhe quando disponível (ex: 403 admin-only)
+      users.value = []
+      error.value = data.detail || 'Erro ao buscar usuários.'
+      return
+    }
+    const data = await res.json().catch(() => ({}))
+    const list = Array.isArray(data) ? data : (data.users || [])
+    users.value = Array.isArray(list) ? list : []
   } catch (e) {
+    users.value = []
     error.value = 'Erro ao buscar usuários.'
   }
 }
@@ -173,7 +191,7 @@ onMounted(() => {
 async function addUser() {
   error.value = ''
   try {
-    const res = await authFetch('http://localhost:8000/admin/users', {
+  const res = await authFetch(api('/admin/users'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -218,7 +236,7 @@ function showChangeRole(user) {
 async function changePassword() {
   error.value = ''
   try {
-    const res = await authFetch(`http://localhost:8000/admin/users/${selectedUser.value}`, {
+  const res = await authFetch(api(`/admin/users/${selectedUser.value}`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: newPasswordDialog.value })
@@ -242,7 +260,7 @@ async function changeRole() {
       store_id: selectedUserRole.value.store_id ? String(selectedUserRole.value.store_id) : null,
       permissoes: selectedUserRolePerms.value // envia como array puro
     }
-    const res = await authFetch(`http://localhost:8000/admin/users/${selectedUserRole.value.username}`, {
+  const res = await authFetch(api(`/admin/users/${selectedUserRole.value.username}`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
@@ -265,7 +283,7 @@ async function deleteUser(user) {
   if (!confirm(`Remover usuário ${user}?`)) return
   error.value = ''
   try {
-    const res = await authFetch(`http://localhost:8000/admin/users/${user}`, {
+  const res = await authFetch(api(`/admin/users/${user}`), {
       method: 'DELETE'
     })
     if (res.ok) {

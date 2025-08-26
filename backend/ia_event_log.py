@@ -4,7 +4,10 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from datetime import datetime
 import time
-from ai_agent_integration import notify_ai_agent
+try:
+    from .ai_agent_integration import notify_ai_agent
+except ImportError:
+    from ai_agent_integration import notify_ai_agent
 
 router = APIRouter()
 LOG_FILE = os.path.join(os.path.dirname(__file__), 'logs', 'ia_events.log')

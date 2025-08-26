@@ -4,7 +4,6 @@ import json
 import io
 import sys
 import shutil
-from database_agents import get_all_agents_status
 # ==== INÍCIO DOS IMPORTS ÚNICOS ====
 import os
 import json
@@ -20,15 +19,42 @@ from typing import List, Dict, Union
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from database import get_product_by_barcode, init_db, populate_example_data, get_db_connection, authenticate_admin, get_system_status, export_products_to_txt, get_all_stores, add_store, update_store, delete_store, get_all_devices, add_device, update_device, delete_device, set_device_online, set_device_offline, add_audit_log, get_audit_logs, get_device_audit_logs, upsert_agent_status, get_all_agents_status, upsert_products, delete_agent_status, update_agent_status, update_device_catalog_sync, get_device_by_identifier, bulk_upsert_agent_devices, get_agent_devices, delete_agent_device, replace_agent_stores, get_agent_stores
-from static_middleware import mount_frontend
-from ai_agent_integration import notify_ai_agent
-from ia_event_log import router as ia_event_router
-from auth_jwt import create_access_token, verify_access_token
-from backup_restore import router as backup_restore_router
-from device_store_router import router as device_store_router
-from importador_precos import importar_todos_precos
-from integration_config import create_integration_table, upsert_integration, get_integrations
+try:
+    from .database import (
+        get_product_by_barcode, init_db, populate_example_data, get_db_connection, authenticate_admin,
+        get_system_status, export_products_to_txt, get_all_stores, add_store, update_store, delete_store,
+        get_all_devices, add_device, update_device, delete_device, set_device_online, set_device_offline,
+        add_audit_log, get_audit_logs, get_device_audit_logs, upsert_agent_status, get_all_agents_status,
+        upsert_products, delete_agent_status, update_agent_status, update_device_catalog_sync,
+        get_device_by_identifier, bulk_upsert_agent_devices, get_agent_devices, delete_agent_device,
+        replace_agent_stores, get_agent_stores
+    )
+    from .static_middleware import mount_frontend
+    from .ai_agent_integration import notify_ai_agent
+    from .ia_event_log import router as ia_event_router
+    from .auth_jwt import create_access_token, verify_access_token
+    from .backup_restore import router as backup_restore_router
+    from .device_store_router import router as device_store_router
+    from .importador_precos import importar_todos_precos
+    from .integration_config import create_integration_table, upsert_integration, get_integrations, update_integration_by_id, delete_integration
+except ImportError:
+    from database import (
+        get_product_by_barcode, init_db, populate_example_data, get_db_connection, authenticate_admin,
+        get_system_status, export_products_to_txt, get_all_stores, add_store, update_store, delete_store,
+        get_all_devices, add_device, update_device, delete_device, set_device_online, set_device_offline,
+        add_audit_log, get_audit_logs, get_device_audit_logs, upsert_agent_status, get_all_agents_status,
+        upsert_products, delete_agent_status, update_agent_status, update_device_catalog_sync,
+        get_device_by_identifier, bulk_upsert_agent_devices, get_agent_devices, delete_agent_device,
+        replace_agent_stores, get_agent_stores
+    )
+    from static_middleware import mount_frontend
+    from ai_agent_integration import notify_ai_agent
+    from ia_event_log import router as ia_event_router
+    from auth_jwt import create_access_token, verify_access_token
+    from backup_restore import router as backup_restore_router
+    from device_store_router import router as device_store_router
+    from importador_precos import importar_todos_precos
+    from integration_config import create_integration_table, upsert_integration, get_integrations, update_integration_by_id, delete_integration
 # ==== FIM DOS IMPORTS ÚNICOS ====
 
 # Inicializa tabela de integrações ao iniciar o backend
@@ -303,7 +329,6 @@ def salvar_integracao(data: dict = Body(...)):
     """
     Adiciona ou atualiza uma integração de preço para uma loja ou global, incluindo layout do arquivo.
     """
-    from integration_config import update_integration_by_id
     id_ = data.get('id')
     loja_id = data.get('loja_id')
     tipo = data.get('tipo')
@@ -835,7 +860,10 @@ def get_all_products():
     notify_ai_agent('sync_success', {'source': 'backend', 'info': 'Produtos sincronizados'})
     return produtos
 
-# (Alias removido) /api/produtos não é utilizado; manter apenas /product/all
+# Alias legacy para compatibilidade com agentes locais antigos
+@app.get('/api/produtos')
+def alias_api_produtos():
+    return get_all_products()
 
 # Endpoint de login admin
 from fastapi.responses import JSONResponse
@@ -908,11 +936,43 @@ def require_admin(credentials: HTTPAuthorizationCredentials = Depends(security))
     except Exception:
         raise HTTPException(status_code=401, detail='Token inválido ou expirado')
 
+def require_admin_or_perm(perm: str):
+    def _inner(credentials: HTTPAuthorizationCredentials = Depends(security)):
+        token = credentials.credentials
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            username = payload.get('sub')
+            role = payload.get('role')
+            if role == 'admin':
+                return username
+            # Busca permissões no banco para o usuário
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute('SELECT permissoes FROM admin_users WHERE username = ?', (username,))
+            row = cur.fetchone()
+            conn.close()
+            perms = []
+            if row and ('permissoes' in row.keys()):
+                p = row['permissoes']
+                if p:
+                    try:
+                        perms = json.loads(p) if isinstance(p, str) else p
+                    except Exception:
+                        perms = []
+            if perm in perms:
+                return username
+            raise HTTPException(status_code=403, detail='Acesso restrito: falta permissão')
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(status_code=401, detail='Token inválido ou expirado')
+    return _inner
+
 # --- Endpoints de administração de usuários admin ---
 from fastapi import Body
 
 @app.get('/admin/users')
-def list_admin_users(current_user: str = Depends(require_admin)):
+def list_admin_users(current_user: str = Depends(require_admin_or_perm('usuarios'))):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('SELECT username, role, store_id, permissoes FROM admin_users')
@@ -936,7 +996,7 @@ def list_admin_users(current_user: str = Depends(require_admin)):
     return {'users': users}
 
 @app.post('/admin/users')
-def create_admin_user_endpoint(data: dict = Body(...), current_user: str = Depends(require_admin)):
+def create_admin_user_endpoint(data: dict = Body(...), current_user: str = Depends(require_admin_or_perm('usuarios'))):
     from database import hash_password
     username = data.get('username')
     password = data.get('password')
@@ -958,7 +1018,7 @@ def create_admin_user_endpoint(data: dict = Body(...), current_user: str = Depen
     return {'success': True, 'message': 'Usuário criado com sucesso'}
 
 @app.put('/admin/users/{username}')
-def update_admin_user(username: str, data: dict = Body(...), current_user: str = Depends(require_admin)):
+def update_admin_user(username: str, data: dict = Body(...), current_user: str = Depends(require_admin_or_perm('usuarios'))):
     from database import hash_password
     password = data.get('password')
     role = data.get('role')
@@ -1018,7 +1078,7 @@ def update_admin_user(username: str, data: dict = Body(...), current_user: str =
     return {'success': True, 'message': 'Usuário atualizado com sucesso'}
 
 @app.delete('/admin/users/{username}')
-def delete_admin_user(username: str, current_user: str = Depends(require_admin)):
+def delete_admin_user(username: str, current_user: str = Depends(require_admin_or_perm('usuarios'))):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('DELETE FROM admin_users WHERE username = ?', (username,))
@@ -1057,16 +1117,33 @@ def api_get_stores():
 @app.post('/admin/stores')
 async def api_add_store(request: Request):
     data = await request.json()
+    codigo = data.get('codigo') or data.get('code')
     name = data.get('name')
-    if not name:
-        return {"success": False, "message": "Nome da loja obrigatório."}
-    add_store(name)
-    return {"success": True}
+    status = data.get('status') or 'ativo'
+    if not codigo or not name:
+        return {"success": False, "message": "Código e nome da loja são obrigatórios."}
+    try:
+        from database import add_store_with_code
+        add_store_with_code(str(codigo), name, status)
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.put('/admin/stores/{store_id}')
-def api_update_store(store_id: int, name: str, status: str):
-    update_store(store_id, name, status)
-    return {"success": True}
+async def api_update_store(store_id: int, request: Request):
+    data = await request.json()
+    codigo = data.get('codigo') or data.get('code')
+    name = data.get('name')
+    status = data.get('status') or 'ativo'
+    try:
+        if codigo is not None:
+            from database import update_store_code
+            update_store_code(store_id, str(codigo), name, status)
+        else:
+            update_store(store_id, name, status)
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.delete('/admin/stores/{store_id}')
 def api_delete_store(store_id: int):
@@ -1092,8 +1169,8 @@ async def api_add_device(request: Request):
     return {"success": True}
 
 @app.put('/admin/devices/{device_id}')
-def api_update_device(device_id: int, name: str, status: str, last_sync: str = None, online: int = None):
-    update_device(device_id, name, status, last_sync, online)
+def api_update_device(device_id: int, name: str, status: str, last_sync: str = None, online: int = None, store_id: int = None, identifier: str = None):
+    update_device(device_id, name, status, last_sync, online, store_id=store_id, identifier=identifier)
     return {"success": True}
 
 @app.delete('/admin/devices/{device_id}')
@@ -1146,7 +1223,7 @@ def api_get_device_audit_logs(device_id: int, limit: int = 20):
 from fastapi import Body
 
 @app.get('/admin/users')
-def list_admin_users(current_user: str = Depends(require_admin)):
+def list_admin_users(current_user: str = Depends(require_admin_or_perm('usuarios'))):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('SELECT username, role, store_id, permissoes FROM admin_users')
@@ -1171,7 +1248,7 @@ def list_admin_users(current_user: str = Depends(require_admin)):
     return {'users': users}
 
 @app.post('/admin/users')
-def create_admin_user_endpoint(data: dict = Body(...), current_user: str = Depends(require_admin)):
+def create_admin_user_endpoint(data: dict = Body(...), current_user: str = Depends(require_admin_or_perm('usuarios'))):
     from database import hash_password
     username = data.get('username')
     password = data.get('password')
@@ -1193,7 +1270,7 @@ def create_admin_user_endpoint(data: dict = Body(...), current_user: str = Depen
     return {'success': True, 'message': 'Usuário criado com sucesso'}
 
 @app.put('/admin/users/{username}')
-def update_admin_user(username: str, data: dict = Body(...), current_user: str = Depends(require_admin)):
+def update_admin_user(username: str, data: dict = Body(...), current_user: str = Depends(require_admin_or_perm('usuarios'))):
     from database import hash_password
     password = data.get('password')
     role = data.get('role')
@@ -1253,7 +1330,7 @@ def update_admin_user(username: str, data: dict = Body(...), current_user: str =
     return {'success': True, 'message': 'Usuário atualizado com sucesso'}
 
 @app.delete('/admin/users/{username}')
-def delete_admin_user(username: str, current_user: str = Depends(require_admin)):
+def delete_admin_user(username: str, current_user: str = Depends(require_admin_or_perm('usuarios'))):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('DELETE FROM admin_users WHERE username = ?', (username,))
@@ -1292,16 +1369,33 @@ def api_get_stores():
 @app.post('/admin/stores')
 async def api_add_store(request: Request):
     data = await request.json()
+    codigo = data.get('codigo') or data.get('code')
     name = data.get('name')
-    if not name:
-        return {"success": False, "message": "Nome da loja obrigatório."}
-    add_store(name)
-    return {"success": True}
+    status = data.get('status') or 'ativo'
+    if not codigo or not name:
+        return {"success": False, "message": "Código e nome da loja são obrigatórios."}
+    try:
+        from database import add_store_with_code
+        add_store_with_code(str(codigo), name, status)
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.put('/admin/stores/{store_id}')
-def api_update_store(store_id: int, name: str, status: str):
-    update_store(store_id, name, status)
-    return {"success": True}
+async def api_update_store(store_id: int, request: Request):
+    data = await request.json()
+    codigo = data.get('codigo') or data.get('code')
+    name = data.get('name')
+    status = data.get('status') or 'ativo'
+    try:
+        if codigo is not None:
+            from database import update_store_code
+            update_store_code(store_id, str(codigo), name, status)
+        else:
+            update_store(store_id, name, status)
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.delete('/admin/stores/{store_id}')
 def api_delete_store(store_id: int):
@@ -1327,8 +1421,8 @@ async def api_add_device(request: Request):
     return {"success": True}
 
 @app.put('/admin/devices/{device_id}')
-def api_update_device(device_id: int, name: str, status: str, last_sync: str = None, online: int = None):
-    update_device(device_id, name, status, last_sync, online)
+def api_update_device(device_id: int, name: str, status: str, last_sync: str = None, online: int = None, store_id: int = None, identifier: str = None):
+    update_device(device_id, name, status, last_sync, online, store_id=store_id, identifier=identifier)
     return {"success": True}
 
 @app.delete('/admin/devices/{device_id}')
@@ -1381,7 +1475,6 @@ def api_get_device_audit_logs(device_id: int, limit: int = 20):
 # Endpoint para deletar integração
 @app.delete('/admin/integracoes/{integracao_id}')
 def deletar_integracao(integracao_id: int):
-    from integration_config import delete_integration
     try:
         delete_integration(integracao_id)
         return {"success": True}

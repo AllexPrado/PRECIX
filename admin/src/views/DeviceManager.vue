@@ -103,6 +103,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { getUserRole } from '../auth.js'
+import { api } from '../apiBase.js'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 import relativeTime from 'dayjs/plugin/relativeTime'
@@ -159,7 +160,7 @@ async function saveEditDevice() {
     });
     if (editDevice.value.last_sync) params.append('last_sync', editDevice.value.last_sync);
     if (typeof editDevice.value.online !== 'undefined') params.append('online', String(editDevice.value.online));
-    const resp = await fetch(`http://localhost:8000/admin/devices/${editDevice.value.id}?${params.toString()}`, {
+    const resp = await fetch(api(`/admin/devices/${editDevice.value.id}?${params.toString()}`), {
       method: 'PUT'
     });
     if (!resp.ok) {
@@ -216,18 +217,26 @@ function getStoreName(id) {
 }
 
 async function fetchDevices() {
-  const res = await fetch('http://localhost:8000/admin/devices')
-  devices.value = await res.json()
+  try {
+    const res = await fetch(api('/admin/devices'))
+    if (!res.ok) { devices.value = []; return }
+    const data = await res.json().catch(() => ([]))
+    devices.value = Array.isArray(data) ? data : []
+  } catch { devices.value = [] }
 }
 
 async function fetchStores() {
-  const res = await fetch('http://localhost:8000/admin/stores')
-  stores.value = await res.json()
+  try {
+    const res = await fetch(api('/admin/stores'))
+    if (!res.ok) { stores.value = []; return }
+    const data = await res.json().catch(() => ([]))
+    stores.value = Array.isArray(data) ? data : (data.stores || [])
+  } catch { stores.value = [] }
 }
 
 async function addDevice() {
   if (!newDevice.value.trim() || !selectedStore.value || !newDeviceIdentifier.value.trim()) return
-  await fetch('http://localhost:8000/admin/devices', {
+  await fetch(api('/admin/devices'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -243,7 +252,7 @@ async function addDevice() {
 }
 
 async function deleteDevice(id) {
-  await fetch(`http://localhost:8000/admin/devices/${id}`, { method: 'DELETE' })
+  await fetch(api(`/admin/devices/${id}`), { method: 'DELETE' })
   await fetchDevices()
 }
 
