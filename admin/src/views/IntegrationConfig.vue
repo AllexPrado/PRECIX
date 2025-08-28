@@ -53,9 +53,18 @@
       </Panel>
 
       <!-- Dialog Adicionar/Editar -->
-  <Dialog v-model:visible="showModal" modal :header="(editMode ? 'Editar Integração' : 'Adicionar Integração') + (form.tipo ? ' · ' + form.tipo.toString().toUpperCase() : '')" :style="{ width: '680px' }" :breakpoints="{'960px': '85vw', '640px': '98vw'}" class="int-dialog">
+  <Dialog v-model:visible="showModal" modal :style="{ width: '720px' }" :breakpoints="{'960px': '90vw', '640px': '98vw'}" class="int-dialog">
+    <template #header>
+      <div class="dlg-header">
+        <div class="dlg-title">{{ editMode ? 'Editar Integração' : 'Adicionar Integração' }}</div>
+        <div class="dlg-tags">
+          <span v-if="form.tipo" class="pill pill-type">{{ tipoLabel(form.tipo) }}</span>
+          <span class="pill pill-store">{{ getStoreName(form.loja_id) || 'Global' }}</span>
+        </div>
+      </div>
+    </template>
     <form @submit.prevent="saveConfig" class="p-fluid" :aria-busy="savingConfig">
-          <div class="p-formgrid p-grid">
+          <div class="p-formgrid p-grid box box-context">
             <div class="p-field p-col-12 p-md-6">
               <label class="p-d-block p-mb-2">Loja</label>
       <Dropdown v-model="form.loja_id"
@@ -66,22 +75,22 @@
         showClear
         appendTo="self"
         panelClass="dropdown-light"
-        class="dropdown-light"
+        class="dropdown-light input-compact"
         :disabled="savingConfig"
         @change="onStoreChange"/>
       <small class="hint">Deixe em branco para integração Global (todas as lojas).</small>
             </div>
             <div class="p-field p-col-12 p-md-6">
               <label class="p-d-block p-mb-2">Tipo</label>
-      <Dropdown v-model="form.tipo" :options="tipoOptions" optionLabel="label" optionValue="value" placeholder="Selecione" :disabled="savingConfig" required panelClass="dropdown-light" class="dropdown-light" />
+      <Dropdown v-model="form.tipo" :options="tipoOptions" optionLabel="label" optionValue="value" placeholder="Selecione" :disabled="savingConfig" required panelClass="dropdown-light" class="dropdown-light input-compact" />
             </div>
           </div>
 
-          <div class="p-formgrid p-grid">
+          <div class="p-formgrid p-grid box box-details">
             <div class="p-field p-col-12" v-if="form.tipo === 'arquivo'">
               <label class="p-d-block p-mb-2">Caminho do arquivo</label>
               <div class="p-d-flex gap-2">
-                <InputText v-model="form.parametro1" placeholder="Selecione ou digite o caminho do arquivo" class="p-flex-1" :disabled="savingConfig" required />
+                <InputText v-model="form.parametro1" placeholder="Selecione ou digite o caminho do arquivo" class="p-flex-1 input-compact" :disabled="savingConfig" required />
                 <input type="file" style="display:none;" ref="fileInput" @change="onFileSelect" />
                 <Button type="button" label="Selecionar pasta" icon="pi pi-folder-open" severity="secondary" size="small" class="btn-compact" :disabled="savingConfig" @click="triggerFileInput" />
                 <Button type="button" label="Layout" icon="pi pi-sliders-h" severity="secondary" outlined size="small" class="btn-compact" :disabled="savingConfig" @click="openLayoutModal" />
@@ -91,19 +100,19 @@
               <template v-if="form.tipo === 'api'">
                 <label class="p-d-block p-mb-2">Endpoint da API</label>
                 <div class="p-d-flex gap-2">
-                  <InputText v-model="form.parametro1" placeholder="Ex: http://host:porta/product/all" class="p-flex-1" :disabled="savingConfig" required />
+                  <InputText v-model="form.parametro1" placeholder="Ex: http://host:porta/product/all" class="p-flex-1 input-compact" :disabled="savingConfig" required />
                   <Button type="button" label="Testar API" icon="pi pi-play" size="small" class="btn-compact" :disabled="savingConfig || !form.parametro1" @click="testApi" />
                 </div>
                 <small class="hint">Suporte a Bearer token em Parâmetro 2. Resposta JSON deve conter lista de produtos com campos barcode/codigo, name/descricao, price/preco.</small>
               </template>
               <template v-else>
                 <label class="p-d-block p-mb-2">Parâmetro 1</label>
-                <InputText v-model="form.parametro1" placeholder="Ex: endpoint, string de conexão" :disabled="savingConfig" required />
+                <InputText v-model="form.parametro1" placeholder="Ex: endpoint, string de conexão" class="input-compact" :disabled="savingConfig" required />
               </template>
             </div>
             <div class="p-field p-col-12 p-md-8">
               <label class="p-d-block p-mb-2">Parâmetro 2</label>
-              <InputText v-model="form.parametro2" placeholder="Ex: token, diretório, etc" :disabled="savingConfig" />
+              <InputText v-model="form.parametro2" placeholder="Ex: token, diretório, etc" class="input-compact" :disabled="savingConfig" />
             </div>
             <div class="p-field-checkbox p-col-12 p-md-4 p-d-flex p-ai-center p-jc-start">
               <Checkbox v-model="form.ativo" :binary="true" inputId="ativoCheck" :disabled="savingConfig" />
@@ -191,6 +200,11 @@ const tipoOptions = [
   { label: 'API', value: 'api' },
   { label: 'Banco de Dados', value: 'banco' }
 ]
+
+function tipoLabel(v) {
+  const map = { arquivo: 'Arquivo', api: 'API', banco: 'Banco de Dados' }
+  return map[(v || '').toString().toLowerCase()] || '—'
+}
 
 // Table templates
 function storeTemplate(row) {
@@ -486,6 +500,20 @@ async function testApi() {
 .int-dialog :deep(.p-dialog-header),
 .int-dialog :deep(.p-dialog-title) { color: #212121; }
 .int-dialog :deep(.p-dialog-header) { background: #fffaf5; border-bottom: 1px solid #ffe0b2; }
+/* Custom header with tags */
+.dlg-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
+.dlg-title { font-size: 1.1rem; font-weight: 700; color: #ff6600; }
+.dlg-tags { display: flex; align-items: center; gap: 8px; }
+.pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 700; letter-spacing: .2px; border: 1px solid transparent; font-size: .85rem; }
+.pill-type { background: #fff3e0; color: #c2410c; border-color: #ffddbf; }
+.pill-store { background: #ecfdf5; color: #065f46; border-color: #bbf7d0; }
+/* Boxes to segment form groups */
+.box { background: #fff; border: 1px solid #ffe0b2; border-radius: 10px; padding: 12px; margin-top: 8px; }
+.box-context { background: #fffdf8; }
+.box-details { background: #fffefb; }
+/* Compact inputs */
+.input-compact :deep(.p-inputtext),
+.input-compact { padding-top: 0.35rem; padding-bottom: 0.35rem; }
 .int-dialog :deep(.p-inputtext),
 .int-dialog :deep(.p-dropdown),
 .int-dialog :deep(.p-dropdown-label),
