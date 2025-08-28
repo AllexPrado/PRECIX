@@ -9,7 +9,9 @@
         <input id="username" v-model="username" type="text" placeholder="Seu usuário" required autocomplete="username" autofocus />
         <div class="password-row">
           <input :type="showPassword ? 'text' : 'password'" id="password" v-model="password" placeholder="Sua senha" required autocomplete="current-password" />
-          <button type="button" class="toggle-pass" @click="showPassword = !showPassword" :aria-pressed="showPassword ? 'true' : 'false'">{{ showPassword ? 'Ocultar' : 'Mostrar' }}</button>
+          <button type="button" class="toggle-icon" :aria-label="showPassword ? 'Ocultar senha' : 'Mostrar senha'" @click="showPassword = !showPassword" :aria-pressed="showPassword ? 'true' : 'false'">
+            <i :class="showPassword ? 'pi pi-eye-slash' : 'pi pi-eye'"></i>
+          </button>
         </div>
         <div class="actions-row">
           <label class="remember">
@@ -134,18 +136,34 @@ async function login() {
   font-size: 1rem;
   margin-bottom: 0;
   box-sizing: border-box;
-}
-.password-row { display: flex; gap: 8px; align-items: center; }
-.password-row input { flex: 1; }
-.toggle-pass {
   background: #fff;
+  color: #222;
+}
+/* Scoped autofill fallback */
+.login-container input:-webkit-autofill,
+.login-container input:-webkit-autofill:hover,
+.login-container input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px #ffffff inset;
+  box-shadow: 0 0 0px 1000px #ffffff inset;
+  -webkit-text-fill-color: #222;
+  caret-color: #222;
+}
+.password-row { position: relative; display: block; }
+.password-row input { width: 100%; padding-right: 42px; }
+.toggle-icon {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
   color: #ff6600;
-  border: 2px solid #ff6600;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-weight: 600;
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px;
   cursor: pointer;
 }
+.toggle-icon:active { background: #fff4e6; }
 .actions-row { display: flex; align-items: center; justify-content: space-between; margin-top: 0; }
 .remember { color: #555; font-size: .95rem; display: inline-flex; align-items: center; gap: 8px; }
 .hint { color: #999; font-size: .9rem; }
@@ -242,22 +260,7 @@ async function login() {
   .subtitle { display:block; text-align:center; }
   .login-form { gap: 12px; }
   .password-row { position: relative; }
-  .password-row input { padding-right: 92px; }
-  .toggle-pass {
-    position: absolute;
-    right: 8px;
-    top: 50%;
-    transform: translateY(-50%);
-    padding: 7px 12px;
-    border-radius: 999px;
-    background: rgba(255,247,239,0.9);
-    border: 1px solid rgba(255,179,102,0.9);
-    color: var(--brand);
-    line-height: 1;
-    white-space: nowrap;
-    transition: background .15s ease, border-color .15s ease;
-  }
-  .toggle-pass:active { background: #ffe9d7; }
+  .password-row input { padding-right: 42px; }
   .actions-row { gap: 10px; }
   .remember { white-space: nowrap; }
   .hint { display: none; }

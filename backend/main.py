@@ -26,8 +26,9 @@ try:
         get_all_devices, add_device, update_device, delete_device, set_device_online, set_device_offline,
         add_audit_log, get_audit_logs, get_device_audit_logs, upsert_agent_status, get_all_agents_status,
         upsert_products, delete_agent_status, update_agent_status, update_device_catalog_sync,
-        get_device_by_identifier, bulk_upsert_agent_devices, get_agent_devices, delete_agent_device,
-        replace_agent_stores, get_agent_stores
+    get_device_by_identifier, bulk_upsert_agent_devices, get_agent_devices, delete_agent_device,
+    replace_agent_stores, get_agent_stores, dedupe_agents, dedupe_agents_by_ip, get_latest_agent_by_ip,
+    reassign_orphan_agent_devices_by_ip
     )
     from .static_middleware import mount_frontend
     from .ai_agent_integration import notify_ai_agent
@@ -44,8 +45,9 @@ except ImportError:
         get_all_devices, add_device, update_device, delete_device, set_device_online, set_device_offline,
         add_audit_log, get_audit_logs, get_device_audit_logs, upsert_agent_status, get_all_agents_status,
         upsert_products, delete_agent_status, update_agent_status, update_device_catalog_sync,
-        get_device_by_identifier, bulk_upsert_agent_devices, get_agent_devices, delete_agent_device,
-        replace_agent_stores, get_agent_stores
+    get_device_by_identifier, bulk_upsert_agent_devices, get_agent_devices, delete_agent_device,
+    replace_agent_stores, get_agent_stores, dedupe_agents, dedupe_agents_by_ip, get_latest_agent_by_ip,
+    reassign_orphan_agent_devices_by_ip
     )
     from static_middleware import mount_frontend
     from ai_agent_integration import notify_ai_agent
@@ -82,10 +84,23 @@ app.include_router(backup_restore_router)
 app.include_router(device_store_router)
 security = HTTPBearer()
 
+# Deduplicação defensiva na inicialização (id canônico e por IP)
+try:
+    dedupe_agents()
+    dedupe_agents_by_ip()
+    reassign_orphan_agent_devices_by_ip()
+except Exception:
+    pass
+
 # --- Endpoint para agentes locais ---
 @app.get('/admin/agents')
 def listar_agentes(include_fakes: bool = Query(False, description="Se falso, tenta ocultar agentes simulados/fictícios")):
     """Retorna lista de agentes do banco, ajustando chaves para o painel."""
+    # Antes de listar, tenta reatribuir devices órfãos
+    try:
+        reassign_orphan_agent_devices_by_ip()
+    except Exception:
+        pass
     rows = get_all_agents_status()
     out = []
     seen = set()
@@ -163,17 +178,41 @@ async def upsert_agent_status_handler(request: Request):
     loja_nome = data.get('loja_nome') or data.get('store_name')
     status = data.get('status') or 'online'
     last_update = data.get('last_update') or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    ip = data.get('ip') or (request.client.host if request and request.client else None)
-    # Coalescer agentes do mesmo IP em janela de tempo curta (evita duplicidade por múltiplos processos)
+    # Preferir IP do request (edge/gateway) para evitar colisões com '127.0.0.1' enviados pelo agente
+    # Descobre IP real: respeita X-Forwarded-For / X-Real-IP se existir (proxy/reverso)
+    def _client_ip(req: Request):
+        try:
+            if not req:
+                return None
+            xf = req.headers.get('x-forwarded-for') or req.headers.get('X-Forwarded-For')
+            if xf:
+                # pode conter lista, pega o primeiro não vazio
+                parts = [p.strip() for p in xf.split(',') if p.strip()]
+                if parts:
+                    return parts[0]
+            xr = req.headers.get('x-real-ip') or req.headers.get('X-Real-IP')
+            if xr:
+                return xr.strip()
+            return req.client.host if req.client else None
+        except Exception:
+            return req.client.host if req and req.client else None
+    req_ip = _client_ip(request)
+    ip = req_ip or data.get('ip')
+    # Coalescer agentes do mesmo IP (sem janela de tempo) e normalizar id já existente
     try:
-        from database import get_recent_agent_by_ip
-        existing = get_recent_agent_by_ip(ip, window_seconds=300)
-        if existing and existing != agent_id:
-            agent_id = existing
+        # 1) Se já existe um agent_id para este IP, usa o mais recente
+        same_ip_id = get_latest_agent_by_ip(ip)
+        if same_ip_id:
+            agent_id = same_ip_id
     except Exception:
         pass
     try:
         upsert_agent_status(agent_id, loja_codigo=loja_codigo, loja_nome=loja_nome, status=status, last_update=last_update, ip=ip)
+        # Dedup pós-upsert para capturar corridas entre processos (GUI/Serviço)
+        try:
+            dedupe_agents(); dedupe_agents_by_ip(); reassign_orphan_agent_devices_by_ip()
+        except Exception:
+            pass
         # opcional: lista de lojas vinculadas
         lojas = data.get('lojas')
         if isinstance(lojas, list):
@@ -215,22 +254,35 @@ def edit_agent(agent_id: str, data: dict = Body(...)):
 
 # --- Legacy devices reportados via Agente Local ---
 @app.post('/admin/agents/{agent_id}/devices')
-def upsert_agent_devices(agent_id: str, payload: dict = Body(...)):
+def upsert_agent_devices(agent_id: str, payload: dict = Body(...), request: Request = None):
     """Recebe lista de devices legados de um agente local.
     Body: { devices: [ {identifier, name?, tipo?, status?, ip?, last_update?, last_catalog_sync?, catalog_count?}, ... ] }
     """
     try:
+        # Normaliza para o agent_id canônico pelo IP do request se possível
+        try:
+            req_ip = _client_ip(request)
+            canon = get_latest_agent_by_ip(req_ip)
+            if canon:
+                agent_id = canon
+        except Exception:
+            pass
         devices = payload.get('devices') or []
         # Sanitiza e ignora entradas sem identifier
         devices = [d for d in devices if str(d.get('identifier') or '').strip()]
         bulk_upsert_agent_devices(agent_id, devices)
+        # Após inserir, reatribui possíveis órfãos
+        try:
+            reassign_orphan_agent_devices_by_ip()
+        except Exception:
+            pass
         return {"success": True, "count": len(devices)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 # Heartbeat simples por device do agente (mais fácil de integrar)
 @app.post('/admin/agents/{agent_id}/devices/heartbeat')
-def agent_device_heartbeat(agent_id: str, data: dict = Body(...)):
+def agent_device_heartbeat(agent_id: str, data: dict = Body(...), request: Request = None):
     """Marca um device legado como online com last_update atual.
     Body: { identifier?, ip?, port?, name?, status? }
     - Se não vier identifier, será montado como "PC-<ip>:<port>" (port padrão 21)
@@ -250,6 +302,14 @@ def agent_device_heartbeat(agent_id: str, data: dict = Body(...)):
         now = _dt.now().isoformat()
         # Persistir/atualizar apenas este device
         from database import upsert_agent_device
+        # Normaliza agent_id pelo IP do request
+        try:
+            req_ip = _client_ip(request)
+            canon = get_latest_agent_by_ip(req_ip)
+            if canon:
+                agent_id = canon
+        except Exception:
+            pass
         upsert_agent_device(
             agent_id=agent_id,
             identifier=identifier,
@@ -259,6 +319,10 @@ def agent_device_heartbeat(agent_id: str, data: dict = Body(...)):
             last_update=now,
             ip=ip
         )
+        try:
+            reassign_orphan_agent_devices_by_ip()
+        except Exception:
+            pass
         return {"success": True, "identifier": identifier, "last_update": now}
     except HTTPException:
         raise
@@ -341,6 +405,33 @@ def list_device_events(limit: int = Query(100, ge=1, le=500), identifier: str = 
         except Exception:
             pass
     return list(reversed(evts[-limit:]))
+
+# Health events from Local Agent (online/offline transitions)
+@app.post('/admin/devices/events/health')
+def device_health_event(event: dict = Body(...)):
+    """Registra eventos de saúde de dispositivos reportados pelo Agente Local.
+    Espera: { identifier, status: 'online'|'offline', previous?, agent_id?, ip?, ts? }
+    """
+    try:
+        identifier = (event.get('identifier') or '').strip()
+        status = (event.get('status') or '').strip().lower()
+        if not identifier or status not in ('online', 'offline'):
+            raise HTTPException(status_code=400, detail='identifier e status (online/offline) são obrigatórios')
+        ev = {
+            'type': 'health',
+            'identifier': identifier,
+            'status': status,
+            'previous': event.get('previous'),
+            'agent_id': event.get('agent_id'),
+            'ip': event.get('ip'),
+            'timestamp': event.get('ts'),
+        }
+        _push_device_event(ev)
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 security = HTTPBearer()
 
 # Inclusão dos routers

@@ -11,7 +11,11 @@
     "test:unit": "vitest"
   },
   "dependencies": {
+  "@primevue/themes": "^4.1.0",
     "axios": "^1.11.0",
+  "primeflex": "^3.3.1",
+  "primeicons": "^7.0.0",
+  "primevue": "^4.1.0",
     "vue": "^3.5.18",
     "vue-router": "^4.5.1"
   },

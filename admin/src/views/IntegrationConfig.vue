@@ -1,126 +1,110 @@
 <template>
   <div class="integration-config-bg">
     <div class="integration-config-card">
-      <h2>Configuração de Integrações</h2>
-      <p>Gerencie aqui como o sistema irá importar e atualizar os preços de cada loja.</p>
-      <div class="integration-header-row">
-        <div class="left-actions">
-          <button class="add-btn" @click="openAddModal">Adicionar Integração</button>
-          <button class="secondary-btn" :disabled="importLoading" @click="importNow">
-            {{ importLoading ? 'Importando...' : 'Importar agora' }}
-          </button>
+      <div class="p-d-flex p-ai-center p-jc-between p-flex-wrap gap-2">
+        <div>
+          <h2 class="title">Configuração de Integrações</h2>
+          <p class="subtitle">Gerencie como o sistema importa e atualiza preços por loja.</p>
         </div>
-        <span v-if="feedback" :class="{'feedback-success': feedback.success, 'feedback-error': !feedback.success}">{{ feedback.message }}</span>
+        <div class="p-d-flex gap-2">
+          <Button label="Adicionar Integração" icon="pi pi-plus" @click="openAddModal" />
+          <Button :label="importLoading ? 'Importando...' : 'Importar agora'" :disabled="importLoading" icon="pi pi-download" severity="secondary" outlined @click="importNow" />
+        </div>
       </div>
-      <div class="scroll-x">
-        <table class="integration-table">
-        <thead>
-          <tr>
-            <th>Loja</th>
-            <th>Tipo</th>
-            <th>Parâmetro 1</th>
-            <th>Parâmetro 2</th>
-            <th>Ativo</th>
-            <th>Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="config in configs" :key="config.id">
-            <td>{{ getStoreName(config.loja_id) || 'Global' }}</td>
-            <td>{{ config.tipo }}</td>
-            <td>{{ config.parametro1 }}</td>
-            <td>{{ config.parametro2 }}</td>
-            <td><input type="checkbox" :checked="!!config.ativo" disabled /></td>
-            <td>
-              <button class="edit-btn" @click="editConfig(config)">Editar</button>
-              <button class="delete-btn" @click="deleteConfig(config)">Excluir</button>
-            </td>
-          </tr>
-        </tbody>
-        </table>
+      <div v-if="feedback" class="p-mt-2">
+        <Message :severity="feedback.success ? 'success' : 'error'">{{ feedback.message }}</Message>
       </div>
-      <div class="logs-panel" v-if="logs.length">
-        <div class="logs-header">
-          <h4>Logs recentes de importação</h4>
-          <button class="secondary-btn" @click="fetchLogs">Atualizar</button>
+
+      <DataTable :value="configs" dataKey="id" paginator :rows="10" :rowsPerPageOptions="[10,20,50]" responsiveLayout="scroll" class="p-mt-3">
+        <Column field="loja" header="Loja" :body="storeTemplate" />
+        <Column field="tipo" header="Tipo" />
+        <Column field="parametro1" header="Parâmetro 1" />
+        <Column field="parametro2" header="Parâmetro 2" />
+        <Column header="Ativo" :body="ativoTemplate" style="width:120px" />
+    <Column header="Ações" style="width:220px">
+          <template #body="{ data }">
+            <div class="p-d-flex gap-2">
+      <Button label="Editar" size="small" icon="pi pi-pencil" severity="secondary" outlined @click="editConfig(data)" />
+      <Button label="Excluir" size="small" icon="pi pi-trash" severity="danger" outlined @click="deleteConfig(data)" />
+            </div>
+          </template>
+        </Column>
+      </DataTable>
+
+      <Panel header="Logs recentes de importação" toggleable collapsed class="p-mt-3">
+        <div class="p-d-flex p-jc-between p-ai-center p-mb-2">
+          <span class="text-muted">Últimos eventos</span>
+          <Button label="Atualizar" icon="pi pi-refresh" text @click="fetchLogs" />
         </div>
         <pre class="logs-pre">{{ logs.join('') }}</pre>
-      </div>
-      <!-- Modal de edição/adicionar -->
-      <div v-if="showModal" class="modal-bg">
-        <div class="modal-card modal-integration">
-          <h3>{{ editMode ? 'Editar' : 'Adicionar' }} Integração</h3>
-          <form @submit.prevent="saveConfig">
-            <div class="modal-grid">
-              <div class="modal-col">
-                <label>Loja:</label>
-                <select v-model="form.loja_id">
-                  <option :value="null">Global</option>
-                  <option v-for="store in stores" :key="store.id" :value="store.id">{{ store.name }}</option>
-                </select>
-              </div>
-              <div class="modal-col">
-                <label>Tipo:</label>
-                <select v-model="form.tipo" required>
-                  <option value="arquivo">Arquivo</option>
-                  <option value="api">API</option>
-                  <option value="banco">Banco de Dados</option>
-                </select>
+      </Panel>
+
+      <!-- Dialog Adicionar/Editar -->
+      <Dialog v-model:visible="showModal" modal :header="editMode ? 'Editar Integração' : 'Adicionar Integração'" :style="{ width: '640px' }" :breakpoints="{'960px': '85vw', '640px': '98vw'}" class="int-dialog">
+        <form @submit.prevent="saveConfig" class="p-fluid">
+          <div class="p-formgrid p-grid">
+            <div class="p-field p-col-12 p-md-6">
+              <label class="p-d-block p-mb-2">Loja</label>
+              <Dropdown v-model="form.loja_id" :options="storeOptions" optionLabel="label" optionValue="value" placeholder="Global" showClear @change="onStoreChange"/>
+            </div>
+            <div class="p-field p-col-12 p-md-6">
+              <label class="p-d-block p-mb-2">Tipo</label>
+              <Dropdown v-model="form.tipo" :options="tipoOptions" optionLabel="label" optionValue="value" placeholder="Selecione" required />
+            </div>
+          </div>
+
+          <div class="p-formgrid p-grid">
+            <div class="p-field p-col-12" v-if="form.tipo === 'arquivo'">
+              <label class="p-d-block p-mb-2">Caminho do arquivo</label>
+              <div class="p-d-flex gap-2">
+                <InputText v-model="form.parametro1" placeholder="Selecione ou digite o caminho do arquivo" class="p-flex-1" required />
+                <input type="file" style="display:none;" ref="fileInput" @change="onFileSelect" />
+                <Button type="button" label="Selecionar" icon="pi pi-folder-open" severity="secondary" @click="triggerFileInput" />
+                <Button type="button" label="Layout" icon="pi pi-sliders-h" severity="secondary" outlined @click="openLayoutModal" />
               </div>
             </div>
-            <div class="modal-grid">
-              <div class="modal-col" v-if="form.tipo === 'arquivo'">
-                <label>Caminho do arquivo:</label>
-                <div class="file-row">
-                  <input v-model="form.parametro1" required placeholder="Selecione ou digite o caminho do arquivo" />
-                  <input type="file" style="display:none;" ref="fileInput" @change="onFileSelect" />
-                  <button type="button" @click="triggerFileInput">Selecionar arquivo</button>
-                  <button type="button" @click="openLayoutModal">Configurar layout</button>
-                </div>
-              </div>
-              <div class="modal-col" v-else>
-                <label>Parâmetro 1:</label>
-                <input v-model="form.parametro1" required placeholder="Ex: endpoint, string de conexão" />
-              </div>
-              <div class="modal-col">
-                <label>Parâmetro 2:</label>
-                <input v-model="form.parametro2" placeholder="Ex: token, diretório, etc" />
-              </div>
-              <div class="modal-col">
-                <label>Ativo:</label>
-                <input type="checkbox" v-model="form.ativo" />
-              </div>
+            <div class="p-field p-col-12" v-else>
+              <label class="p-d-block p-mb-2">Parâmetro 1</label>
+              <InputText v-model="form.parametro1" placeholder="Ex: endpoint, string de conexão" required />
             </div>
-            <div class="modal-actions">
-              <button type="submit">Salvar</button>
-              <button type="button" @click="closeModal">Cancelar</button>
+            <div class="p-field p-col-12 p-md-8">
+              <label class="p-d-block p-mb-2">Parâmetro 2</label>
+              <InputText v-model="form.parametro2" placeholder="Ex: token, diretório, etc" />
             </div>
-          </form>
-        </div>
-      </div>
-      <!-- Modal de configuração de layout (mantido) -->
-      <div v-if="showLayoutModal" class="modal-bg">
-        <div class="modal-card">
-          <h3>Configurar Layout do Arquivo</h3>
-          <div style="margin-bottom:8px;">
-            <label>Separador:
-              <input v-model="layout.separador" maxlength="1" style="width:40px;" />
-            </label>
+            <div class="p-field-checkbox p-col-12 p-md-4 p-d-flex p-ai-center p-jc-start">
+              <Checkbox v-model="form.ativo" :binary="true" inputId="ativoCheck" />
+              <label for="ativoCheck" class="p-ml-2">Ativo</label>
+            </div>
           </div>
-          <div style="margin-bottom:8px;">
-            <label>Ordem das colunas (1 por linha):</label>
-            <textarea v-model="layout.colunas" rows="5" style="width:100%;"></textarea>
+
+          <div class="p-d-flex p-jc-end gap-2 p-mt-3">
+            <Button type="button" label="Cancelar" severity="secondary" text @click="closeModal" />
+            <Button type="submit" label="Salvar" icon="pi pi-check" />
           </div>
-          <div style="margin-bottom:8px;">
-            <label>Exemplo de linha:</label>
-            <input v-model="layout.exemplo" style="width:100%;" />
+        </form>
+      </Dialog>
+
+      <!-- Dialog Layout Arquivo -->
+      <Dialog v-model:visible="showLayoutModal" modal header="Configurar Layout do Arquivo" :style="{ width: '560px' }" :breakpoints="{'960px': '85vw', '640px': '98vw'}">
+        <div class="p-fluid">
+          <div class="p-field p-mb-3">
+            <label class="p-d-block p-mb-2">Separador</label>
+            <InputText v-model="layout.separador" maxlength="1" style="width:80px;" />
           </div>
-          <div class="modal-actions">
-            <button type="button" @click="saveLayout">Salvar Layout</button>
-            <button type="button" @click="closeLayoutModal">Cancelar</button>
+          <div class="p-field p-mb-3">
+            <label class="p-d-block p-mb-2">Ordem das colunas (1 por linha)</label>
+            <Textarea v-model="layout.colunas" rows="5" autoResize />
+          </div>
+          <div class="p-field p-mb-3">
+            <label class="p-d-block p-mb-2">Exemplo de linha</label>
+            <InputText v-model="layout.exemplo" />
+          </div>
+          <div class="p-d-flex p-jc-end gap-2">
+            <Button label="Cancelar" severity="secondary" text @click="closeLayoutModal" />
+            <Button label="Salvar Layout" icon="pi pi-save" @click="saveLayout" />
           </div>
         </div>
-      </div>
+      </Dialog>
     </div>
   </div>
 </template>
@@ -132,6 +116,17 @@
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { api } from '../apiBase.js'
+// PrimeVue components (apenas uso local, sem remover lógica existente)
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
+import Dropdown from 'primevue/dropdown'
+import InputText from 'primevue/inputtext'
+import Checkbox from 'primevue/checkbox'
+import Textarea from 'primevue/textarea'
+import Panel from 'primevue/panel'
+import Message from 'primevue/message'
 // Função para excluir integração
 async function deleteConfig(config) {
   if (!confirm(`Deseja realmente excluir esta integração?`)) return;
@@ -154,6 +149,28 @@ const fileInput = ref(null)
 const feedback = ref(null)
 const importLoading = ref(false)
 const logs = ref([])
+// Derived options for dropdowns
+const storeOptions = ref([])
+const tipoOptions = [
+  { label: 'Arquivo', value: 'arquivo' },
+  { label: 'API', value: 'api' },
+  { label: 'Banco de Dados', value: 'banco' }
+]
+
+// Table templates
+function storeTemplate(row) {
+  return getStoreName(row.loja_id) || 'Global'
+}
+function ativoTemplate(row) {
+  return row.ativo ? 'Sim' : 'Não'
+}
+function actionsTemplate(row) {
+  return (
+    // PrimeVue doesn't render VNodes in inline functions here; use template slots via dt scoped slots.
+    // We'll keep this as a placeholder; real actions are implemented via dt templates below if needed.
+    row && ''
+  )
+}
 function triggerFileInput() {
   fileInput.value && fileInput.value.click()
 }
@@ -208,8 +225,12 @@ async function fetchStores() {
     const data = resp.data
     // Aceita tanto {stores: [...]} quanto array simples
     stores.value = Array.isArray(data) ? data : (data?.stores || [])
+    storeOptions.value = [{ label: 'Global', value: null }].concat(
+      (stores.value || []).map(s => ({ label: s.name, value: s.id }))
+    )
   } catch {
     stores.value = []
+    storeOptions.value = [{ label: 'Global', value: null }]
   }
 }
 async function fetchLogs() {
@@ -244,7 +265,9 @@ function openAddModal() {
 }
 
 function editConfig(config) {
-  form.value = { ...config }
+  // mantém id e converte loja_id para null ou número conforme options
+  const lojaId = (config.loja_id === null || config.loja_id === 'null' || config.loja_id === '') ? null : Number(config.loja_id)
+  form.value = { ...config, loja_id: isNaN(lojaId) ? null : lojaId, ativo: !!config.ativo }
   editMode.value = true
   showModal.value = true
 }
@@ -257,7 +280,7 @@ async function saveConfig() {
   feedback.value = null
   try {
     const payload = { ...form.value }
-    if (payload.loja_id === null || payload.loja_id === 'null') payload.loja_id = null
+    if (payload.loja_id === null || payload.loja_id === 'null' || payload.loja_id === '') payload.loja_id = null
     payload.ativo = payload.ativo ? 1 : 0
   await axios.post(api('/admin/integracoes'), payload)
     feedback.value = { success: true, message: 'Integração salva com sucesso!' }
@@ -265,6 +288,16 @@ async function saveConfig() {
     await fetchConfigs()
   } catch (e) {
     feedback.value = { success: false, message: 'Erro ao salvar integração.' }
+  }
+}
+
+function onStoreChange(event) {
+  // PrimeVue Dropdown emite { value } no change; aceita também valor direto por segurança
+  const val = (event && typeof event === 'object' && 'value' in event) ? event.value : event
+  if (val === undefined || val === '' || val === null) {
+    form.value.loja_id = null
+  } else {
+    form.value.loja_id = val
   }
 }
 
@@ -291,14 +324,8 @@ onMounted(() => {
 /* Layout principal */
 .integration-config-bg { min-height: 100vh; background: #fff3e0; display: flex; align-items: flex-start; justify-content: center; padding: 14px; }
 .integration-config-card { background: #fff; border-radius: 14px; box-shadow: 0 6px 24px #ff66001a; padding: 16px; min-width: 300px; max-width: 1100px; width: 100%; }
-.integration-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap; }
-.left-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.add-btn { background: #ff6600; color: #fff; border: none; border-radius: 6px; padding: 8px 14px; font-weight: 700; font-size: 0.98em; cursor: pointer; }
-.add-btn:hover {
-  background: #e65100;
-}
-.secondary-btn { background: #fff; color: #ff6600; border: 2px solid #ff6600; border-radius: 6px; padding: 8px 14px; font-weight: 700; font-size: 0.98em; cursor: pointer; }
-.secondary-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.title { margin: 0; color: #ff6600; }
+.subtitle { margin: 2px 0 0 0; color: #7a7a7a; }
 .feedback-success {
   color: #388e3c;
   font-weight: bold;
@@ -308,24 +335,6 @@ onMounted(() => {
   color: #c62828;
   font-weight: bold;
   margin-left: 18px;
-}
-.integration-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-.integration-table th, .integration-table td { border: 1px solid #e0e0e0; padding: 8px; text-align: left; }
-.integration-table th {
-  background: #ffe0b2;
-  color: #ff6600;
-}
-button {
-  background: #ff6600;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 6px 14px;
-  margin: 2px;
-  cursor: pointer;
-}
-button:hover {
-  background: #e65100;
 }
 .modal-bg {
   position: fixed;
@@ -369,9 +378,28 @@ button:hover {
 .logs-panel { background: #fffef9; border: 1px solid #ffe0b2; border-radius: 10px; padding: 10px; margin-top: 12px; }
 .logs-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .logs-pre { max-height: 220px; overflow: auto; background: #fff; border: 1px dashed #ffd699; padding: 8px; border-radius: 8px; white-space: pre-wrap; }
+/* Dialog layout clean */
+.int-dialog :deep(.p-dialog-content) { background: #fff; }
+.int-dialog :deep(.p-dropdown) { background: #fff; }
+/* Melhorar legibilidade em diálogos e tabela */
+.int-dialog :deep(.p-dialog-header),
+.int-dialog :deep(.p-dialog-title) { color: #212121; }
+.int-dialog :deep(.p-inputtext),
+.int-dialog :deep(.p-dropdown),
+.int-dialog :deep(.p-dropdown-label),
+.int-dialog :deep(.p-textarea) { background: #fff; color: #212121; }
+.int-dialog :deep(.p-checkbox .p-checkbox-box) { background: #fff; border-color: #ff6600; }
+.int-dialog :deep(.p-checkbox .p-checkbox-box.p-highlight) { background: #ff6600; border-color: #ff6600; }
+.int-dialog :deep(.p-checkbox .p-checkbox-icon) { color: #fff; }
+
+.integration-config-card :deep(.p-datatable-thead > tr > th),
+.integration-config-card :deep(.p-datatable-tbody > tr > td) {
+  color: #212121;
+  background: #fff;
+}
+.integration-config-card :deep(.p-panel .p-panel-header) { color: #212121; background: #fff; }
 /* Responsivo: tabela scrollável em telas estreitas */
 @media (max-width: 720px) {
   .integration-config-card { padding: 12px; }
-  .integration-table th, .integration-table td { white-space: nowrap; }
 }
 </style>

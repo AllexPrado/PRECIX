@@ -17,6 +17,7 @@ import ftplib
 import socket
 import os
 import uuid
+import subprocess
 from datetime import datetime
 import shutil
 import sys
@@ -80,6 +81,7 @@ def _resolve_app_home() -> str:
 
 APP_HOME = _resolve_app_home()
 CONFIG_PATH = os.path.join(APP_HOME, 'config.json')
+DEFAULT_BACKEND_STATUS_URL = 'http://192.168.18.7:8000/admin/agents/status'
 
 
 # Caminho seguro para log (compartilhado entre EXE e Serviço)
@@ -173,6 +175,79 @@ def load_config():
         logging.exception('Falha ao carregar config')
     # default minimal config
     return {"lojas": [], "equipamentos": []}
+
+
+def ensure_agent_id() -> str:
+    """Guarantee a stable agent ID to prevent duplicates in the Admin panel.
+    Priority:
+      1) Environment override AGENTE_PRECIX_ID
+      2) APP_HOME/agent_id.txt (persisted anchor)
+      3) config.json['agente_id'] if present
+      4) uuid.getnode() fallback
+    Persists chosen ID back to agent_id.txt and config.json if missing.
+    """
+    try:
+        # 1) Environment override
+        env_id = os.environ.get('AGENTE_PRECIX_ID') or os.environ.get('PRECIX_AGENT_ID')
+        if env_id and str(env_id).strip():
+            agent_id = str(env_id).strip()
+        else:
+            # 2) File anchor
+            anchor_path = os.path.join(APP_HOME, 'agent_id.txt')
+            if os.path.exists(anchor_path) and os.path.getsize(anchor_path) > 0:
+                try:
+                    with open(anchor_path, 'r', encoding='utf-8') as fh:
+                        agent_id = fh.read().strip()
+                except Exception:
+                    agent_id = None
+            else:
+                agent_id = None
+            # 3) Config value
+            if not agent_id:
+                cfg = {}
+                try:
+                    if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                        with open(CONFIG_PATH, 'r', encoding='utf-8') as fh:
+                            cfg = json.load(fh) or {}
+                except Exception:
+                    cfg = {}
+                agent_id = (cfg.get('agente_id') or '').strip() if isinstance(cfg.get('agente_id'), str) else ''
+            # 4) Fallback uuid.getnode()
+            if not agent_id:
+                agent_id = str(uuid.getnode())
+
+        # Persist to anchor file if changed/missing
+        try:
+            anchor_path = os.path.join(APP_HOME, 'agent_id.txt')
+            os.makedirs(APP_HOME, exist_ok=True)
+            with open(anchor_path, 'w', encoding='utf-8') as fh:
+                fh.write(agent_id)
+        except Exception:
+            pass
+        # Persist to config if missing/different
+        try:
+            existing = {}
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as fh:
+                    try:
+                        existing = json.load(fh) or {}
+                    except Exception:
+                        existing = {}
+            if existing.get('agente_id') != agent_id:
+                existing['agente_id'] = agent_id
+                tmp = CONFIG_PATH + '.tmp'
+                with open(tmp, 'w', encoding='utf-8') as fh:
+                    json.dump(existing, fh, indent=2, ensure_ascii=False)
+                try:
+                    os.replace(tmp, CONFIG_PATH)
+                except Exception:
+                    shutil.move(tmp, CONFIG_PATH)
+        except Exception:
+            pass
+        return agent_id
+    except Exception:
+        # fallback if anything goes wrong
+        return str(uuid.getnode())
 
 
 def cadastrar_equipamento(ip, porta, descricao):
@@ -1187,8 +1262,8 @@ def forcar_atualizacao_manual():
 
 def enviar_status_agente():
     config = load_config()
-    backend_url = config.get('backend_url') or 'http://192.168.18.7:8000/admin/agents/status'
-    agent_id = config.get('agente_id') or str(uuid.getnode())
+    backend_url = config.get('backend_url') or DEFAULT_BACKEND_STATUS_URL
+    agent_id = ensure_agent_id()
     loja_codigo = config.get('loja_codigo')
     loja_nome = config.get('loja_nome')
     if (not loja_codigo or not loja_nome) and isinstance(config.get('lojas'), list) and len(config.get('lojas', [])) > 0:
@@ -1266,19 +1341,53 @@ def enviar_dispositivos_legados():
     Backend: POST {base}/admin/agents/{agent_id}/devices  Body: { devices: [ {identifier, name?, tipo?, status?, ip?, last_update?} ] }
     """
     config = load_config()
-    backend_status_url = config.get('backend_url') or 'http://127.0.0.1:8000/admin/agents/status'
+    backend_status_url = config.get('backend_url') or DEFAULT_BACKEND_STATUS_URL
     base = _backend_base_from_status_url(backend_status_url)
-    agent_id = config.get('agente_id') or str(uuid.getnode())
+    agent_id = ensure_agent_id()
     devices_url = f"{base}/admin/agents/{agent_id}/devices"
     equipamentos = config.get('equipamentos', []) or []
     payload_devices = []
     now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    # Health check options (default: TCP check on configured port, 800ms timeout)
+    hc = config.get('health_check') or {}
+    hc_tcp = bool(hc.get('tcp', True))
+    hc_icmp = bool(hc.get('icmp', False))
+    try:
+        timeout_ms = int(hc.get('timeout_ms', 800) or 800)
+    except Exception:
+        timeout_ms = 800
+    timeout_s = max(0.2, timeout_ms / 1000.0)
+    def _tcp_check(ip: str, porta: str) -> bool:
+        try:
+            p = int(porta) if str(porta).strip() else 21
+            with socket.create_connection((ip, p), timeout=timeout_s):
+                return True
+        except Exception:
+            return False
+    def _icmp_check(ip: str) -> bool:
+        try:
+            # Windows: -n 1 (1 echo), -w <ms>
+            cmd = ['ping', '-n', '1', '-w', str(max(200, timeout_ms)), ip]
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s + 1)
+            return r.returncode == 0
+        except Exception:
+            return False
+    def _check_device_health(ip: str, porta: str) -> bool:
+        ok_tcp = _tcp_check(ip, porta) if hc_tcp else True
+        ok_icmp = _icmp_check(ip) if hc_icmp else True
+        return ok_tcp and ok_icmp
+    # Detecta mudanças de status para emitir eventos de saúde
+    status_changes = []  # (identifier, old, new, ip)
     for eq in equipamentos:
         try:
             ip = str(eq.get('ip') or '').strip()
             porta = str(eq.get('porta') or '').strip()
             desc = (eq.get('descricao') or eq.get('name') or '').strip()
-            status = (eq.get('status') or 'online').strip()
+            # Verificação real de saúde
+            is_ok = False
+            if ip:
+                is_ok = _check_device_health(ip, porta)
+            status = 'online' if is_ok else 'offline'
             loja_cod = eq.get('loja') or eq.get('loja_codigo') or None
             loja_nom = eq.get('loja_nome') or None
             # catalago (se a GUI estiver preenchendo)
@@ -1287,11 +1396,19 @@ def enviar_dispositivos_legados():
             if not ip:
                 continue
             identifier = f"{ip}:{porta}" if porta else ip
+            # registra mudança (se houver) comparando com status anterior informado pela GUI/config
+            try:
+                old = str(eq.get('status') or '').strip().lower()
+            except Exception:
+                old = ''
+            new = status
+            if (old != new) and (old or new):
+                status_changes.append((identifier, old or None, new, ip))
             payload_devices.append({
                 'identifier': identifier,
                 'name': desc or identifier,
                 'tipo': 'LEGACY',
-                'status': status or 'online',
+                'status': status,
                 'ip': ip,
                 'last_update': now_str,
                 'store_code': loja_cod,
@@ -1308,6 +1425,52 @@ def enviar_dispositivos_legados():
         logging.info(f"[DEVICES] POST {devices_url} (count={len(payload_devices)})")
         resp = requests.post(devices_url, json={'devices': payload_devices}, timeout=8)
         logging.info(f"[DEVICES] Resposta -> {resp.status_code}")
+        # Emite eventos de saúde no backend quando status muda (para confiabilidade/forense)
+        if status_changes:
+            try:
+                ev_url = f"{base}/admin/devices/events/health"
+                for identifier, old, new, ip in status_changes:
+                    try:
+                        ev = {
+                            'identifier': identifier,
+                            'status': new,
+                            'previous': old,
+                            'ip': ip,
+                            'agent_id': agent_id,
+                            'ts': datetime.now().isoformat()
+                        }
+                        requests.post(ev_url, json=ev, timeout=5)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        # Persiste os novos status no config para refletir no Monitoramento da GUI
+        try:
+            cfg = load_config()
+            equip = cfg.get('equipamentos', []) or []
+            # map status por IP:porta
+            status_map = {d['identifier']: d['status'] for d in payload_devices}
+            new_list = []
+            for it in equip:
+                ipx = str(it.get('ip') or '').strip()
+                ptx = str(it.get('porta') or '').strip()
+                identx = f"{ipx}:{ptx}" if ptx else ipx
+                if identx in status_map:
+                    # Persistir apenas rótulos padronizados: 'online' / 'offline'
+                    it['status'] = 'online' if status_map[identx] == 'online' else 'offline'
+                new_list.append(it)
+            cfg['equipamentos'] = new_list
+            # grava de forma atômica
+            tmp = CONFIG_PATH + '.tmp'
+            with open(tmp, 'w', encoding='utf-8') as f:
+                json.dump(cfg, f, indent=2, ensure_ascii=False)
+            try:
+                os.replace(tmp, CONFIG_PATH)
+            except Exception:
+                import shutil as _shutil
+                _shutil.move(tmp, CONFIG_PATH)
+        except Exception:
+            pass
     except Exception:
         logging.exception('Falha ao enviar dispositivos legados')
 

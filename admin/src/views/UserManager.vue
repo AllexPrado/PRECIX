@@ -366,6 +366,8 @@ function closeUserModal() {
   border: 2px solid #FF6600;
   border-radius: 6px;
   font-size: 1rem;
+  background: #ffffff;
+  color: #212121;
 }
 .user-manager button {
   background: #FF6600;
@@ -377,6 +379,18 @@ function closeUserModal() {
   cursor: pointer;
   font-weight: 600;
   transition: background 0.2s;
+}
+
+/* Corrige checkboxes escuros no modal editar usuário */
+.permissoes input[type="checkbox"] {
+  accent-color: #ff6600;
+  background: #ffffff;
+}
+.dialog .dialog-content label,
+.dialog .dialog-content span,
+.dialog .dialog-content input,
+.dialog .dialog-content select {
+  color: #212121;
 }
 .user-manager button:hover {
   background: #FF4500;
@@ -438,6 +452,8 @@ function closeUserModal() {
   border-radius: 10px;
   box-shadow: 0 2px 16px #ff66001a;
   min-width: 280px;
+  /* Garante que controles nativos usem tema claro (evita checkbox com fundo preto) */
+  color-scheme: light;
 }
 .error-msg {
   color: #c00;
@@ -450,9 +466,22 @@ function closeUserModal() {
   gap: 4px;
   margin-top: 8px;
 }
+.permissoes label { color: #212121; }
 .modal-btns {
   display: flex;
   gap: 8px;
   margin-top: 10px;
+}
+/* Reforço: checkboxes em tema claro com borda/acentuação da marca */
+.permissoes input[type="checkbox"] {
+  accent-color: #ff6600;
+  background: #ffffff;
+  border: 2px solid #ff6600;
+  box-shadow: none;
+}
+.dialog .dialog-content input,
+.dialog .dialog-content select {
+  background: #ffffff;
+  color: #212121;
 }
 </style>

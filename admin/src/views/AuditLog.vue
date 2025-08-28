@@ -155,6 +155,8 @@ header {
   padding: 8px;
   border-radius: 8px;
   border: 2px solid #FF6600;
+  background: #ffffff;
+  color: #212121;
 }
 .refresh-btn {
   background: #28a745;
@@ -201,6 +203,7 @@ button {
 .log-action {
   font-weight: bold;
   font-size: 1.1em;
+  color: #212121;
 }
 .log-time {
   color: #666;
@@ -219,7 +222,7 @@ button {
   font-size: 0.9em;
 }
 .log-details {
-  color: #555;
+  color: #333;
   font-size: 0.9em;
 }
 /* Classes específicas por tipo de log */

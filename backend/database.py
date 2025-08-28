@@ -74,7 +74,15 @@ def get_db_connection():
     global DB_PATH
     if not DB_PATH:
         DB_PATH = _resolve_db_path()
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    try:
+        # Reduz "database is locked" em concorrência leve
+        conn.execute('PRAGMA busy_timeout=5000')
+        # Melhora concorrência de leitura/gravação
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('PRAGMA synchronous=NORMAL')
+    except Exception:
+        pass
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -763,6 +771,115 @@ def dedupe_agents():
         logging.error(f"[DB][dedupe_agents] {e}")
         # não propaga para não derrubar startup
 
+def _latest_agent_id_for_ip(ip: str):
+    """Retorna (agent_id, last_update) mais recente para um IP, sem janela de tempo."""
+    try:
+        if not ip:
+            return None, None
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT agent_id, last_update FROM agents_status WHERE ip = ?', (ip,))
+        rows = cur.fetchall()
+        conn.close()
+        if not rows:
+            return None, None
+        best_id = None
+        best_dt = None
+        for r in rows:
+            dt = _parse_dt(r['last_update'])
+            if dt and (best_dt is None or dt > best_dt):
+                best_dt = dt
+                best_id = normalize_agent_id(r['agent_id'])
+        return best_id, best_dt
+    except Exception as e:
+        logging.error(f"[DB][_latest_agent_id_for_ip] {e}")
+        return None, None
+
+def dedupe_agents_by_ip():
+    """
+    Colapsa agentes com o mesmo IP em um único agent_id canônico (o mais recente),
+    migrando agent_stores e agent_devices e removendo duplicados em agents_status.
+    """
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT ip, COUNT(*) as c FROM agents_status "
+            "WHERE ip IS NOT NULL AND TRIM(ip) <> '' "
+            "GROUP BY ip HAVING c > 1"
+        )
+        groups = cur.fetchall()
+        for g in groups:
+            ip = g['ip']
+            # Determina id canônico
+            cur.execute('SELECT agent_id, last_update FROM agents_status WHERE ip = ?', (ip,))
+            rows = cur.fetchall()
+            canonical_id = None
+            best_dt = None
+            for r in rows:
+                dt = _parse_dt(r['last_update'])
+                aid = normalize_agent_id(r['agent_id'])
+                if dt and (best_dt is None or dt > best_dt):
+                    best_dt = dt
+                    canonical_id = aid
+                elif canonical_id is None:
+                    canonical_id = aid
+            if not canonical_id:
+                continue
+            # Garante registro canônico atualizado
+            cur.execute(
+                'SELECT loja_codigo, loja_nome, status, last_update, ip FROM agents_status WHERE agent_id = ?',
+                (canonical_id,)
+            )
+            best = cur.fetchone()
+            if best:
+                upsert_agent_status(
+                    canonical_id,
+                    best['loja_codigo'],
+                    best['loja_nome'],
+                    best['status'],
+                    best['last_update'],
+                    best['ip']
+                )
+            # Migra filhos e remove duplicados com segurança (evita UNIQUE conflicts)
+            cur.execute('SELECT agent_id FROM agents_status WHERE ip = ?', (ip,))
+            others = cur.fetchall()
+            for r in others:
+                raw = r['agent_id']
+                if not raw:
+                    continue
+                if normalize_agent_id(raw) == canonical_id:
+                    continue
+                # Copia lojas da origem para o canônico (upsert por (agent_id, loja_codigo))
+                cur.execute('SELECT loja_codigo, loja_nome FROM agent_stores WHERE agent_id = ?', (raw,))
+                stores_rows = cur.fetchall()
+                for s in stores_rows or []:
+                    cur.execute(
+                        'INSERT OR REPLACE INTO agent_stores (agent_id, loja_codigo, loja_nome) VALUES (?, ?, ?)',
+                        (canonical_id, s['loja_codigo'], s['loja_nome'])
+                    )
+                # Copia devices da origem para o canônico (upsert por (agent_id, identifier))
+                cur.execute('SELECT identifier, name, tipo, status, last_update, ip, last_catalog_sync, catalog_count, store_code, store_name FROM agent_devices WHERE agent_id = ?', (raw,))
+                dev_rows = cur.fetchall()
+                for d in dev_rows or []:
+                    cur.execute(
+                        'INSERT OR REPLACE INTO agent_devices (agent_id, identifier, name, tipo, status, last_update, ip, last_catalog_sync, catalog_count, store_code, store_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        (canonical_id, d['identifier'], d['name'], d['tipo'], d['status'], d['last_update'], d['ip'], d['last_catalog_sync'], d['catalog_count'], d['store_code'], d['store_name'])
+                    )
+                # Remove origem após copiar
+                cur.execute('DELETE FROM agent_stores WHERE agent_id = ?', (raw,))
+                cur.execute('DELETE FROM agent_devices WHERE agent_id = ?', (raw,))
+                cur.execute('DELETE FROM agents_status WHERE agent_id = ?', (raw,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logging.error(f"[DB][dedupe_agents_by_ip] {e}")
+
+def get_latest_agent_by_ip(ip: str):
+    """Retorna o agent_id mais recente para um IP, sem limitar por janela de tempo."""
+    aid, _ = _latest_agent_id_for_ip(ip)
+    return aid
+
 def get_recent_agent_by_ip(ip: str, window_seconds: int = 300) -> Optional[str]:
     """Retorna o agent_id mais recente para um IP dentro de uma janela de tempo.
     Usado para unificar múltiplos processos (GUI/Serviço) rodando na mesma máquina.
@@ -801,6 +918,51 @@ def get_all_users():
     rows = cur.fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+# --- Reatribuição de devices órfãos para o agente canônico por IP ---
+def reassign_orphan_agent_devices_by_ip():
+    """Move registros de agent_devices cujo agent_id não existe mais em agents_status
+    para o agent_id canônico determinado pelo IP do próprio device.
+
+    Estratégia segura: para cada device órfão, faz INSERT OR REPLACE no canônico
+    e depois remove o registro antigo, evitando falhas de UNIQUE.
+    """
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        # Seleciona devices cujo agent_id não está presente em agents_status
+        cur.execute(
+            'SELECT d.agent_id, d.identifier, d.name, d.tipo, d.status, d.last_update, d.ip, '
+            '       d.last_catalog_sync, d.catalog_count, d.store_code, d.store_name '
+            '  FROM agent_devices d '
+            '  LEFT JOIN agents_status a ON a.agent_id = d.agent_id '
+            ' WHERE a.agent_id IS NULL'
+        )
+        rows = cur.fetchall()
+        moved = 0
+        for r in rows or []:
+            ip = (r['ip'] or '').strip()
+            if not ip:
+                continue
+            canonical_id = get_latest_agent_by_ip(ip)
+            if not canonical_id:
+                continue
+            if normalize_agent_id(canonical_id) == normalize_agent_id(r['agent_id']):
+                continue
+            # Copia para o canônico e remove origem
+            cur.execute(
+                'INSERT OR REPLACE INTO agent_devices '
+                ' (agent_id, identifier, name, tipo, status, last_update, ip, last_catalog_sync, catalog_count, store_code, store_name) '
+                ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (normalize_agent_id(canonical_id), r['identifier'], r['name'], r['tipo'], r['status'], r['last_update'], r['ip'], r['last_catalog_sync'], r['catalog_count'], r['store_code'], r['store_name'])
+            )
+            cur.execute('DELETE FROM agent_devices WHERE agent_id = ? AND identifier = ?', (r['agent_id'], r['identifier']))
+            moved += 1
+        if moved:
+            conn.commit()
+        conn.close()
+    except Exception as e:
+        logging.error(f"[DB][reassign_orphan_agent_devices_by_ip] {e}")
 
 # --- Agent Devices (legacy) ---
 def upsert_agent_device(agent_id: str, identifier: str, name: str = None, tipo: str = 'LEGACY', status: str = None, last_update: str = None, ip: str = None, last_catalog_sync: str = None, catalog_count: int = None, store_code: str = None, store_name: str = None):

@@ -88,6 +88,8 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  /* Garantir contraste de texto em fundo claro */
+  color: #212121;
 }
 .dashboard-summary-row {
   display: flex;
@@ -127,6 +129,7 @@ html, body {
   letter-spacing: 0.2px;
   text-align: center;
   word-break: keep-all;
+  color: #212121;
 }
 .nowrap { white-space: nowrap; }
 .muted { color: #6b7280; font-weight: 500; }

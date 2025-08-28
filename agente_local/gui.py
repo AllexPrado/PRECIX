@@ -1189,18 +1189,17 @@ class IntegracaoPrecixWidget(QWidget):
         usuario = self.user_input.text().strip()
         senha = self.pass_input.text().strip()
         token = self.token_input.text().strip()
-    # Removido: fonte_combo e campos de banco de dados
+        # Removido: fonte_combo e campos de banco de dados
+        # Carrega config existente (se houver) para preservar chaves não editadas na GUI
         try:
             if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
-                try:
-                    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-                        json.dump(old, f, indent=2)
-                    self.status_output.setText('Configuração salva!')
-                    QMessageBox.information(self, 'Salvar Configuração', 'Configuração salva com sucesso!')
-                except Exception as e:
-                    QMessageBox.warning(self, 'Aviso', f'Não foi possível salvar config: {e}')
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            else:
+                config = {}
         except Exception:
             config = {}
+        # Atualiza campos da tela
         config['porta_local'] = porta
         config['timeout'] = timeout
         config['modo_operacao'] = modo
@@ -1211,14 +1210,28 @@ class IntegracaoPrecixWidget(QWidget):
         config['tipo_integracao'] = 'API'
         from datetime import datetime
         config['ultima_sync'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        # Persistência segura: grava em arquivo temporário e faz replace atômico
         try:
-            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+            tmp = CONFIG_PATH + '.tmp'
+            with open(tmp, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2)
+            try:
+                os.replace(tmp, CONFIG_PATH)
+            except Exception:
+                # fallback
+                import shutil as _shutil
+                _shutil.move(tmp, CONFIG_PATH)
             self.ultima_output.setText(config.get('ultima_sync', '-'))
             self.status_output.setText('Configuração salva!')
+            QMessageBox.information(self, 'Salvar Configuração', 'Configuração salva com sucesso!')
         except Exception as e:
+            try:
+                # remove tmp se existir
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+            except Exception:
+                pass
             QMessageBox.warning(self, 'Aviso', f'Não foi possível salvar config: {e}')
-        self.status_output.setText('Configuração salva!')
     def carregar_config(self):
         try:
             if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
@@ -1439,26 +1452,31 @@ class AutomacaoWidget(QWidget):
 
 class EquipamentosWidget(QWidget):
     def preencher_formulario(self, row):
+        """Preenche o formulário com a linha selecionada na tabela."""
         try:
-                try:
-                    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-                        json.dump(config, f, indent=2)
-                    self.load_equipamentos()
-                    QMessageBox.information(self, 'Sucesso', 'Equipamento cadastrado!')
-                except Exception as e:
-                    QMessageBox.warning(self, 'Aviso', f'Não foi possível salvar alterações: {e}')
-                eq = equipamentos[row]
-                self.ip_input.setText(str(eq.get('ip', '')))
-                self.porta_input.setText(str(eq.get('porta', '')))
-                self.desc_input.setText(eq.get('descricao', ''))
-                # Seleciona a loja vinculada no ComboBox
-                loja_codigo = eq.get('loja', None)
+            # Carrega equipamentos do config de forma segura
+            if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
+                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    cfg = json.load(f)
+            else:
+                cfg = {"equipamentos": []}
+            equipamentos = cfg.get('equipamentos', [])
+            if not (0 <= row < len(equipamentos)):
+                return
+            eq = equipamentos[row]
+            self.ip_input.setText(str(eq.get('ip', '')))
+            self.porta_input.setText(str(eq.get('porta', '')))
+            self.desc_input.setText(eq.get('descricao', ''))
+            # Seleciona a loja vinculada no ComboBox pelo código
+            loja_codigo = eq.get('loja', None)
+            if self.loja_combo and self.loja_combo.count() > 0:
                 for i in range(self.loja_combo.count()):
                     loja = self.loja_combo.itemData(i)
                     if loja and loja.get('codigo') == loja_codigo:
                         self.loja_combo.setCurrentIndex(i)
                         break
         except Exception:
+            # Não derruba a UI por erro de leitura
             pass
     def __init__(self):
         super().__init__()
@@ -1497,26 +1515,25 @@ class EquipamentosWidget(QWidget):
         self.desc_input.setPlaceholderText('Descrição')
         # ComboBox para escolher loja vinculada
         self.loja_combo = QComboBox()
+        # Tornar os campos mais confortáveis/visíveis
+        try:
+            self.desc_input.setMinimumWidth(180)
+            self.loja_combo.setMinimumWidth(220)
+        except Exception:
+            pass
         self.form_layout.addWidget(QLabel('Novo Equipamento:'))
         self.form_layout.addWidget(self.ip_input)
         self.form_layout.addWidget(self.porta_input)
         self.form_layout.addWidget(self.desc_input)
         self.form_layout.addWidget(QLabel('Loja vinculada:'))
         self.form_layout.addWidget(self.loja_combo)
+        # Evitar que o combo de loja fique espremido
+        try:
+            self.form_layout.addStretch(1)
+        except Exception:
+            pass
         self.layout.addLayout(self.form_layout)
         self.atualizar_lojas_combo()
-
-    def atualizar_lojas_combo(self):
-        self.loja_combo.clear()
-        try:
-            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-            lojas_vinculadas = config.get('lojas_vinculadas', [])
-            for loja in lojas_vinculadas:
-                display = f"{loja.get('codigo', loja.get('id'))} - {loja.get('name')}"
-                self.loja_combo.addItem(display, loja)
-        except Exception:
-            self.loja_combo.addItem('Nenhuma loja vinculada', None)
 
     def showEvent(self, event):
         # Sempre atualizar o ComboBox ao exibir o widget
@@ -1721,8 +1738,11 @@ class MonitoramentoWidget(QWidget):
 
     def carregar_status(self):
         try:
-            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-                config = json.load(f)
+            # Carregamento resiliente do config (suporta arquivo vazio)
+            try:
+                config = load_config()
+            except Exception:
+                config = {}
             equipamentos = config.get('equipamentos', [])
             self.status_table.setRowCount(len(equipamentos))
             self.status_table.setColumnCount(4)
@@ -1731,13 +1751,19 @@ class MonitoramentoWidget(QWidget):
                 self.status_table.setItem(i, 0, QTableWidgetItem(str(eq.get('ip', ''))))
                 self.status_table.setItem(i, 1, QTableWidgetItem(str(eq.get('porta', ''))))
                 self.status_table.setItem(i, 2, QTableWidgetItem(eq.get('descricao', '')))
-                status = eq.get('status', 'Desconhecido')
-                item_status = QTableWidgetItem(status)
+                raw_status = str(eq.get('status', 'Desconhecido'))
+                # Padroniza rótulos exibidos: 'ok' -> 'online', 'desconhecido' -> 'offline'
+                try:
+                    ls = raw_status.strip().lower()
+                except Exception:
+                    ls = 'desconhecido'
+                display_status = 'online' if ls in ['ok', 'online', 'ativo'] else ('offline' if ls in ['desconhecido', 'erro', 'offline', 'inativo'] else raw_status)
+                item_status = QTableWidgetItem(display_status)
                 # Colorir status
                 try:
-                    if status.lower() in ['ok', 'online', 'ativo']:
+                    if display_status.lower() in ['ok', 'online', 'ativo']:
                         item_status.setBackground(Qt.green)
-                    elif status.lower() in ['desconhecido', 'erro', 'offline', 'inativo']:
+                    elif display_status.lower() in ['desconhecido', 'erro', 'offline', 'inativo']:
                         item_status.setBackground(Qt.red)
                     else:
                         item_status.setBackground(Qt.yellow)
@@ -1768,7 +1794,10 @@ class MonitoramentoWidget(QWidget):
                     headers['X-ACK-Token'] = token
                 resp = requests.get(url, headers=headers, timeout=3)
                 if resp.status_code == 200:
-                    j = resp.json()
+                    try:
+                        j = resp.json()
+                    except Exception:
+                        j = {}
                     acks = j.get('acks', [])
                     if acks:
                         texto_parts.append('\nACKs recentes:')
@@ -1811,9 +1840,12 @@ class MonitoramentoWidget(QWidget):
                 agent_status_path = os.path.join(APP_HOME, 'agent_status.json')
                 api_supported = '-'
                 api_error = '-'
-                if os.path.exists(agent_status_path):
-                    with open(agent_status_path, 'r', encoding='utf-8') as fh:
-                        st = json.load(fh) or {}
+                if os.path.exists(agent_status_path) and os.path.getsize(agent_status_path) > 0:
+                    try:
+                        with open(agent_status_path, 'r', encoding='utf-8') as fh:
+                            st = json.load(fh) or {}
+                    except Exception:
+                        st = {}
                     api_supported = str(st.get('api_write_supported', '-'))
                     api_error = str(st.get('api_write_error', '-'))
                 self.api_status_label.setText(f'API write suportado: {api_supported}')

@@ -4,15 +4,19 @@
     <div class="modal-card">
       <h3>Editar Equipamento</h3>
       <form @submit.prevent="saveEditDevice">
-        <label>Nome:<input v-model="editFields.name" required /></label>
+        <label>Nome:
+          <input v-model="editFields.name" required style="background:#fff;color:#212121;" />
+        </label>
         <label>Loja:
-          <select v-model="editFields.store_id" required>
+          <select v-model="editFields.store_id" required style="background:#fff;color:#212121;">
             <option v-for="store in stores" :key="store.id" :value="store.id">{{ store.name }}</option>
           </select>
         </label>
-        <label>Identificador:<input v-model="editFields.identifier" required /></label>
+        <label>Identificador:
+          <input v-model="editFields.identifier" required style="background:#fff;color:#212121;" />
+        </label>
         <label>Status:
-          <select v-model="editFields.status" required>
+          <select v-model="editFields.status" required style="background:#fff;color:#212121;">
             <option value="ativo">Ativo</option>
             <option value="inativo">Inativo</option>
           </select>
@@ -74,19 +78,28 @@
               <span class="device-label">Loja:</span> <span>{{ getStoreName(device.store_id) }}</span>
             </div>
             <div class="device-col status">
-              <span class="device-label">Status:</span>
-              <span :class="{'status-online': device.online, 'status-offline': !device.online}">
-                {{ device.online ? 'Online' : 'Offline' }}
-              </span>
-              <span class="device-label">| {{ device.status === 'ativo' ? 'Ativo' : 'Inativo' }}</span>
+              <div class="kv-row">
+                <span class="device-label">Status:</span>
+                <span :class="{'status-online': device.online, 'status-offline': !device.online}">
+                  {{ device.online ? 'Online' : 'Offline' }}
+                </span>
+              </div>
+              <div class="kv-row">
+                <span class="device-label">Perfil:</span>
+                <span class="status-profile">{{ device.status === 'ativo' ? 'Ativo' : 'Inativo' }}</span>
+              </div>
             </div>
             <div class="device-col lastsync">
-              <span class="device-label">Último sinal:</span>
-              <span v-if="device.last_sync">{{ formatLastHeartbeat(device.last_sync) }} <span class="muted">({{ fromNow(device.last_sync) }})</span></span>
-              <span v-else>Nunca conectado</span>
-              <span class="device-label"> | Catálogo:</span>
-              <span v-if="device.last_catalog_sync">{{ formatLastHeartbeat(device.last_catalog_sync) }} <span class="muted">({{ fromNow(device.last_catalog_sync) }})</span> ({{ device.catalog_count || 0 }} itens)</span>
-              <span v-else>Sem sync</span>
+              <div class="kv-row">
+                <span class="device-label">Último sinal:</span>
+                <span v-if="device.last_sync">{{ formatLastHeartbeat(device.last_sync) }} <span class="muted">({{ fromNow(device.last_sync) }})</span></span>
+                <span v-else>Nunca conectado</span>
+              </div>
+              <div class="kv-row">
+                <span class="device-label">Catálogo:</span>
+                <span v-if="device.last_catalog_sync">{{ formatLastHeartbeat(device.last_catalog_sync) }} <span class="muted">({{ fromNow(device.last_catalog_sync) }})</span> ({{ device.catalog_count || 0 }} itens)</span>
+                <span v-else>Sem sync</span>
+              </div>
             </div>
             <div class="device-col actions">
               <button v-if="userRole === 'admin'" @click="openEditModal(device)">Editar</button>
@@ -345,10 +358,12 @@ input, select {
   padding: 8px;
   border-radius: 8px;
   border: 2px solid #FF6600;
+  background: #ffffff;
+  color: #111827; /* contraste mais alto */
 }
 button {
   background: #FF6600;
-  color: #fff;
+  color: #ffffff; /* garantir contraste */
   border: none;
   border-radius: 8px;
   padding: 8px 16px;
@@ -378,31 +393,32 @@ ul {
   border-radius: 8px;
   padding: 10px 8px;
   box-shadow: 0 2px 8px #ff66001a;
+  color: #111827; /* cor padrão de texto dentro do card */
 }
 .device-col {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
+/* Linhas chave:valor para melhorar leitura */
+.kv-row { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+/* Garantir contraste em todo texto dentro das colunas */
+.device-col span,
+.device-col a { color: #111827; }
 .device-title {
-  font-weight: bold;
+  font-weight: 700;
   font-size: 1.1em;
-  color: #333;
+  color: #1f2937; /* texto principal escuro */
 }
 .device-label {
-  color: #888;
+  color: #6b7280; /* legível em fundos claros */
   font-size: 0.92em;
   margin-right: 2px;
 }
-.muted { color:#888; font-size:0.86em }
-.status-online {
-  color: green;
-  font-weight: bold;
-}
-.status-offline {
-  color: red;
-  font-weight: bold;
-}
+.muted { color:#6b7280; font-size:0.86em }
+.status-online { color: #2e7d32 !important; font-weight: bold; }
+.status-offline { color: #c62828 !important; font-weight: bold; }
+.status-profile { color: #374151; }
 .offline-alert {
   background: #ffeaea;
   border-left: 4px solid #ff0000;
@@ -411,7 +427,7 @@ ul {
 }
 .badge-id {
   background: #e6f7ff;
-  color: #0077b6;
+  color: #0d47a1;
   border-radius: 6px;
   padding: 2px 8px;
   font-size: 0.85em;
@@ -444,13 +460,18 @@ ul {
   padding: 32px 24px;
   min-width: 320px;
   max-width: 90vw;
+  /* Garantir contraste de texto no modal */
+  color: #212121;
 }
 .modal-card h3 {
   margin-top: 0;
+  color: #212121;
 }
 .modal-card label {
   display: block;
   margin-bottom: 12px;
+  color: #212121;
+  font-weight: 600;
 }
 .modal-card input, .modal-card select {
   width: 100%;
@@ -459,7 +480,11 @@ ul {
   padding: 8px;
   border-radius: 6px;
   border: 1.5px solid #FF6600;
+  background: #ffffff;
+  color: #212121;
 }
+.modal-card select option { color: #212121; }
+.modal-card input::placeholder { color: #6b7280; }
 .modal-actions {
   display: flex;
   gap: 12px;

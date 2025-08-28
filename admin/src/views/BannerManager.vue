@@ -31,13 +31,14 @@
 
 <script>
 import { authFetch } from '../auth.js';
+import { api, API_BASE } from '../apiBase.js';
 export default {
   data() {
     return {
       banners: [],
       loading: false,
       error: '',
-      backendUrl: import.meta.env.VITE_API_URL || window.location.origin.replace(':5174', ':8000'),
+  backendUrl: API_BASE,
       stores: [],
       selectedStoreId: '',
       canChooseStore: false,
@@ -78,9 +79,9 @@ export default {
         return 'admin';
       }
     },
-    async fetchStores() {
+  async fetchStores() {
       try {
-  const res = await authFetch(api('/admin/stores'));
+    const res = await authFetch(api('/admin/stores'));
         const data = await res.json();
         // Padroniza o campo de código da loja para string
         this.stores = (Array.isArray(data) ? data : (data.stores || [])).map(store => ({
@@ -95,7 +96,7 @@ export default {
       this.loading = true;
       this.error = '';
       try {
-        let url = `${this.backendUrl}/admin/banners`;
+  let url = `${this.backendUrl}/admin/banners`;
         // Para admin/gestor: usa selectedStoreId; para operador: sempre envia store_id do localStorage
         let storeIdParam = '';
         if (this.canChooseStore) {
@@ -112,7 +113,7 @@ export default {
         if (storeIdParam) {
           url += `?store_id=${storeIdParam}`;
         }
-        const res = await fetch(url);
+  const res = await authFetch(url);
         const data = await res.json();
         this.banners = data;
       } catch (e) {
@@ -174,7 +175,7 @@ export default {
       this.loading = true;
       this.error = '';
       try {
-        const res = await fetch(`${this.backendUrl}/admin/banners/${filename}`, {
+        const res = await authFetch(`${this.backendUrl}/admin/banners/${filename}`, {
           method: 'DELETE',
         });
         const result = await res.json();
@@ -229,7 +230,18 @@ export default {
   flex: 1;
   padding: 8px;
   border-radius: 6px;
-  border: 1px solid #ccc;
+  border: 1px solid #ff6600;
+  background: #fff;
+  color: #212121;
+}
+.bm-file::file-selector-button {
+  background: #ff6600;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-right: 10px;
+  cursor: pointer;
 }
 .bm-upload {
   background: #ff6600;

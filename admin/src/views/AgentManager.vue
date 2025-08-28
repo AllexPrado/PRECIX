@@ -62,7 +62,7 @@
                     <div class="device-row" v-for="d in agent.devices" :key="d.identifier">
                       <span class="dev-name">{{ d.name || d.identifier }}</span>
                       <span class="dev-id">ID: {{ d.identifier }}</span>
-                      <span class="dev-status" :class="{ online: (d.status||'').toLowerCase()==='online', offline: (d.status||'').toLowerCase()!=='online' }">{{ (d.status||'online') }}</span>
+                      <span class="dev-status" :class="{ online: devStatus(d)==='online', offline: devStatus(d)!=='online' }">{{ devStatus(d) }}</span>
                       <span class="dev-store" v-if="d.store_code || d.store_name">Loja: {{ (d.store_code || '') + (d.store_name ? ' - ' + d.store_name : '') }}</span>
                       <span class="dev-cat" v-if="d.last_catalog_sync">Catálogo: {{ formatTS(d.last_catalog_sync) }} <span class="muted">({{ fromNow(d.last_catalog_sync) }})</span> ({{ d.catalog_count || 0 }})</span>
                       <button class="btn" @click="openDeviceEvents(d.identifier)">Eventos</button>
@@ -244,6 +244,23 @@ function formatTS(ts) {
 function fromNow(ts) {
   return dayjs(ts).fromNow()
 }
+
+// Normaliza status do device para 'online'/'offline' com fallback por frescor do last_update
+function devStatus(d) {
+  const raw = String(d?.status || '').toLowerCase()
+  if (raw === 'online' || raw === 'ok' || raw === 'sucesso' || raw === 'ativado' || raw === 'ligado') return 'online'
+  if (raw === 'offline' || raw === 'desconhecido' || raw === 'erro' || raw === 'falha' || raw === 'inativo' || raw === 'desligado') return 'offline'
+  // Fallback por last_update: 120s
+  try {
+    const ts = d?.last_update
+    if (!ts) return 'offline'
+    const dt = dayjs(ts)
+    const diff = dayjs().diff(dt, 'second')
+    return diff <= 120 ? 'online' : 'offline'
+  } catch (e) {
+    return 'offline'
+  }
+}
 </script>
 
 <style scoped>
@@ -323,6 +340,7 @@ table.agents-table {
 table.agents-table th, table.agents-table td {
   padding: 8px 12px;
   text-align: left;
+  color: #212121;
 }
 table.agents-table th {
   background: #fff3e0;

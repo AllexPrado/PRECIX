@@ -280,3 +280,142 @@ table { width: 100%; border-collapse: collapse; }
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* === PrimeVue/light overrides to keep client's brand colors and avoid dark surfaces === */
+:root { color-scheme: light; }
+
+/* Native form controls: keep light background */
+:where(input, select, textarea) {
+  background-color: #ffffff !important;
+  color: #212121 !important;
+}
+:where(input, select, textarea)::placeholder { color: #757575 !important; }
+/* Ensure native selects use light dropdown UI and readable text */
+select { color-scheme: light !important; color: #212121 !important; background-color: #ffffff !important; }
+option, optgroup { color: #212121 !important; background-color: #ffffff !important; }
+select:focus { outline: none; border-color: #ff6600 !important; box-shadow: 0 0 0 2px #ff660033; }
+
+/* Checkbox/Radio brand color and readable labels */
+input[type="checkbox"], input[type="radio"] { accent-color: #ff6600; }
+.permissoes label { color: #212121 !important; }
+
+/* Autofill overrides (Chrome/Edge/Safari and Firefox) */
+input:-webkit-autofill,
+textarea:-webkit-autofill,
+select:-webkit-autofill,
+input:-webkit-autofill:hover,
+textarea:-webkit-autofill:hover,
+select:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  -webkit-text-fill-color: #212121 !important;
+  caret-color: #212121 !important;
+  transition: background-color 9999s ease-out 0s;
+}
+input:-moz-autofill,
+textarea:-moz-autofill,
+select:-moz-autofill {
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  background-color: #ffffff !important;
+  color: #212121 !important;
+}
+
+/* PrimeVue DataTable to match previous light table look */
+.p-datatable .p-datatable-thead > tr > th {
+  background: #ffe0b2 !important; /* cabeçalho bege claro da marca */
+  color: #ff6600 !important;      /* laranja da marca */
+  border-color: #e0e0e0 !important;
+}
+.p-datatable .p-datatable-tbody > tr > td {
+  background: #ffffff !important;
+  color: #212121 !important;
+  border-color: #f0f0f0 !important;
+}
+.p-datatable .p-paginator {
+  background: #ffffff !important;
+  color: #212121 !important;
+}
+
+/* Filter bars and forms (Audit/Users/etc.) */
+.filter-bar input,
+.filter-bar select,
+.user-filters input,
+.user-filters select {
+  background: #ffffff !important;
+  color: #212121 !important;
+  border: 2px solid #ff6600 !important;
+}
+.filter-bar input:focus,
+.filter-bar select:focus,
+.user-filters input:focus,
+.user-filters select:focus {
+  outline: none !important;
+  border-color: #ff6600 !important;
+  box-shadow: 0 0 0 2px #ff660033 !important;
+}
+
+/* PrimeVue Panel/Message/Dialog backgrounds must stay light */
+.p-panel, .p-message, .p-dialog, .p-dropdown-panel, .p-overlaypanel, .p-menu, .p-confirm-popup {
+  background: #ffffff !important;
+  color: #212121 !important;
+}
+.p-dialog .p-dialog-header {
+  background: #fffaf5 !important;
+  color: #ff6600 !important;
+}
+/* Dropdown panel menu items and hover states */
+.p-dropdown-panel, .p-overlaypanel, .p-menu, .p-tieredmenu, .p-select, .p-autocomplete-panel {
+  background: #ffffff !important;
+  color: #212121 !important;
+  border-color: #e0e0e0 !important;
+}
+.p-dropdown-panel .p-dropdown-items .p-dropdown-item,
+.p-autocomplete-panel .p-autocomplete-items .p-autocomplete-item,
+.p-menu .p-menuitem > .p-menuitem-content,
+.p-tieredmenu .p-menuitem > .p-menuitem-content {
+  background: #ffffff !important;
+  color: #212121 !important;
+}
+.p-dropdown-panel .p-dropdown-items .p-dropdown-item.p-highlight,
+.p-autocomplete-panel .p-autocomplete-items .p-autocomplete-item.p-highlight,
+.p-menu .p-menuitem > .p-menuitem-content:hover,
+.p-tieredmenu .p-menuitem > .p-menuitem-content:hover {
+  background: #fff3e0 !important; /* brand light */
+  color: #000 !important;
+}
+.p-dropdown .p-dropdown-label, .p-dropdown .p-dropdown-trigger {
+  color: #212121 !important;
+}
+.p-paginator .p-dropdown .p-dropdown-label {
+  color: #212121 !important;
+}
+
+/* Inputs/Dropdowns from PrimeVue */
+.p-inputtext, .p-dropdown, .p-multiselect {
+  background: #ffffff !important;
+  color: #212121 !important;
+}
+.p-checkbox-box, .p-radiobutton-box {
+  background: #ffffff !important;
+}
+
+/* Keep brand primary for action buttons when outlined */
+.p-button {
+  --brand-orange: #ff6600;
+}
+.p-button:not(.p-button-danger):not(.p-button-success):not(.p-button-secondary) {
+  background: var(--brand-orange);
+  border-color: var(--brand-orange);
+}
+.p-button.p-button-outlined:not(.p-button-danger):not(.p-button-success):not(.p-button-secondary) {
+  color: var(--brand-orange);
+  border-color: var(--brand-orange);
+}
+
+/* Plain modal dialogs (non-PrimeVue) - ensure text readable */
+.dialog-content { color: #212121; }
+.dialog-content label, .dialog-content span, .dialog-content p { color: #212121; }
+.dialog-content button { color: #ffffff !important; }
