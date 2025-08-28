@@ -360,6 +360,25 @@ onMounted(() => {
 .subtitle { margin: 2px 0 0 0; color: #7a7a7a; }
 .integration-config-card :deep(.p-datatable-wrapper) { border: 1px solid #ffe0b2; border-radius: 8px; }
 .integration-config-card :deep(.p-button) { font-weight: 700; }
+/* Botões secundários e outline no card (Editar, Importar agora): branco + borda laranja + texto laranja */
+.integration-config-card :deep(.p-button.p-button-secondary),
+.integration-config-card :deep(.p-button.p-button-outlined.p-button-secondary),
+.integration-config-card :deep(.p-button.p-button-outlined:not(.p-button-danger):not(.p-button-success)) {
+  background: #ffffff !important;
+  color: #ff6600 !important;
+  border-color: #ff6600 !important;
+}
+.integration-config-card :deep(.p-button.p-button-secondary:hover),
+.integration-config-card :deep(.p-button.p-button-outlined.p-button-secondary:hover),
+.integration-config-card :deep(.p-button.p-button-outlined:not(.p-button-danger):not(.p-button-success):hover) {
+  background: #fff7ef !important;
+  color: #e85a00 !important;
+  border-color: #e85a00 !important;
+}
+.integration-config-card :deep(.p-button:disabled) {
+  opacity: .65;
+  cursor: not-allowed;
+}
 .feedback-success {
   color: #388e3c;
   font-weight: bold;
@@ -427,6 +446,25 @@ onMounted(() => {
 .int-dialog :deep(.p-dropdown-items) { background: #fff; color: #212121; }
 .int-dialog :deep(.p-dropdown-item) { background: #fff; color: #212121; }
 .int-dialog :deep(.p-dropdown-item.p-highlight) { background: #fff3e0; color: #111; }
+/* Botões no modal (Selecionar, Layout, Cancelar): padrão da marca */
+.int-dialog :deep(.p-button.p-button-secondary),
+.int-dialog :deep(.p-button.p-button-outlined.p-button-secondary),
+.int-dialog :deep(.p-button.p-button-text.p-button-secondary) {
+  background: #ffffff !important;
+  color: #ff6600 !important;
+  border-color: #ff6600 !important;
+}
+.int-dialog :deep(.p-button.p-button-secondary:hover),
+.int-dialog :deep(.p-button.p-button-outlined.p-button-secondary:hover),
+.int-dialog :deep(.p-button.p-button-text.p-button-secondary:hover) {
+  background: #fff7ef !important;
+  color: #e85a00 !important;
+  border-color: #e85a00 !important;
+}
+.int-dialog :deep(.p-button:disabled) {
+  opacity: .65;
+  cursor: not-allowed;
+}
 .int-dialog :deep(.p-checkbox .p-checkbox-box) { background: #fff; border-color: #ff6600; }
 .int-dialog :deep(.p-checkbox .p-checkbox-box.p-highlight) { background: #ff6600; border-color: #ff6600; }
 .int-dialog :deep(.p-checkbox .p-checkbox-icon) { color: #fff; }
