@@ -65,13 +65,15 @@
         placeholder="Global"
         showClear
         appendTo="self"
+        panelClass="dropdown-light"
+        class="dropdown-light"
         :disabled="savingConfig"
         @change="onStoreChange"/>
       <small class="hint">Deixe em branco para integração Global (todas as lojas).</small>
             </div>
             <div class="p-field p-col-12 p-md-6">
               <label class="p-d-block p-mb-2">Tipo</label>
-      <Dropdown v-model="form.tipo" :options="tipoOptions" optionLabel="label" optionValue="value" placeholder="Selecione" :disabled="savingConfig" required />
+      <Dropdown v-model="form.tipo" :options="tipoOptions" optionLabel="label" optionValue="value" placeholder="Selecione" :disabled="savingConfig" required panelClass="dropdown-light" class="dropdown-light" />
             </div>
           </div>
 
@@ -237,7 +239,14 @@ function getStoreName(id) {
 async function fetchConfigs() {
   try {
   const resp = await axios.get(api('/admin/integracoes'))
-    configs.value = (resp.data || []).map((c, idx) => ({ ...c, id: c.id || idx }))
+    configs.value = (resp.data || []).map((c, idx) => ({
+      ...c,
+      id: c.id ?? idx,
+      // garante tipos corretos vindos da API/SQLite
+      loja_id: (c.loja_id === null || c.loja_id === 'null' || c.loja_id === '') ? null : Number(c.loja_id),
+      ativo: Number(c.ativo) ? 1 : 0,
+      tipo: (c.tipo || '').toString().toLowerCase()
+    }))
   } catch {
     configs.value = []
   }
@@ -315,7 +324,13 @@ async function saveConfig() {
       const n = Number(lid)
       payload.loja_id = Number.isFinite(n) ? n : null
     }
+    // Normaliza flags e tipo obrigatório
     payload.ativo = payload.ativo ? 1 : 0
+    payload.tipo = (payload.tipo || '').toString().toLowerCase()
+    if (!payload.tipo || !payload.parametro1) {
+      feedback.value = { success: false, message: 'Preencha Tipo e Caminho/Parâmetro 1.' }
+      return
+    }
   await axios.post(api('/admin/integracoes'), payload)
     feedback.value = { success: true, message: 'Integração salva com sucesso!' }
     showModal.value = false
@@ -452,6 +467,12 @@ onMounted(() => {
 .int-dialog :deep(.p-dropdown-items) { background: #fff; color: #212121; }
 .int-dialog :deep(.p-dropdown-item) { background: #fff; color: #212121; }
 .int-dialog :deep(.p-dropdown-item.p-highlight) { background: #fff3e0; color: #111; }
+.dropdown-light :deep(.p-dropdown-label),
+.dropdown-light :deep(.p-dropdown-trigger) { color: #212121 !important; }
+.dropdown-light :deep(.p-dropdown) { background: #fff !important; }
+.dropdown-light :deep(.p-dropdown-panel) { background: #fff !important; color: #212121 !important; border: 1px solid #ffd1a6 !important; }
+.dropdown-light :deep(.p-dropdown-item) { background: #fff !important; color: #212121 !important; }
+.dropdown-light :deep(.p-dropdown-item.p-highlight) { background: #fff3e0 !important; color: #111 !important; }
 /* Botões no modal (Selecionar, Layout, Cancelar): padrão da marca */
 .int-dialog :deep(.p-button.p-button-secondary),
 .int-dialog :deep(.p-button.p-button-outlined.p-button-secondary),
@@ -490,6 +511,9 @@ onMounted(() => {
 .integration-config-card :deep(.p-dropdown-panel .p-dropdown-items .p-dropdown-item.p-highlight) { background: #fff3e0; color: #111; }
 .integration-config-card :deep(.p-dropdown-item) { background: #fff; color: #212121; }
 .integration-config-card :deep(.p-dropdown-item.p-highlight) { background: #fff3e0; color: #111; }
+.integration-config-card :deep(.p-paginator .p-dropdown-panel) { background: #fff !important; color: #212121 !important; border: 1px solid #ffd1a6 !important; }
+.integration-config-card :deep(.p-paginator .p-dropdown-item) { background: #fff !important; color: #212121 !important; }
+.integration-config-card :deep(.p-paginator .p-dropdown-item.p-highlight) { background: #fff3e0 !important; color: #111 !important; }
 .integration-config-card :deep(.p-paginator .p-paginator-page.p-highlight) { background: #fff3e0; border-color: #ffcc99; color: #111; }
 .integration-config-card :deep(.p-paginator .p-paginator-page:not(.p-highlight):hover) { background: #fff7ef; }
 .hint { color: #6b7280; font-size: .85rem; }
