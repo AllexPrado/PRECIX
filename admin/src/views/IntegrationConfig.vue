@@ -81,7 +81,7 @@
               <div class="p-d-flex gap-2">
                 <InputText v-model="form.parametro1" placeholder="Selecione ou digite o caminho do arquivo" class="p-flex-1" :disabled="savingConfig" required />
                 <input type="file" style="display:none;" ref="fileInput" @change="onFileSelect" />
-                <Button type="button" label="Selecionar" icon="pi pi-folder-open" severity="secondary" :disabled="savingConfig" @click="triggerFileInput" />
+                <Button type="button" label="Selecionar pasta" icon="pi pi-folder-open" severity="secondary" :disabled="savingConfig" @click="triggerFileInput" />
                 <Button type="button" label="Layout" icon="pi pi-sliders-h" severity="secondary" outlined :disabled="savingConfig" @click="openLayoutModal" />
               </div>
             </div>
@@ -486,6 +486,8 @@ onMounted(() => {
 .integration-config-card :deep(.p-paginator .p-dropdown) { background: #fff; color: #212121; border-color: #ffd1a6; }
 .integration-config-card :deep(.p-paginator .p-dropdown .p-dropdown-label) { background: #fff; color: #212121; }
 .integration-config-card :deep(.p-dropdown-panel) { background: #fff; color: #212121; border: 1px solid #ffd1a6; box-shadow: 0 8px 20px rgba(255,102,0,0.12); }
+.integration-config-card :deep(.p-dropdown-panel .p-dropdown-items .p-dropdown-item) { background: #fff; color: #212121; }
+.integration-config-card :deep(.p-dropdown-panel .p-dropdown-items .p-dropdown-item.p-highlight) { background: #fff3e0; color: #111; }
 .integration-config-card :deep(.p-dropdown-item) { background: #fff; color: #212121; }
 .integration-config-card :deep(.p-dropdown-item.p-highlight) { background: #fff3e0; color: #111; }
 .integration-config-card :deep(.p-paginator .p-paginator-page.p-highlight) { background: #fff3e0; border-color: #ffcc99; color: #111; }
