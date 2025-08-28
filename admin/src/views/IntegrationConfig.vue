@@ -53,7 +53,7 @@
       </Panel>
 
       <!-- Dialog Adicionar/Editar -->
-  <Dialog v-model:visible="showModal" modal :header="editMode ? 'Editar Integração' : 'Adicionar Integração'" :style="{ width: '680px' }" :breakpoints="{'960px': '85vw', '640px': '98vw'}" class="int-dialog">
+  <Dialog v-model:visible="showModal" modal :header="(editMode ? 'Editar Integração' : 'Adicionar Integração') + (form.tipo ? ' · ' + form.tipo.toString().toUpperCase() : '')" :style="{ width: '680px' }" :breakpoints="{'960px': '85vw', '640px': '98vw'}" class="int-dialog">
     <form @submit.prevent="saveConfig" class="p-fluid" :aria-busy="savingConfig">
           <div class="p-formgrid p-grid">
             <div class="p-field p-col-12 p-md-6">
@@ -88,8 +88,18 @@
               </div>
             </div>
             <div class="p-field p-col-12" v-else>
-              <label class="p-d-block p-mb-2">Parâmetro 1</label>
-              <InputText v-model="form.parametro1" placeholder="Ex: endpoint, string de conexão" :disabled="savingConfig" required />
+              <template v-if="form.tipo === 'api'">
+                <label class="p-d-block p-mb-2">Endpoint da API</label>
+                <div class="p-d-flex gap-2">
+                  <InputText v-model="form.parametro1" placeholder="Ex: http://host:porta/product/all" class="p-flex-1" :disabled="savingConfig" required />
+                  <Button type="button" label="Testar API" icon="pi pi-play" size="small" class="btn-compact" :disabled="savingConfig || !form.parametro1" @click="testApi" />
+                </div>
+                <small class="hint">Suporte a Bearer token em Parâmetro 2. Resposta JSON deve conter lista de produtos com campos barcode/codigo, name/descricao, price/preco.</small>
+              </template>
+              <template v-else>
+                <label class="p-d-block p-mb-2">Parâmetro 1</label>
+                <InputText v-model="form.parametro1" placeholder="Ex: endpoint, string de conexão" :disabled="savingConfig" required />
+              </template>
             </div>
             <div class="p-field p-col-12 p-md-8">
               <label class="p-d-block p-mb-2">Parâmetro 2</label>
@@ -358,6 +368,23 @@ onMounted(() => {
   fetchStores()
   fetchLogs()
 })
+
+async function testApi() {
+  try {
+    const url = (form.value.parametro1 || '').toString().trim()
+    const token = (form.value.parametro2 || '').toString().trim()
+    if (!url) return
+    const resp = await axios.post(api('/admin/integracoes/testar-api'), { url, token })
+    if (resp.data?.success) {
+      const c = resp.data.count ?? 0
+      feedback.value = { success: true, message: `API OK (${c} itens).` }
+    } else {
+      feedback.value = { success: false, message: resp.data?.message || 'Falha ao testar API.' }
+    }
+  } catch (e) {
+    feedback.value = { success: false, message: 'Erro ao testar API.' }
+  }
+}
 </script>
 
 <style scoped>

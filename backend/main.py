@@ -499,6 +499,30 @@ def salvar_integracao(data: dict = Body(...)):
         upsert_integration(loja_id, tipo, parametro1, parametro2, ativo, layout)
     return {"success": True}
 
+# Testa uma integração do tipo API (sem salvar), útil para o modal
+@app.post('/admin/integracoes/testar-api')
+def testar_integracao_api(data: dict = Body(...)):
+    url = (data.get('url') or data.get('parametro1') or '').strip()
+    token = (data.get('token') or data.get('parametro2') or '').strip()
+    if not url:
+        return {"success": False, "message": "Informe a URL da API."}
+    headers = {}
+    if token:
+        headers['Authorization'] = f'Bearer {token}'
+    try:
+        r = requests.get(url, headers=headers, timeout=8)
+        r.raise_for_status()
+        try:
+            js = r.json()
+        except Exception:
+            return {"success": False, "message": "A resposta não é JSON válido."}
+        count = len(js) if isinstance(js, list) else (len(js.keys()) if isinstance(js, dict) else 1)
+        sample = js[0] if isinstance(js, list) and js else js
+        # Não retornar payload completo para não poluir a UI
+        return {"success": True, "status": r.status_code, "count": int(count), "sample": sample if isinstance(sample, dict) else None}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
 @app.post('/admin/devices/register')
 async def register_device_by_store_code(request: Request):
     data = await request.json()
