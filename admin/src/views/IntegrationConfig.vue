@@ -44,7 +44,12 @@
           <span class="text-muted">Últimos eventos</span>
           <Button label="Atualizar" icon="pi pi-refresh" text @click="fetchLogs" />
         </div>
-        <pre class="logs-pre">{{ logs.join('') }}</pre>
+        <template v-if="logs && logs.length">
+          <pre class="logs-pre">{{ logs.join('\n').trim() }}</pre>
+        </template>
+        <template v-else>
+          <div class="logs-empty">Sem eventos recentes.</div>
+        </template>
       </Panel>
 
       <!-- Dialog Adicionar/Editar -->
@@ -430,7 +435,8 @@ onMounted(() => {
 /* Logs */
 .logs-panel { background: #fffef9; border: 1px solid #ffe0b2; border-radius: 10px; padding: 10px; margin-top: 12px; }
 .logs-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.logs-pre { max-height: 220px; overflow: auto; background: #fff; border: 1px dashed #ffd699; padding: 8px; border-radius: 8px; white-space: pre-wrap; }
+.logs-pre { max-height: 260px; overflow: auto; background: #fff; border: 1px dashed #ffd699; padding: 10px 12px; border-radius: 8px; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12.5px; line-height: 1.35; color: #263238; }
+.logs-empty { background: #fffdf7; border: 1px solid #ffe0b2; color: #6b7280; padding: 10px 12px; border-radius: 8px; }
 /* Dialog layout clean */
 .int-dialog :deep(.p-dialog-content) { background: #fff; }
 .int-dialog :deep(.p-dropdown) { background: #fff; }
@@ -476,6 +482,14 @@ onMounted(() => {
 }
 .integration-config-card :deep(.p-datatable .p-datatable-tbody > tr:nth-child(odd) > td) { background: #fffdf8; }
 .integration-config-card :deep(.p-datatable .p-datatable-tbody > tr:nth-child(even) > td) { background: #fffaf4; }
+.integration-config-card :deep(.p-datatable .p-paginator) { background: #fff; border-top: 1px solid #ffe0b2; color: #212121; }
+.integration-config-card :deep(.p-paginator .p-dropdown) { background: #fff; color: #212121; border-color: #ffd1a6; }
+.integration-config-card :deep(.p-paginator .p-dropdown .p-dropdown-label) { background: #fff; color: #212121; }
+.integration-config-card :deep(.p-dropdown-panel) { background: #fff; color: #212121; border: 1px solid #ffd1a6; box-shadow: 0 8px 20px rgba(255,102,0,0.12); }
+.integration-config-card :deep(.p-dropdown-item) { background: #fff; color: #212121; }
+.integration-config-card :deep(.p-dropdown-item.p-highlight) { background: #fff3e0; color: #111; }
+.integration-config-card :deep(.p-paginator .p-paginator-page.p-highlight) { background: #fff3e0; border-color: #ffcc99; color: #111; }
+.integration-config-card :deep(.p-paginator .p-paginator-page:not(.p-highlight):hover) { background: #fff7ef; }
 .hint { color: #6b7280; font-size: .85rem; }
 .integration-config-card :deep(.p-panel .p-panel-header) { color: #212121; background: #fff; }
 .chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 700; letter-spacing: .2px; border: 1px solid transparent; }
