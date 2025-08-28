@@ -40,16 +40,25 @@
       </Panel>
 
       <!-- Dialog Adicionar/Editar -->
-      <Dialog v-model:visible="showModal" modal :header="editMode ? 'Editar Integração' : 'Adicionar Integração'" :style="{ width: '640px' }" :breakpoints="{'960px': '85vw', '640px': '98vw'}" class="int-dialog">
-        <form @submit.prevent="saveConfig" class="p-fluid">
+  <Dialog v-model:visible="showModal" modal :header="editMode ? 'Editar Integração' : 'Adicionar Integração'" :style="{ width: '680px' }" :breakpoints="{'960px': '85vw', '640px': '98vw'}" class="int-dialog">
+    <form @submit.prevent="saveConfig" class="p-fluid" :aria-busy="savingConfig">
           <div class="p-formgrid p-grid">
             <div class="p-field p-col-12 p-md-6">
               <label class="p-d-block p-mb-2">Loja</label>
-              <Dropdown v-model="form.loja_id" :options="storeOptions" optionLabel="label" optionValue="value" placeholder="Global" showClear @change="onStoreChange"/>
+      <Dropdown v-model="form.loja_id"
+        :options="storeOptions"
+        optionLabel="label"
+        optionValue="value"
+        placeholder="Global"
+        showClear
+        appendTo="self"
+        :disabled="savingConfig"
+        @change="onStoreChange"/>
+      <small class="hint">Deixe em branco para integração Global (todas as lojas).</small>
             </div>
             <div class="p-field p-col-12 p-md-6">
               <label class="p-d-block p-mb-2">Tipo</label>
-              <Dropdown v-model="form.tipo" :options="tipoOptions" optionLabel="label" optionValue="value" placeholder="Selecione" required />
+      <Dropdown v-model="form.tipo" :options="tipoOptions" optionLabel="label" optionValue="value" placeholder="Selecione" :disabled="savingConfig" required />
             </div>
           </div>
 
@@ -57,29 +66,29 @@
             <div class="p-field p-col-12" v-if="form.tipo === 'arquivo'">
               <label class="p-d-block p-mb-2">Caminho do arquivo</label>
               <div class="p-d-flex gap-2">
-                <InputText v-model="form.parametro1" placeholder="Selecione ou digite o caminho do arquivo" class="p-flex-1" required />
+                <InputText v-model="form.parametro1" placeholder="Selecione ou digite o caminho do arquivo" class="p-flex-1" :disabled="savingConfig" required />
                 <input type="file" style="display:none;" ref="fileInput" @change="onFileSelect" />
-                <Button type="button" label="Selecionar" icon="pi pi-folder-open" severity="secondary" @click="triggerFileInput" />
-                <Button type="button" label="Layout" icon="pi pi-sliders-h" severity="secondary" outlined @click="openLayoutModal" />
+                <Button type="button" label="Selecionar" icon="pi pi-folder-open" severity="secondary" :disabled="savingConfig" @click="triggerFileInput" />
+                <Button type="button" label="Layout" icon="pi pi-sliders-h" severity="secondary" outlined :disabled="savingConfig" @click="openLayoutModal" />
               </div>
             </div>
             <div class="p-field p-col-12" v-else>
               <label class="p-d-block p-mb-2">Parâmetro 1</label>
-              <InputText v-model="form.parametro1" placeholder="Ex: endpoint, string de conexão" required />
+              <InputText v-model="form.parametro1" placeholder="Ex: endpoint, string de conexão" :disabled="savingConfig" required />
             </div>
             <div class="p-field p-col-12 p-md-8">
               <label class="p-d-block p-mb-2">Parâmetro 2</label>
-              <InputText v-model="form.parametro2" placeholder="Ex: token, diretório, etc" />
+              <InputText v-model="form.parametro2" placeholder="Ex: token, diretório, etc" :disabled="savingConfig" />
             </div>
             <div class="p-field-checkbox p-col-12 p-md-4 p-d-flex p-ai-center p-jc-start">
-              <Checkbox v-model="form.ativo" :binary="true" inputId="ativoCheck" />
+              <Checkbox v-model="form.ativo" :binary="true" inputId="ativoCheck" :disabled="savingConfig" />
               <label for="ativoCheck" class="p-ml-2">Ativo</label>
             </div>
           </div>
 
           <div class="p-d-flex p-jc-end gap-2 p-mt-3">
-            <Button type="button" label="Cancelar" severity="secondary" text @click="closeModal" />
-            <Button type="submit" label="Salvar" icon="pi pi-check" />
+            <Button type="button" label="Cancelar" severity="secondary" text :disabled="savingConfig" @click="closeModal" />
+            <Button type="submit" :label="savingConfig ? 'Salvando…' : 'Salvar'" icon="pi pi-check" :disabled="savingConfig" />
           </div>
         </form>
       </Dialog>
@@ -149,6 +158,7 @@ const fileInput = ref(null)
 const feedback = ref(null)
 const importLoading = ref(false)
 const logs = ref([])
+const savingConfig = ref(false)
 // Derived options for dropdowns
 const storeOptions = ref([])
 const tipoOptions = [
@@ -278,9 +288,17 @@ function closeModal() {
 
 async function saveConfig() {
   feedback.value = null
+  savingConfig.value = true
   try {
     const payload = { ...form.value }
-    if (payload.loja_id === null || payload.loja_id === 'null' || payload.loja_id === '') payload.loja_id = null
+    // Normaliza loja_id para número ou null
+    let lid = payload.loja_id
+    if (lid === undefined || lid === null || lid === '' || lid === 'null') {
+      payload.loja_id = null
+    } else {
+      const n = Number(lid)
+      payload.loja_id = Number.isFinite(n) ? n : null
+    }
     payload.ativo = payload.ativo ? 1 : 0
   await axios.post(api('/admin/integracoes'), payload)
     feedback.value = { success: true, message: 'Integração salva com sucesso!' }
@@ -288,6 +306,8 @@ async function saveConfig() {
     await fetchConfigs()
   } catch (e) {
     feedback.value = { success: false, message: 'Erro ao salvar integração.' }
+  } finally {
+    savingConfig.value = false
   }
 }
 
@@ -297,7 +317,8 @@ function onStoreChange(event) {
   if (val === undefined || val === '' || val === null) {
     form.value.loja_id = null
   } else {
-    form.value.loja_id = val
+    const n = Number(val)
+    form.value.loja_id = Number.isFinite(n) ? n : null
   }
 }
 
@@ -388,6 +409,10 @@ onMounted(() => {
 .int-dialog :deep(.p-dropdown),
 .int-dialog :deep(.p-dropdown-label),
 .int-dialog :deep(.p-textarea) { background: #fff; color: #212121; }
+.int-dialog :deep(.p-dropdown-panel),
+.int-dialog :deep(.p-dropdown-items) { background: #fff; color: #212121; }
+.int-dialog :deep(.p-dropdown-item) { background: #fff; color: #212121; }
+.int-dialog :deep(.p-dropdown-item.p-highlight) { background: #fff3e0; color: #111; }
 .int-dialog :deep(.p-checkbox .p-checkbox-box) { background: #fff; border-color: #ff6600; }
 .int-dialog :deep(.p-checkbox .p-checkbox-box.p-highlight) { background: #ff6600; border-color: #ff6600; }
 .int-dialog :deep(.p-checkbox .p-checkbox-icon) { color: #fff; }
@@ -397,6 +422,9 @@ onMounted(() => {
   color: #212121;
   background: #fff;
 }
+.integration-config-card :deep(.p-datatable .p-datatable-tbody > tr:nth-child(odd) > td) { background: #fffdf8; }
+.integration-config-card :deep(.p-datatable .p-datatable-tbody > tr:nth-child(even) > td) { background: #fffaf4; }
+.hint { color: #6b7280; font-size: .85rem; }
 .integration-config-card :deep(.p-panel .p-panel-header) { color: #212121; background: #fff; }
 /* Responsivo: tabela scrollável em telas estreitas */
 @media (max-width: 720px) {

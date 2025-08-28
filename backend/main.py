@@ -474,7 +474,15 @@ def salvar_integracao(data: dict = Body(...)):
     Adiciona ou atualiza uma integração de preço para uma loja ou global, incluindo layout do arquivo.
     """
     id_ = data.get('id')
-    loja_id = data.get('loja_id')
+    # Coerção de loja_id vindo do UI (pode ser '', 'null', null, número)
+    raw_loja = data.get('loja_id')
+    if raw_loja in (None, '', 'null'):
+        loja_id = None
+    else:
+        try:
+            loja_id = int(raw_loja)
+        except Exception:
+            loja_id = None
     tipo = data.get('tipo')
     parametro1 = data.get('parametro1')
     parametro2 = data.get('parametro2')
