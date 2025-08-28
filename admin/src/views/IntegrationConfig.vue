@@ -32,8 +32,8 @@
         <Column header="Ações" style="width:220px">
           <template #body="{ data }">
             <div class="p-d-flex gap-2">
-      <Button label="Editar" size="small" icon="pi pi-pencil" severity="secondary" outlined @click="editConfig(data)" />
-      <Button label="Excluir" size="small" icon="pi pi-trash" severity="danger" outlined @click="deleteConfig(data)" />
+  <Button label="Editar" size="small" class="btn-compact" icon="pi pi-pencil" severity="secondary" outlined @click="editConfig(data)" />
+  <Button label="Excluir" size="small" class="btn-compact" icon="pi pi-trash" severity="danger" outlined @click="deleteConfig(data)" />
             </div>
           </template>
         </Column>
