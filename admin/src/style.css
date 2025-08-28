@@ -402,18 +402,30 @@ select:-moz-autofill {
   background: #ffffff !important;
 }
 
-/* Keep brand primary for action buttons when outlined */
-.p-button {
-  --brand-orange: #ff6600;
-}
-.p-button:not(.p-button-danger):not(.p-button-success):not(.p-button-secondary) {
-  background: var(--brand-orange);
-  border-color: var(--brand-orange);
+/* Keep brand primary for action buttons; avoid forcing text/link/secondary */
+.p-button { --brand-orange: #ff6600; }
+.p-button:not(.p-button-danger):not(.p-button-success):not(.p-button-secondary):not(.p-button-text):not(.p-button-link) {
+  background: var(--brand-orange) !important;
+  border-color: var(--brand-orange) !important;
 }
 .p-button.p-button-outlined:not(.p-button-danger):not(.p-button-success):not(.p-button-secondary) {
-  color: var(--brand-orange);
-  border-color: var(--brand-orange);
+  color: var(--brand-orange) !important;
+  border-color: var(--brand-orange) !important;
+  background: #ffffff !important;
 }
+/* Text buttons should be transparent brand */
+.p-button.p-button-text { background: transparent !important; border-color: transparent !important; color: var(--brand-orange) !important; }
+.p-button.p-button-text:hover { background: #fff7ef !important; color: #e85a00 !important; }
+/* Compact utility to reduce button size consistently */
+.btn-compact.p-button { padding: 0.35rem 0.6rem !important; font-size: 0.85rem !important; line-height: 1.2 !important; }
+.btn-compact.p-button .p-button-icon-left { margin-right: 0.35rem !important; }
+.btn-compact.p-button .p-button-icon-right { margin-left: 0.35rem !important; }
+
+/* Force light overlay everywhere (paginator dropdown included) */
+body .p-dropdown-panel { background: #ffffff !important; color: #212121 !important; border: 1px solid #ffd1a6 !important; box-shadow: 0 8px 20px rgba(255,102,0,0.12) !important; }
+body .p-dropdown-panel .p-dropdown-items { background: #ffffff !important; }
+body .p-dropdown-panel .p-dropdown-items .p-dropdown-item { background: #ffffff !important; color: #212121 !important; }
+body .p-dropdown-panel .p-dropdown-items .p-dropdown-item.p-highlight { background: #fff3e0 !important; color: #111 !important; }
 
 /* Plain modal dialogs (non-PrimeVue) - ensure text readable */
 .dialog-content { color: #212121; }

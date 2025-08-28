@@ -7,8 +7,8 @@
           <p class="subtitle">Gerencie como o sistema importa e atualiza preços por loja.</p>
         </div>
         <div class="p-d-flex gap-2">
-          <Button label="Adicionar Integração" icon="pi pi-plus" @click="openAddModal" />
-          <Button :label="importLoading ? 'Importando...' : 'Importar agora'" :disabled="importLoading" icon="pi pi-download" severity="secondary" outlined @click="importNow" />
+          <Button label="Adicionar Integração" icon="pi pi-plus" size="small" class="btn-compact" @click="openAddModal" />
+          <Button :label="importLoading ? 'Importando...' : 'Importar agora'" :disabled="importLoading" icon="pi pi-download" severity="secondary" outlined size="small" class="btn-compact" @click="importNow" />
         </div>
       </div>
       <div v-if="feedback" class="p-mt-2">
@@ -42,7 +42,7 @@
       <Panel header="Logs recentes de importação" toggleable collapsed class="p-mt-3">
         <div class="p-d-flex p-jc-between p-ai-center p-mb-2">
           <span class="text-muted">Últimos eventos</span>
-          <Button label="Atualizar" icon="pi pi-refresh" text @click="fetchLogs" />
+          <Button label="Atualizar" icon="pi pi-refresh" text size="small" class="btn-compact" @click="fetchLogs" />
         </div>
         <template v-if="logs && logs.length">
           <pre class="logs-pre">{{ logs.join('\n').trim() }}</pre>
@@ -81,8 +81,8 @@
               <div class="p-d-flex gap-2">
                 <InputText v-model="form.parametro1" placeholder="Selecione ou digite o caminho do arquivo" class="p-flex-1" :disabled="savingConfig" required />
                 <input type="file" style="display:none;" ref="fileInput" @change="onFileSelect" />
-                <Button type="button" label="Selecionar pasta" icon="pi pi-folder-open" severity="secondary" :disabled="savingConfig" @click="triggerFileInput" />
-                <Button type="button" label="Layout" icon="pi pi-sliders-h" severity="secondary" outlined :disabled="savingConfig" @click="openLayoutModal" />
+                <Button type="button" label="Selecionar pasta" icon="pi pi-folder-open" severity="secondary" size="small" class="btn-compact" :disabled="savingConfig" @click="triggerFileInput" />
+                <Button type="button" label="Layout" icon="pi pi-sliders-h" severity="secondary" outlined size="small" class="btn-compact" :disabled="savingConfig" @click="openLayoutModal" />
               </div>
             </div>
             <div class="p-field p-col-12" v-else>
@@ -100,8 +100,8 @@
           </div>
 
           <div class="p-d-flex p-jc-end gap-2 p-mt-3">
-            <Button type="button" label="Cancelar" severity="secondary" text :disabled="savingConfig" @click="closeModal" />
-            <Button type="submit" :label="savingConfig ? 'Salvando…' : 'Salvar'" icon="pi pi-check" :disabled="savingConfig" />
+            <Button type="button" label="Cancelar" severity="secondary" text size="small" class="btn-compact" :disabled="savingConfig" @click="closeModal" />
+            <Button type="submit" :label="savingConfig ? 'Salvando…' : 'Salvar'" icon="pi pi-check" size="small" class="btn-compact" :disabled="savingConfig" />
           </div>
         </form>
       </Dialog>
