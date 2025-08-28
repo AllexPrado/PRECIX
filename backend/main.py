@@ -88,11 +88,18 @@ def listar_agentes(include_fakes: bool = Query(False, description="Se falso, ten
     """Retorna lista de agentes do banco, ajustando chaves para o painel."""
     rows = get_all_agents_status()
     out = []
+    seen = set()
     now = datetime.now()
     for r in rows:
         rec = dict(r)
         # Normaliza ID esperado pelo frontend
-        rec['id'] = rec.get('agent_id') or rec.get('id')
+        rec['id'] = (rec.get('agent_id') or rec.get('id') or '').strip().lower()
+        if not rec['id']:
+            continue
+        if rec['id'] in seen:
+            # deduplica
+            continue
+        seen.add(rec['id'])
         # Opcional: remove itens claramente fictícios pelo ID conhecido/padrão
         if not include_fakes and rec.get('id') in (None, '', 'cli-check-01', 'fake-agent', 'simulador'):
             continue
@@ -148,7 +155,8 @@ async def upsert_agent_status_handler(request: Request):
         data = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail='Invalid JSON payload')
-    agent_id = (data.get('agent_id') or '').strip()
+    # Normaliza agent_id para evitar duplicados por case/espacos
+    agent_id = (data.get('agent_id') or '').strip().lower()
     if not agent_id:
         raise HTTPException(status_code=400, detail='agent_id é obrigatório')
     loja_codigo = data.get('loja_codigo')
@@ -156,6 +164,14 @@ async def upsert_agent_status_handler(request: Request):
     status = data.get('status') or 'online'
     last_update = data.get('last_update') or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     ip = data.get('ip') or (request.client.host if request and request.client else None)
+    # Coalescer agentes do mesmo IP em janela de tempo curta (evita duplicidade por múltiplos processos)
+    try:
+        from database import get_recent_agent_by_ip
+        existing = get_recent_agent_by_ip(ip, window_seconds=300)
+        if existing and existing != agent_id:
+            agent_id = existing
+    except Exception:
+        pass
     try:
         upsert_agent_status(agent_id, loja_codigo=loja_codigo, loja_nome=loja_nome, status=status, last_update=last_update, ip=ip)
         # opcional: lista de lojas vinculadas
@@ -209,6 +225,43 @@ def upsert_agent_devices(agent_id: str, payload: dict = Body(...)):
         devices = [d for d in devices if str(d.get('identifier') or '').strip()]
         bulk_upsert_agent_devices(agent_id, devices)
         return {"success": True, "count": len(devices)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Heartbeat simples por device do agente (mais fácil de integrar)
+@app.post('/admin/agents/{agent_id}/devices/heartbeat')
+def agent_device_heartbeat(agent_id: str, data: dict = Body(...)):
+    """Marca um device legado como online com last_update atual.
+    Body: { identifier?, ip?, port?, name?, status? }
+    - Se não vier identifier, será montado como "PC-<ip>:<port>" (port padrão 21)
+    """
+    try:
+        ip = (data.get('ip') or '').strip()
+        port = str(data.get('port') or '21').strip()
+        identifier = (data.get('identifier') or '').strip()
+        if not identifier:
+            if not ip:
+                raise HTTPException(status_code=400, detail='identifier ou ip são obrigatórios')
+            identifier = f'PC-{ip}:{port}'
+        name = data.get('name') or 'PC'
+        status = data.get('status') or 'online'
+        from datetime import datetime as _dt
+        # Usa horário local para bater com a janela de 120s
+        now = _dt.now().isoformat()
+        # Persistir/atualizar apenas este device
+        from database import upsert_agent_device
+        upsert_agent_device(
+            agent_id=agent_id,
+            identifier=identifier,
+            name=name,
+            tipo='LEGACY',
+            status=status,
+            last_update=now,
+            ip=ip
+        )
+        return {"success": True, "identifier": identifier, "last_update": now}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -620,6 +673,12 @@ def startup():
         import logging
         logging.info('Usuário admin padrão criado: admin/admin')
     conn.close()
+    # Deduplica agentes existentes e normaliza IDs
+    try:
+        from database import dedupe_agents
+        dedupe_agents()
+    except Exception:
+        pass
     notify_ai_agent('startup', {'source': 'backend', 'info': 'Backend iniciado'})
     start_ia_healthcheck()  # Inicia monitoramento proativo
 
@@ -922,6 +981,19 @@ async def admin_login(request: Request):
         }
     else:
         return JSONResponse(status_code=401, content={"success": False, "message": "Usuário ou senha inválidos"})
+
+# Endpoint para renovar token (antes de expirar)
+@app.post('/admin/token/refresh')
+def refresh_token(current_user: str = Depends(get_current_user)):
+    # Busca o papel (role) atual do usuário para manter as claims
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT role FROM admin_users WHERE username = ?', (current_user,))
+    row = cur.fetchone()
+    conn.close()
+    role = row['role'] if row and 'role' in row.keys() else 'admin'
+    new_token = create_access_token({"sub": current_user, "role": role})
+    return {"success": True, "access_token": new_token, "token_type": "bearer", "role": role}
 
 # Função utilitária para checar se usuário é admin
 from jose import jwt

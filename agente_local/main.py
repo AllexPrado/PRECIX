@@ -21,17 +21,69 @@ from datetime import datetime
 import shutil
 import sys
 from wsgiref.simple_server import make_server
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlparse
 from logging.handlers import RotatingFileHandler
 
-# Configuração inicial
-USER_CONFIG_DIR = os.path.join(os.environ.get('LOCALAPPDATA', os.getcwd()), 'AgentePRECIX')
-os.makedirs(USER_CONFIG_DIR, exist_ok=True)
-CONFIG_PATH = os.path.join(USER_CONFIG_DIR, 'config.json')
+# Configuração inicial (unificar diretório entre EXE e Serviço)
+def _is_windows_service_context() -> bool:
+    try:
+        import getpass
+        user = (getpass.getuser() or '').lower()
+        if user in ('system', 'localsystem'):
+            return True
+        # Sessões de serviço no Windows costumam ter SESSIONNAME='Services'
+        if os.environ.get('SESSIONNAME', '').lower() == 'services':
+            return True
+    except Exception:
+        pass
+    return False
+
+def _is_dir_writable(path: str) -> bool:
+    try:
+        os.makedirs(path, exist_ok=True)
+        test = os.path.join(path, f'.permtest_{os.getpid()}')
+        with open(test, 'a', encoding='utf-8') as fh:
+            fh.write('')
+        try:
+            os.remove(test)
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+def _resolve_app_home() -> str:
+    # 1) Variável de ambiente (permite override corporativo)
+    env_home = os.environ.get('AGENTE_PRECIX_HOME') or os.environ.get('AGENTE_PRECIX_DIR')
+    if env_home:
+        p = os.path.abspath(env_home)
+        try:
+            os.makedirs(p, exist_ok=True)
+        except Exception:
+            pass
+        return p
+    # 2) ProgramData quando em serviço (ou já existir)
+    program_data = os.path.join(os.environ.get('PROGRAMDATA', r'C:\ProgramData'), 'AgentePRECIX')
+    if _is_windows_service_context():
+        try:
+            os.makedirs(program_data, exist_ok=True)
+        except Exception:
+            pass
+        return program_data
+    # 3) Padrão usuário (quando rodando interativo)
+    local_app = os.path.join(os.environ.get('LOCALAPPDATA', os.getcwd()), 'AgentePRECIX')
+    try:
+        os.makedirs(local_app, exist_ok=True)
+    except Exception:
+        pass
+    return local_app
+
+APP_HOME = _resolve_app_home()
+CONFIG_PATH = os.path.join(APP_HOME, 'config.json')
 
 
-# Caminho seguro para log
-LOG_DIR = USER_CONFIG_DIR
+# Caminho seguro para log (compartilhado entre EXE e Serviço)
+LOG_DIR = APP_HOME
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG_PATH = os.path.join(LOG_DIR, 'agente.log')
 # Configura logging global já no início com rotação
@@ -82,14 +134,36 @@ sys.excepthook = _global_excepthook
 
 
 def load_config():
+    """Carrega config priorizando APP_HOME; com fallbacks e migração automática.
+    Ordem:
+      1) APP_HOME/config.json
+      2) LocalAppData/config.json (se diferente do APP_HOME)
+      3) config.json ao lado do script
+    Se encontrar em fallback e não existir em APP_HOME, copia para APP_HOME.
+    """
     try:
+        # 1) APP_HOME
         if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
             with open(CONFIG_PATH, 'r', encoding='utf-8-sig') as f:
                 return json.load(f)
-        # fallback: try to copy default config next to the app
-        default_path = os.path.join(os.path.dirname(__file__), 'config.json')
-        if os.path.exists(default_path):
+
+        # 2) LocalAppData do usuário (pode conter config usado no modo EXE)
+        user_local_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.getcwd()), 'AgentePRECIX')
+        user_cfg = os.path.join(user_local_dir, 'config.json')
+        if os.path.abspath(user_cfg) != os.path.abspath(CONFIG_PATH) and os.path.exists(user_cfg) and os.path.getsize(user_cfg) > 0:
             try:
+                os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+                shutil.copy(user_cfg, CONFIG_PATH)
+                with open(CONFIG_PATH, 'r', encoding='utf-8-sig') as f:
+                    return json.load(f)
+            except Exception:
+                pass
+
+        # 3) Default ao lado do app (bundle)
+        default_path = os.path.join(os.path.dirname(__file__), 'config.json')
+        if os.path.exists(default_path) and os.path.getsize(default_path) > 0:
+            try:
+                os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
                 shutil.copy(default_path, CONFIG_PATH)
                 with open(CONFIG_PATH, 'r', encoding='utf-8-sig') as f:
                     return json.load(f)
@@ -140,7 +214,8 @@ def gerar_arquivo_precos(dados, filename, incluir_cabecalho=None):
                 produtos = [dados]
         logging.info(f"[DEBUG] gerar_arquivo_precos: produtos extraidos tipo={type(produtos)}, quantidade={len(produtos)}")
         sep = '|'
-        config_path = os.path.join(os.environ.get('LOCALAPPDATA', os.getcwd()), 'AgentePRECIX', 'config.json')
+        # Use config unificado em APP_HOME
+        config_path = CONFIG_PATH
         incluir_cabecalho_flag = False
         if os.path.exists(config_path):
             try:
@@ -209,6 +284,20 @@ def gerar_arquivo_precos(dados, filename, incluir_cabecalho=None):
         print(f"[OK] Arquivo de preços gerado: {filename} | Quantidade de produtos: {len(produtos)} | Delimitador: {sep} | Cabecalho: {incluir_cabecalho_flag}")
         try:
             update_agent_status({'last_generated': datetime.now().isoformat(), 'last_generated_count': len(produtos), 'last_generated_file': filename})
+            # registra ACK de geração para aparecer no Monitoramento (GUI)
+            try:
+                append_ack({
+                    'type': 'generate',
+                    'payload': {
+                        'file': filename,
+                        'count': len(produtos),
+                        'separator': sep,
+                        'header': incluir_cabecalho_flag
+                    },
+                    'ts': datetime.now().isoformat()
+                })
+            except Exception:
+                pass
             # also persist into config for backward compatibility
             try:
                 if os.path.exists(CONFIG_PATH):
@@ -300,11 +389,39 @@ def enviar_arquivo_automatico(filepath):
         finally:
             if success:
                 update_agent_status({'last_send': datetime.now().isoformat(), 'last_send_method': metodo})
+                # ACK de entrega/envio bem-sucedido
+                try:
+                    append_ack({
+                        'type': 'delivery',
+                        'payload': {
+                            'method': metodo,
+                            'host': host,
+                            'port': porta,
+                            'path': filepath
+                        },
+                        'ts': datetime.now().isoformat()
+                    })
+                except Exception:
+                    pass
                 break
 
     if not success:
         logging.error(f'Falha ao enviar arquivo apos {max_attempts} tentativas: {last_err}')
         update_agent_status({'last_send_error': str(last_err) if last_err else 'unknown'})
+        try:
+            append_ack({
+                'type': 'delivery_error',
+                'payload': {
+                    'method': metodo,
+                    'host': host,
+                    'port': porta,
+                    'path': filepath,
+                    'error': str(last_err) if last_err else 'unknown'
+                },
+                'ts': datetime.now().isoformat()
+            })
+        except Exception:
+            pass
 
 
 def enviar_para_api(dados):
@@ -321,6 +438,77 @@ def enviar_para_api(dados):
             return
         # Avoid spamming a read-only endpoint: try POST, if 405 then try PUT once.
         logging.info(f'enviar_para_api: tentando enviar para {api_destino} | quantidade={len(dados) if isinstance(dados, list) else 1}')
+        # helpers for token refresh
+        def _base_from_url(u):
+            try:
+                pr = urlparse(u)
+                if not pr.scheme or not pr.netloc:
+                    return (u or '').split('/admin/')[0]
+                return f"{pr.scheme}://{pr.netloc}"
+            except Exception:
+                return (u or '').split('/admin/')[0]
+
+        def _persist_token(new_token: str):
+            if not new_token:
+                return
+            try:
+                ex = {}
+                if os.path.exists(CONFIG_PATH):
+                    with open(CONFIG_PATH, 'r', encoding='utf-8') as fh:
+                        try:
+                            ex = json.load(fh) or {}
+                        except Exception:
+                            ex = {}
+                ex['backend_token'] = new_token
+                with open(CONFIG_PATH, 'w', encoding='utf-8') as fh:
+                    json.dump(ex, fh, indent=2)
+            except Exception:
+                logging.exception('Falha ao persistir novo token')
+
+        def _try_refresh_token(cfg):
+            try:
+                base = _base_from_url(cfg.get('api_update') or cfg.get('backend_url') or cfg.get('api_externa') or cfg.get('api_url') or '')
+                old_token = cfg.get('backend_token') or cfg.get('api_token') or cfg.get('api_update_token')
+                headers = {'Authorization': f'Bearer {old_token}'} if old_token else {}
+                # 1) try refresh endpoint
+                if base:
+                    refresh_url = base.rstrip('/') + '/admin/token/refresh'
+                    try:
+                        r = requests.post(refresh_url, headers=headers, timeout=8)
+                        if r.status_code in (200, 201):
+                            try:
+                                jj = r.json()
+                            except Exception:
+                                jj = {}
+                            new_token = jj.get('access_token') or jj.get('token') or jj.get('jwt')
+                            if new_token:
+                                _persist_token(new_token)
+                                logging.info('Token renovado via /admin/token/refresh')
+                                return new_token
+                    except Exception:
+                        logging.exception('Falha ao chamar /admin/token/refresh')
+                # 2) fallback: login
+                user = cfg.get('backend_user') or cfg.get('api_usuario') or cfg.get('user')
+                pwd = cfg.get('backend_pass') or cfg.get('api_senha') or cfg.get('password')
+                if base and user and pwd:
+                    login_url = base.rstrip('/') + '/admin/login'
+                    try:
+                        r2 = requests.post(login_url, json={'username': user, 'password': pwd}, timeout=8)
+                        if r2.status_code in (200, 201):
+                            try:
+                                jj = r2.json()
+                            except Exception:
+                                jj = {}
+                            new_token = jj.get('access_token') or jj.get('token') or jj.get('jwt')
+                            if new_token:
+                                _persist_token(new_token)
+                                logging.info('Token obtido via /admin/login')
+                                return new_token
+                    except Exception:
+                        logging.exception('Falha ao chamar /admin/login')
+            except Exception:
+                logging.exception('Erro no fluxo de renovação de token')
+            return None
         try:
             # prepare headers: include Bearer token if configured
             headers = {}
@@ -328,15 +516,41 @@ def enviar_para_api(dados):
             if token:
                 headers['Authorization'] = f'Bearer {token}'
             resp = requests.post(api_destino, json=dados, timeout=15, headers=headers)
+            if resp.status_code == 401:
+                logging.warning('enviar_para_api: 401 no POST. Tentando renovar token e reenviar...')
+                new_tk = _try_refresh_token(config)
+                if new_tk:
+                    headers['Authorization'] = f'Bearer {new_tk}'
+                    resp = requests.post(api_destino, json=dados, timeout=15, headers=headers)
             if resp.status_code == 405:
                 logging.warning('enviar_para_api: POST retornou 405 Method Not Allowed, tentando PUT como fallback...')
                 try:
                     resp_put = requests.put(api_destino, json=dados, timeout=15, headers=headers)
+                    if resp_put.status_code == 401:
+                        logging.warning('enviar_para_api: 401 no PUT. Tentando renovar token e reenviar...')
+                        new_tk = _try_refresh_token(config)
+                        if new_tk:
+                            headers['Authorization'] = f'Bearer {new_tk}'
+                            resp_put = requests.put(api_destino, json=dados, timeout=15, headers=headers)
                     resp_put.raise_for_status()
                     logging.info(f'enviar_para_api: PUT concluido, status={resp_put.status_code}')
                     # mark supported
                     try:
-                        update_agent_status({'api_write_supported': True})
+                        update_agent_status({'api_write_supported': True, 'api_write_error': None})
+                    except Exception:
+                        pass
+                    # ACK de escrita via API bem-sucedida
+                    try:
+                        append_ack({
+                            'type': 'api',
+                            'payload': {
+                                'dest': api_destino,
+                                'method': 'PUT',
+                                'status': resp_put.status_code,
+                                'count': len(dados) if isinstance(dados, list) else 1
+                            },
+                            'ts': datetime.now().isoformat()
+                        })
                     except Exception:
                         pass
                     return
@@ -347,7 +561,21 @@ def enviar_para_api(dados):
                 resp.raise_for_status()
                 logging.info(f'enviar_para_api: POST/PUT envio concluido, status={resp.status_code}')
                 try:
-                    update_agent_status({'api_write_supported': True})
+                    update_agent_status({'api_write_supported': True, 'api_write_error': None})
+                except Exception:
+                    pass
+                # ACK de escrita via API bem-sucedida
+                try:
+                    append_ack({
+                        'type': 'api',
+                        'payload': {
+                            'dest': api_destino,
+                            'method': 'POST',
+                            'status': resp.status_code,
+                            'count': len(dados) if isinstance(dados, list) else 1
+                        },
+                        'ts': datetime.now().isoformat()
+                    })
                 except Exception:
                     pass
                 return
@@ -357,6 +585,14 @@ def enviar_para_api(dados):
                 update_agent_status({'api_write_supported': False, 'api_write_error': 'post_or_put_failed'})
             except Exception:
                 pass
+            try:
+                append_ack({
+                    'type': 'api_error',
+                    'payload': {'dest': api_destino, 'error': 'post_or_put_failed'},
+                    'ts': datetime.now().isoformat()
+                })
+            except Exception:
+                pass
             return
         except requests.exceptions.HTTPError as http_err:
             logging.exception(f'enviar_para_api: HTTP error ao enviar dados para API: {http_err}')
@@ -364,10 +600,26 @@ def enviar_para_api(dados):
                 update_agent_status({'api_write_supported': False, 'api_write_error': str(http_err)})
             except Exception:
                 pass
+            try:
+                append_ack({
+                    'type': 'api_error',
+                    'payload': {'dest': api_destino, 'error': str(http_err)},
+                    'ts': datetime.now().isoformat()
+                })
+            except Exception:
+                pass
         except Exception:
             logging.exception('enviar_para_api: falha ao enviar dados para API')
             try:
                 update_agent_status({'api_write_supported': False, 'api_write_error': 'exception'})
+            except Exception:
+                pass
+            try:
+                append_ack({
+                    'type': 'api_error',
+                    'payload': {'dest': api_destino, 'error': 'exception'},
+                    'ts': datetime.now().isoformat()
+                })
             except Exception:
                 pass
     except Exception:
@@ -462,14 +714,51 @@ def get_local_ip():
 AGENTS_STATUS_PATH = os.path.join(os.path.dirname(__file__), '..', 'backend', 'agents_status.json')
 
 # Acks persistence
-ACKS_PATH = os.path.join(USER_CONFIG_DIR, 'acks.jsonl')
-STATUS_PATH = os.path.join(USER_CONFIG_DIR, 'agent_status.json')
+ACKS_PATH = os.path.join(APP_HOME, 'acks.jsonl')
+STATUS_PATH = os.path.join(APP_HOME, 'agent_status.json')
 
 def append_ack(record: dict):
     try:
         os.makedirs(os.path.dirname(ACKS_PATH), exist_ok=True)
         with open(ACKS_PATH, 'a', encoding='utf-8') as fh:
             fh.write(json.dumps(record, ensure_ascii=False) + '\n')
+        # Rotate/compact ACKs if limits exceeded (lines/bytes)
+        try:
+            cfg = load_config()
+        except Exception:
+            cfg = {}
+        try:
+            max_lines = int(cfg.get('acks_max_lines', 5000) or 5000)
+        except Exception:
+            max_lines = 5000
+        try:
+            max_bytes = int(cfg.get('acks_max_bytes', 5 * 1024 * 1024) or (5 * 1024 * 1024))
+        except Exception:
+            max_bytes = 5 * 1024 * 1024
+        need_compact = False
+        try:
+            if os.path.getsize(ACKS_PATH) > max_bytes:
+                need_compact = True
+        except Exception:
+            pass
+        if not need_compact:
+            try:
+                with open(ACKS_PATH, 'r', encoding='utf-8', errors='ignore') as fh:
+                    cnt = sum(1 for _ in fh)
+                if cnt > max_lines:
+                    need_compact = True
+            except Exception:
+                need_compact = False
+        if need_compact:
+            try:
+                with open(ACKS_PATH, 'r', encoding='utf-8', errors='ignore') as fh:
+                    lines = [l for l in fh if l.strip()]
+                if len(lines) > max_lines:
+                    lines = lines[-max_lines:]
+                with open(ACKS_PATH, 'w', encoding='utf-8') as fh:
+                    fh.writelines(lines)
+            except Exception:
+                pass
         # update quick status for monitoramento
         try:
             update_agent_status({'last_ack': datetime.now().isoformat()})

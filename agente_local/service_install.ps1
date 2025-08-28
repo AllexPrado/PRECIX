@@ -23,12 +23,39 @@ $installDir = "C:\Program Files\AgentePRECIX"
 $exeName = "ServicePRECIX.exe"
 $exePath = Join-Path $installDir $exeName
 $serviceName = "AgentePRECIX"
+$programDataDir = "C:\ProgramData\AgentePRECIX"
 
 Write-Host "Installing service $serviceName for $exePath"
 
 if (-Not (Test-Path $exePath)) {
     Write-Host "Executable not found: $exePath" -ForegroundColor Red
     exit 1
+}
+
+# Ensure ProgramData config/log directory exists
+New-Item -ItemType Directory -Force -Path $programDataDir | Out-Null
+
+# Try to seed ProgramData\config.json from the most relevant source
+$destCfg = Join-Path $programDataDir 'config.json'
+if (-not (Test-Path $destCfg)) {
+    Write-Host "Seeding config.json into $programDataDir"
+    $candidates = @()
+    # 1) Current user LocalAppData
+    $userLocal = Join-Path $env:LOCALAPPDATA 'AgentePRECIX\config.json'
+    if (Test-Path $userLocal) { $candidates += $userLocal }
+    # 2) SystemProfile LocalAppData
+    $sysLocal = "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\AgentePRECIX\\config.json"
+    if (Test-Path $sysLocal) { $candidates += $sysLocal }
+    # 3) Any user profile under C:\Users
+    Get-ChildItem -Path "$env:SystemDrive\Users" -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+        $p = Join-Path $_.FullName 'AppData\Local\AgentePRECIX\config.json'
+        if (Test-Path $p) { $candidates += $p }
+    }
+    # pick the newest file
+    if ($candidates.Count -gt 0) {
+        $newest = $candidates | Sort-Object { (Get-Item $_).LastWriteTime } -Descending | Select-Object -First 1
+        try { Copy-Item -Force $newest $destCfg } catch {}
+    }
 }
 
 # prefer bundled nssm shipped in installer at {app}\nssm\win64\nssm.exe
@@ -48,6 +75,12 @@ if (-Not (Test-Path $nssm)) {
 & $nssm install $serviceName $exePath
 & $nssm set $serviceName Start SERVICE_AUTO_START
 & $nssm set $serviceName AppDirectory (Split-Path $exePath -Parent)
+& $nssm set $serviceName AppEnvironmentExtra "AGENTE_PRECIX_HOME=$programDataDir"
+& $nssm set $serviceName AppStdout (Join-Path $programDataDir 'service.out.log')
+& $nssm set $serviceName AppStderr (Join-Path $programDataDir 'service.err.log')
+& $nssm set $serviceName AppRotateFiles 1
+& $nssm set $serviceName AppRotateOnline 1
+& $nssm set $serviceName AppRotateBytes 10485760
 try {
     & $nssm start $serviceName
 } catch {
@@ -55,3 +88,5 @@ try {
 }
 
 Write-Host "Service installation attempted. Check Windows Services or nssm for status."
+Write-Host "Config dir: $programDataDir" -ForegroundColor Cyan
+Write-Host "Logs: $(Join-Path $programDataDir 'agente.log') and NSSM: $(Join-Path $programDataDir 'service.out.log')" -ForegroundColor Cyan

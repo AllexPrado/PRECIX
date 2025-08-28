@@ -23,6 +23,13 @@ def get_system_status():
 
 DB_PATH = None
 
+# Utilitário: normaliza identificadores de agente para evitar duplicidade por case/espacos
+def normalize_agent_id(agent_id: str) -> str:
+    try:
+        return str(agent_id or '').strip().lower()
+    except Exception:
+        return ''
+
 def _resolve_db_path():
     # 1) Env var wins
     env = os.environ.get('PRECIX_DB_PATH')
@@ -592,6 +599,7 @@ def debug_list_device_identifiers():
 
 def upsert_agent_status(agent_id: str, loja_codigo: str = None, loja_nome: str = None, status: str = None, last_update: str = None, ip: str = None):
     try:
+        agent_id = normalize_agent_id(agent_id)
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute('''
@@ -613,6 +621,7 @@ def upsert_agent_status(agent_id: str, loja_codigo: str = None, loja_nome: str =
 def replace_agent_stores(agent_id: str, lojas: list):
     """Substitui a lista de lojas vinculadas a um agente."""
     try:
+        agent_id = normalize_agent_id(agent_id)
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute('DELETE FROM agent_stores WHERE agent_id = ?', (agent_id,))
@@ -631,6 +640,7 @@ def replace_agent_stores(agent_id: str, lojas: list):
         raise
 
 def get_agent_stores(agent_id: str):
+    agent_id = normalize_agent_id(agent_id)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('SELECT loja_codigo, loja_nome FROM agent_stores WHERE agent_id = ? ORDER BY loja_codigo', (agent_id,))
@@ -644,9 +654,16 @@ def get_all_agents_status():
     cur.execute('SELECT * FROM agents_status')
     rows = cur.fetchall()
     conn.close()
-    return [dict(row) for row in rows]
+    # Normaliza agent_id no retorno para consumo unificado
+    out = []
+    for row in rows:
+        d = dict(row)
+        d['agent_id'] = normalize_agent_id(d.get('agent_id'))
+        out.append(d)
+    return out
 
 def delete_agent_status(agent_id: str):
+    agent_id = normalize_agent_id(agent_id)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('DELETE FROM agents_status WHERE agent_id = ?', (agent_id,))
@@ -654,6 +671,7 @@ def delete_agent_status(agent_id: str):
     conn.close()
 
 def update_agent_status(agent_id: str, loja_codigo: str = None, loja_nome: str = None, status: str = None, ip: str = None, last_update: str = None):
+    agent_id = normalize_agent_id(agent_id)
     conn = get_db_connection()
     cur = conn.cursor()
     # Busca valores atuais
@@ -678,6 +696,104 @@ def update_agent_status(agent_id: str, loja_codigo: str = None, loja_nome: str =
     conn.commit()
     conn.close()
 
+def _parse_dt(dt_str: str):
+    from datetime import datetime as _dt
+    if not dt_str:
+        return None
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%d/%m/%Y, %H:%M:%S'):
+        try:
+            return _dt.strptime(str(dt_str), fmt)
+        except Exception:
+            continue
+    # try ISO flexible
+    try:
+        return _dt.fromisoformat(str(dt_str))
+    except Exception:
+        return None
+
+def dedupe_agents():
+    """Normaliza e deduplica registros de agentes e referencias.
+    - Canonicaliza agent_id para lower().strip()
+    - Mantem apenas 1 registro por agent_id (o de last_update mais recente)
+    - Migra agent_stores e agent_devices para o agent_id canônico
+    """
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT agent_id, loja_codigo, loja_nome, status, last_update, ip FROM agents_status')
+        rows = cur.fetchall()
+        # Agrupa por id normalizado
+        groups = {}
+        for row in rows:
+            raw_id = row['agent_id']
+            norm = normalize_agent_id(raw_id)
+            groups.setdefault(norm, []).append(dict(row))
+        for norm_id, lst in groups.items():
+            if norm_id == '':
+                # limpa entradas inválidas
+                cur.execute("DELETE FROM agents_status WHERE agent_id IS NULL OR TRIM(agent_id) = ''")
+                continue
+            # Seleciona registro vencedor pelo last_update mais recente
+            best = None
+            best_dt = None
+            for rec in lst:
+                dt = _parse_dt(rec.get('last_update'))
+                if dt and (best_dt is None or dt > best_dt):
+                    best_dt = dt
+                    best = rec
+                elif best is None:
+                    best = rec
+            # Garante registro canônico
+            if best:
+                upsert_agent_status(norm_id, best.get('loja_codigo'), best.get('loja_nome'), best.get('status'), best.get('last_update'), best.get('ip'))
+            # Migra children e remove duplicados com ids divergentes
+            raw_values = set([r.get('agent_id') for r in lst if r.get('agent_id')])
+            for raw in list(raw_values):
+                if not raw or normalize_agent_id(raw) == norm_id:
+                    continue
+                # Atualiza agent_stores
+                cur.execute('UPDATE agent_stores SET agent_id = ? WHERE agent_id = ?', (norm_id, raw))
+                # Atualiza agent_devices
+                cur.execute('UPDATE agent_devices SET agent_id = ? WHERE agent_id = ?', (norm_id, raw))
+                # Remove antigo em agents_status
+                cur.execute('DELETE FROM agents_status WHERE agent_id = ?', (raw,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logging.error(f"[DB][dedupe_agents] {e}")
+        # não propaga para não derrubar startup
+
+def get_recent_agent_by_ip(ip: str, window_seconds: int = 300) -> Optional[str]:
+    """Retorna o agent_id mais recente para um IP dentro de uma janela de tempo.
+    Usado para unificar múltiplos processos (GUI/Serviço) rodando na mesma máquina.
+    """
+    try:
+        if not ip:
+            return None
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT agent_id, last_update FROM agents_status WHERE ip = ?', (ip,))
+        rows = cur.fetchall()
+        conn.close()
+        if not rows:
+            return None
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        best_id = None
+        best_dt = None
+        for r in rows:
+            dt = _parse_dt(r['last_update'])
+            if not dt:
+                continue
+            if (now - dt) <= timedelta(seconds=window_seconds):
+                if best_dt is None or dt > best_dt:
+                    best_dt = dt
+                    best_id = normalize_agent_id(r['agent_id'])
+        return best_id
+    except Exception as e:
+        logging.error(f"[DB][get_recent_agent_by_ip] {e}")
+        return None
+
 def get_all_users():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -688,6 +804,7 @@ def get_all_users():
 
 # --- Agent Devices (legacy) ---
 def upsert_agent_device(agent_id: str, identifier: str, name: str = None, tipo: str = 'LEGACY', status: str = None, last_update: str = None, ip: str = None, last_catalog_sync: str = None, catalog_count: int = None, store_code: str = None, store_name: str = None):
+    agent_id = normalize_agent_id(agent_id)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('''
@@ -709,7 +826,9 @@ def upsert_agent_device(agent_id: str, identifier: str, name: str = None, tipo: 
 
 def bulk_upsert_agent_devices(agent_id: str, devices: list):
     from datetime import datetime
-    now = datetime.utcnow().isoformat()
+    agent_id = normalize_agent_id(agent_id)
+    # Usa horário local para compatibilidade com cálculo em get_agent_devices
+    now = datetime.now().isoformat()
     for d in devices or []:
         upsert_agent_device(
             agent_id=agent_id,
@@ -729,6 +848,7 @@ def get_agent_devices(agent_id: str):
     """Lista dispositivos de um agente com status calculado por frescor de last_update.
     Regra: online se last_update dentro da janela de 120s (mesma lógica do PWA/heartbeat).
     """
+    agent_id = normalize_agent_id(agent_id)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('SELECT * FROM agent_devices WHERE agent_id = ? ORDER BY name, identifier', (agent_id,))
@@ -746,9 +866,9 @@ def get_agent_devices(agent_id: str):
         # normaliza status textual legado
         raw_status = (d.get('status') or '').strip().lower()
         mapped = None
-        if raw_status in ('ok', 'online', 'ligado', 'ativo'):
+        if raw_status in ('ok', 'online', 'ligado', 'ativo', 'sucesso'):
             mapped = 'online'
-        elif raw_status in ('desconhecido', 'unknown', 'offline', 'desligado', 'inativo'):
+        elif raw_status in ('desconhecido', 'unknown', 'offline', 'desligado', 'inativo', 'falha', 'erro'):
             mapped = 'offline'
         # Regra: se mapeado explicitamente como offline/unknown, respeita isso.
         # Caso contrário, usa frescor de last_update para decidir online/offline.
@@ -774,6 +894,7 @@ def get_agent_devices(agent_id: str):
     return devices
 
 def delete_agent_device(agent_id: str, identifier: str):
+    agent_id = normalize_agent_id(agent_id)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('DELETE FROM agent_devices WHERE agent_id = ? AND identifier = ?', (agent_id, identifier))

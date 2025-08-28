@@ -18,10 +18,87 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QIcon, QPixmap, QTextCursor
 from PyQt5.QtCore import Qt
+
+# Aplicação protegida: intercepta exceções em slots/eventos para evitar fechamento inesperado
+class SafeApplication(QApplication):
+    def notify(self, receiver, event):
+        try:
+            return super().notify(receiver, event)
+        except Exception as e:
+            try:
+                QMessageBox.critical(None, 'Erro', f'Falha na interface: {str(e)}')
+            except Exception:
+                pass
+            # não derruba o app
+            return True
+
+def _install_global_excepthook():
+    def _hook(exctype, value, tb):
+        try:
+            import traceback
+            msg = f"{exctype.__name__}: {value}\n\n" + ''.join(traceback.format_tb(tb)[-5:])
+            QMessageBox.critical(None, 'Erro não tratado', msg)
+        except Exception:
+            pass
+    try:
+        sys.excepthook = _hook
+    except Exception:
+        pass
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtCore import Qt
 
-CONFIG_PATH = os.path.join(os.environ.get('LOCALAPPDATA', os.getcwd()), 'AgentePRECIX', 'config.json')
+# Use o mesmo diretório do serviço (APP_HOME) para ler/gravar config e status
+def _is_windows_service_context() -> bool:
+    try:
+        import getpass
+        user = (getpass.getuser() or '').lower()
+        if user in ('system', 'localsystem'):
+            return True
+        if os.environ.get('SESSIONNAME', '').lower() == 'services':
+            return True
+    except Exception:
+        pass
+    return False
+
+def _is_dir_writable(path: str) -> bool:
+    try:
+        os.makedirs(path, exist_ok=True)
+        test = os.path.join(path, f'.permtest_{os.getpid()}')
+        with open(test, 'a', encoding='utf-8') as fh:
+            fh.write('')
+        try:
+            os.remove(test)
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+def _resolve_app_home() -> str:
+    env_home = os.environ.get('AGENTE_PRECIX_HOME') or os.environ.get('AGENTE_PRECIX_DIR')
+    if env_home:
+        p = os.path.abspath(env_home)
+        try:
+            os.makedirs(p, exist_ok=True)
+        except Exception:
+            pass
+        return p
+    program_data = os.path.join(os.environ.get('PROGRAMDATA', r'C:\ProgramData'), 'AgentePRECIX')
+    if _is_windows_service_context():
+        try:
+            os.makedirs(program_data, exist_ok=True)
+        except Exception:
+            pass
+        return program_data
+    local_app = os.path.join(os.environ.get('LOCALAPPDATA', os.getcwd()), 'AgentePRECIX')
+    try:
+        os.makedirs(local_app, exist_ok=True)
+    except Exception:
+        pass
+    return local_app
+
+APP_HOME = _resolve_app_home()
+CONFIG_PATH = os.path.join(APP_HOME, 'config.json')
 os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
 
 # Função para carregar configuração
@@ -134,10 +211,13 @@ class LojaWidget(QWidget):
                 return
             lojas_vinculadas.append(loja)
             config['lojas_vinculadas'] = lojas_vinculadas
-            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-                json.dump(config, f, indent=2)
-            self.load_lojas()
-            QMessageBox.information(self, 'Sucesso', 'Loja vinculada com sucesso!')
+            try:
+                with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, indent=2)
+                self.load_lojas()
+                QMessageBox.information(self, 'Sucesso', 'Loja vinculada com sucesso!')
+            except Exception as e:
+                QMessageBox.warning(self, 'Aviso', f'Não foi possível salvar alterações: {e}')
         except Exception as e:
             QMessageBox.critical(self, 'Erro', f'Falha ao vincular loja: {str(e)}')
 
@@ -153,10 +233,13 @@ class LojaWidget(QWidget):
             if row < len(lojas_vinculadas):
                 lojas_vinculadas.pop(row)
                 config['lojas_vinculadas'] = lojas_vinculadas
-                with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-                    json.dump(config, f, indent=2)
-                self.load_lojas()
-                QMessageBox.information(self, 'Sucesso', 'Loja removida!')
+                try:
+                    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                        json.dump(config, f, indent=2)
+                    self.load_lojas()
+                    QMessageBox.information(self, 'Sucesso', 'Loja removida!')
+                except Exception as e:
+                    QMessageBox.warning(self, 'Aviso', f'Não foi possível salvar alterações: {e}')
         except Exception as e:
             QMessageBox.critical(self, 'Erro', f'Falha ao remover loja: {str(e)}')
 
@@ -240,7 +323,21 @@ class ConfiguracaoArquivoWidget(QWidget):
         # Cabeçalho visual
         header = QHBoxLayout()
         logo = QLabel()
-        logo.setPixmap(QPixmap('logo-sonda.png').scaled(48, 48, Qt.KeepAspectRatio))
+        try:
+            logo_paths = [
+                os.path.join(os.path.dirname(__file__), 'public', 'logo-sonda.png'),
+                os.path.join(os.path.dirname(__file__), 'logo-sonda.png'),
+                os.path.join(APP_HOME, 'public', 'logo-sonda.png'),
+            ]
+            pix = None
+            for p in logo_paths:
+                if os.path.exists(p):
+                    pix = QPixmap(p)
+                    break
+            if pix and not pix.isNull():
+                logo.setPixmap(pix.scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        except Exception:
+            pass
         header.addWidget(logo)
         header_title = QLabel('<h2>Configuração do Arquivo de Preços</h2>')
         header.addWidget(header_title)
@@ -439,9 +536,12 @@ class ConfiguracaoArquivoWidget(QWidget):
         config['ia_ativo'] = ia_ativo
         config['arquivo_layout'] = layout
         config['arquivo_incluir_cabecalho'] = self.cabecalho_cb.isChecked()
-        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2)
-        QMessageBox.information(self, 'Configuração', 'Configuração do arquivo salva com sucesso!')
+        try:
+            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2)
+            QMessageBox.information(self, 'Configuração', 'Configuração do arquivo salva com sucesso!')
+        except Exception as e:
+            QMessageBox.warning(self, 'Aviso', f'Não foi possível salvar config: {e}')
 
     def processar_arquivo_entrada_automatico(self):
         # Rotina automática chamada pelo timer
@@ -999,9 +1099,12 @@ class IntegracaoPrecixWidget(QWidget):
         config['tipo_integracao'] = 'API'
         from datetime import datetime
         config['ultima_sync'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2)
-        self.ultima_output.setText(config['ultima_sync'])
+        try:
+            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2)
+        except Exception as e:
+            QMessageBox.warning(self, 'Aviso', f'Não foi possível salvar config: {e}')
+        self.ultima_output.setText(config.get('ultima_sync', '-'))
     # Remover manipulação de layout de botões do salvar_config
         # Após carregar config, garanta que a interface reflita o tipo de integração
         # ...existing code...
@@ -1071,9 +1174,12 @@ class IntegracaoPrecixWidget(QWidget):
         config['tipo_integracao'] = 'API'
         from datetime import datetime
         config['ultima_sync'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2)
-        self.ultima_output.setText(config['ultima_sync'])
+        try:
+            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2)
+            self.ultima_output.setText(config.get('ultima_sync', '-'))
+        except Exception as e:
+            QMessageBox.warning(self, 'Aviso', f'Não foi possível salvar config: {e}')
 
     def salvar_config(self):
         porta = self.porta_input.text().strip() or '8000'
@@ -1086,10 +1192,13 @@ class IntegracaoPrecixWidget(QWidget):
     # Removido: fonte_combo e campos de banco de dados
         try:
             if os.path.exists(CONFIG_PATH) and os.path.getsize(CONFIG_PATH) > 0:
-                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-            else:
-                config = {}
+                try:
+                    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                        json.dump(old, f, indent=2)
+                    self.status_output.setText('Configuração salva!')
+                    QMessageBox.information(self, 'Salvar Configuração', 'Configuração salva com sucesso!')
+                except Exception as e:
+                    QMessageBox.warning(self, 'Aviso', f'Não foi possível salvar config: {e}')
         except Exception:
             config = {}
         config['porta_local'] = porta
@@ -1102,9 +1211,13 @@ class IntegracaoPrecixWidget(QWidget):
         config['tipo_integracao'] = 'API'
         from datetime import datetime
         config['ultima_sync'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2)
-        self.ultima_output.setText(config['ultima_sync'])
+        try:
+            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2)
+            self.ultima_output.setText(config.get('ultima_sync', '-'))
+            self.status_output.setText('Configuração salva!')
+        except Exception as e:
+            QMessageBox.warning(self, 'Aviso', f'Não foi possível salvar config: {e}')
         self.status_output.setText('Configuração salva!')
     def carregar_config(self):
         try:
@@ -1218,8 +1331,12 @@ class EnvioWidget(QWidget):
         config['envio_usuario'] = usuario
         config['envio_senha'] = senha
         config['envio_status'] = self.status_output.text()
-        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2)
+        try:
+            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2)
+        except Exception as e:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.warning(self, 'Aviso', f'Não foi possível salvar config: {e}')
 
 class AutomacaoWidget(QWidget):
     def __init__(self):
@@ -1278,9 +1395,12 @@ class AutomacaoWidget(QWidget):
                 config = {}
             config['automacao_intervalo'] = intervalo
             config['automacao_modo'] = modo
-            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-                json.dump(config, f, indent=2)
-            self.status_output.setText('Configuração salva!')
+            try:
+                with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, indent=2)
+                self.status_output.setText('Configuração salva!')
+            except Exception as e:
+                QMessageBox.warning(self, 'Aviso', f'Não foi possível salvar config: {e}')
         except Exception as e:
             QMessageBox.critical(self, 'Erro', f'Falha ao salvar: {str(e)}')
 
@@ -1299,9 +1419,12 @@ class AutomacaoWidget(QWidget):
         config['automacao_status'] = 'Solicitada atualização manual'
         config['automacao_ultima'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         config['forcar_atualizacao'] = True
-        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2)
-        self.status_output.setText(config['automacao_status'])
+        try:
+            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2)
+            self.status_output.setText(config['automacao_status'])
+        except Exception as e:
+            QMessageBox.warning(self, 'Aviso', f'Não foi possível salvar config: {e}')
         # Executa o processamento do arquivo de entrada imediatamente
         # Busca a janela principal corretamente
         main_window = self.window()
@@ -1317,10 +1440,13 @@ class AutomacaoWidget(QWidget):
 class EquipamentosWidget(QWidget):
     def preencher_formulario(self, row):
         try:
-            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-            equipamentos = config.get('equipamentos', [])
-            if row < len(equipamentos):
+                try:
+                    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                        json.dump(config, f, indent=2)
+                    self.load_equipamentos()
+                    QMessageBox.information(self, 'Sucesso', 'Equipamento cadastrado!')
+                except Exception as e:
+                    QMessageBox.warning(self, 'Aviso', f'Não foi possível salvar alterações: {e}')
                 eq = equipamentos[row]
                 self.ip_input.setText(str(eq.get('ip', '')))
                 self.porta_input.setText(str(eq.get('porta', '')))
@@ -1486,10 +1612,13 @@ class EquipamentosWidget(QWidget):
             if row < len(equipamentos):
                 equipamentos.pop(row)
                 config['equipamentos'] = equipamentos
-                with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-                    json.dump(config, f, indent=2)
-                self.load_equipamentos()
-                QMessageBox.information(self, 'Sucesso', 'Equipamento removido!')
+                try:
+                    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                        json.dump(config, f, indent=2)
+                    self.load_equipamentos()
+                    QMessageBox.information(self, 'Sucesso', 'Equipamento removido!')
+                except Exception as e:
+                    QMessageBox.warning(self, 'Aviso', f'Não foi possível salvar alterações: {e}')
         except Exception as e:
             QMessageBox.critical(self, 'Erro', f'Falha ao remover equipamento: {str(e)}')
 
@@ -1514,10 +1643,13 @@ class EquipamentosWidget(QWidget):
             if row < len(equipamentos):
                 equipamentos[row] = {"ip": ip, "porta": int(porta), "descricao": desc, "loja": loja_codigo}
                 config['equipamentos'] = equipamentos
-                with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-                    json.dump(config, f, indent=2)
-                self.load_equipamentos()
-                QMessageBox.information(self, 'Sucesso', 'Equipamento editado!')
+                try:
+                    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                        json.dump(config, f, indent=2)
+                    self.load_equipamentos()
+                    QMessageBox.information(self, 'Sucesso', 'Equipamento editado!')
+                except Exception as e:
+                    QMessageBox.warning(self, 'Aviso', f'Não foi possível salvar alterações: {e}')
         except Exception as e:
             QMessageBox.critical(self, 'Erro', f'Falha ao editar equipamento: {str(e)}')
 
@@ -1623,6 +1755,11 @@ class MonitoramentoWidget(QWidget):
                 ])
             # Tentar buscar ACKs do servidor HTTP admin local
             try:
+                # clear table before repopulating
+                try:
+                    self.acks_table.setRowCount(0)
+                except Exception:
+                    pass
                 port = int(config.get('http_port', 8010) or 8010)
                 url = f'http://127.0.0.1:{port}/acks?lines=100'
                 headers = {}
@@ -1671,7 +1808,7 @@ class MonitoramentoWidget(QWidget):
                 self.alerta_output.setStyleSheet('')
             # Mostrar status de escrita API a partir de agent_status.json
             try:
-                agent_status_path = os.path.join(os.environ.get('LOCALAPPDATA', os.getcwd()), 'AgentePRECIX', 'agent_status.json')
+                agent_status_path = os.path.join(APP_HOME, 'agent_status.json')
                 api_supported = '-'
                 api_error = '-'
                 if os.path.exists(agent_status_path):
@@ -1900,7 +2037,8 @@ class EquipamentosGUI(QWidget):
 
 
 def main():
-    app = QApplication(sys.argv)
+    _install_global_excepthook()
+    app = SafeApplication(sys.argv)
     window = EquipamentosGUI()
     window.show()
     sys.exit(app.exec_())
