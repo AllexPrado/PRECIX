@@ -16,12 +16,20 @@
       </div>
 
       <DataTable :value="configs" dataKey="id" paginator :rows="10" :rowsPerPageOptions="[10,20,50]" responsiveLayout="scroll" class="p-mt-3">
-        <Column field="loja" header="Loja" :body="storeTemplate" />
+        <Column header="Loja">
+          <template #body="{ data }">
+            {{ getStoreName(data.loja_id) || 'Global' }}
+          </template>
+        </Column>
         <Column field="tipo" header="Tipo" />
         <Column field="parametro1" header="Parâmetro 1" />
         <Column field="parametro2" header="Parâmetro 2" />
-        <Column header="Ativo" :body="ativoTemplate" style="width:120px" />
-    <Column header="Ações" style="width:220px">
+        <Column header="Ativo" style="width:120px">
+          <template #body="{ data }">
+            <span :class="['chip', data.ativo ? 'chip-ok' : 'chip-off']">{{ data.ativo ? 'Sim' : 'Não' }}</span>
+          </template>
+        </Column>
+        <Column header="Ações" style="width:220px">
           <template #body="{ data }">
             <div class="p-d-flex gap-2">
       <Button label="Editar" size="small" icon="pi pi-pencil" severity="secondary" outlined @click="editConfig(data)" />
@@ -277,7 +285,10 @@ function openAddModal() {
 function editConfig(config) {
   // mantém id e converte loja_id para null ou número conforme options
   const lojaId = (config.loja_id === null || config.loja_id === 'null' || config.loja_id === '') ? null : Number(config.loja_id)
-  form.value = { ...config, loja_id: isNaN(lojaId) ? null : lojaId, ativo: !!config.ativo }
+  // Normaliza tipo para os valores aceitos (arquivo/api/banco)
+  const tipoRaw = (config.tipo || '').toString().toLowerCase()
+  const tipo = ['arquivo','api','banco'].includes(tipoRaw) ? tipoRaw : ''
+  form.value = { ...config, loja_id: isNaN(lojaId) ? null : lojaId, ativo: !!config.ativo, tipo }
   editMode.value = true
   showModal.value = true
 }
@@ -347,6 +358,8 @@ onMounted(() => {
 .integration-config-card { background: #fff; border-radius: 14px; box-shadow: 0 6px 24px #ff66001a; padding: 16px; min-width: 300px; max-width: 1100px; width: 100%; }
 .title { margin: 0; color: #ff6600; }
 .subtitle { margin: 2px 0 0 0; color: #7a7a7a; }
+.integration-config-card :deep(.p-datatable-wrapper) { border: 1px solid #ffe0b2; border-radius: 8px; }
+.integration-config-card :deep(.p-button) { font-weight: 700; }
 .feedback-success {
   color: #388e3c;
   font-weight: bold;
@@ -405,6 +418,7 @@ onMounted(() => {
 /* Melhorar legibilidade em diálogos e tabela */
 .int-dialog :deep(.p-dialog-header),
 .int-dialog :deep(.p-dialog-title) { color: #212121; }
+.int-dialog :deep(.p-dialog-header) { background: #fffaf5; border-bottom: 1px solid #ffe0b2; }
 .int-dialog :deep(.p-inputtext),
 .int-dialog :deep(.p-dropdown),
 .int-dialog :deep(.p-dropdown-label),
@@ -426,6 +440,9 @@ onMounted(() => {
 .integration-config-card :deep(.p-datatable .p-datatable-tbody > tr:nth-child(even) > td) { background: #fffaf4; }
 .hint { color: #6b7280; font-size: .85rem; }
 .integration-config-card :deep(.p-panel .p-panel-header) { color: #212121; background: #fff; }
+.chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 700; letter-spacing: .2px; border: 1px solid transparent; }
+.chip-ok { background: #e8f5e9; color: #1b5e20; border-color: #c8e6c9; }
+.chip-off { background: #ffebee; color: #b71c1c; border-color: #ffcdd2; }
 /* Responsivo: tabela scrollável em telas estreitas */
 @media (max-width: 720px) {
   .integration-config-card { padding: 12px; }
