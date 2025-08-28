@@ -65,3 +65,43 @@ Este registro documenta tudo o que fizemos hoje no projeto PRECIX.
 - Validar no ambiente com proxy reverso os cabeçalhos de IP real.
 - Adicionar testes básicos de API para health events e dedupe.
 - Aplicar o mesmo padrão de contraste nas demais telas que ainda herdarem estilos antigos.
+
+---
+
+## Atualizações adicionais (tarde)
+
+### Admin — Integrações (UI/UX e correções)
+- Paginador e Dropdowns 100% claros: overlay do seletor de página e painéis de dropdown forçados para fundo branco com highlight da marca (evita menus escuros).
+- Logs de importação: estado vazio (“Sem eventos recentes.”), bloco monoespaçado, melhor espaçamento/legibilidade.
+- Botões padronizados e compactos: topo (Adicionar/Importar), modal (Selecionar pasta/Layout/Cancelar/Salvar), tabela (Editar/Excluir) e ação “Atualizar” dos logs.
+- Modal profissionalizado para API:
+  - Cabeçalho com tags (pill) de Tipo e Loja/Global.
+  - Grupos de campos segmentados em caixas com fundo claro (Contexto e Detalhes).
+  - Campos compactos e dicas de uso (endpoint/token).
+  - Ação “Testar API” ao lado do endpoint, com feedback no topo (“API OK (N itens)”).
+- Correções de comportamento:
+  - Persistência do campo “Ativo” como 0/1 ao salvar (resolvido caso de continuar ativo mesmo desmarcado).
+  - O Tipo não é mais apagado na gravação; validação leve para exigir Tipo e Parâmetro 1.
+  - Normalização defensiva ao carregar lista (loja_id null/numérico, tipo em lower, ativo em 0/1).
+
+Arquivos relevantes:
+- `admin/src/views/IntegrationConfig.vue`: modal reestruturado, dropdowns com `dropdown-light`, compactações e bugfixes.
+- `admin/src/style.css`: utilitário `.btn-compact`, refino das regras de `.p-button` (não força text/link/secondary), overlays claros globais.
+
+### Backend — Integrações (API)
+- Novo endpoint: `POST /admin/integracoes/testar-api`
+  - Faz GET na URL informada (Bearer opcional), valida JSON e retorna resumo: `success`, `status`, `count` e `sample` (quando aplicável).
+  - Suporta testes rápidos direto do modal, preparando a operação via API para produção.
+- Endpoint `POST /admin/integracoes` já coerente com `loja_id` vindo do UI (string/null/numérico) e aceita `ativo` como 0/1.
+
+### Resultados visíveis
+- Modal exibe “Editar Integração · API” (ou tipo correspondente) e Loja/Global em destaque.
+- Teste de API mostra feedback “API OK (NNNN itens).” (validado nos prints do painel).
+- Itens de menu do seletor de página e dropdowns aparecem claros e alinhados à paleta do cliente.
+
+### Recomendações para produção (integração via API)
+- Import agendado (cron/tarefa) com backoff e timeouts (ex.: 10–15s) e retries (ex.: 2–3).
+- Paginação/streaming: se a API retornar grandes volumes, implementar paginação incremental no importador.
+- Segurança: manter token no Parâmetro 2; avaliar rotacionamento; usar HTTPS quando disponível.
+- Mapeamento flexível: hoje suportamos `barcode|codigo`, `name|descricao`, `price|preco`; se necessário, expor mapeamento avançado no layout.
+- Observabilidade: logs de import mais sucintos no painel e detalhados em arquivo/servidor; status de última execução por integração.
