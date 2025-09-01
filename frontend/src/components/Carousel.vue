@@ -134,107 +134,60 @@ onUnmounted(() => {
   position: fixed;
   inset: 0;
   width: 100vw;
-  height: 100vh;
-  background: linear-gradient(135deg, #fff 60%, #fff3e0 100%);
+  height: 100dvh; /* Altura dinâmica do viewport */
+  background: #000; /* Fundo preto para imersão total */
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
   overflow: hidden;
-  transition: background 0.2s;
 }
 .carousel-img-wrapper {
   position: relative;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 80vw;
-  height: 60vh;
-  max-width: 700px;
-  max-height: 420px;
-  background: rgba(255,255,255,0.95);
-  border-radius: 32px;
-  box-shadow: 0 8px 40px 0 #ff66002a, 0 1.5px 8px #ff66001a;
-  overflow: hidden;
 }
-.carousel-img-wrapper.fullscreen-mode {
-  width: 100vw !important;
-  height: 100vh !important;
-  max-width: 100vw !important;
-  max-height: 100vh !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  background: transparent !important;
-}
+
 .carousel-img {
   width: 100%;
   height: 100%;
-  object-fit: cover !important;
-  background: #fff;
-  border-radius: 32px;
-  box-shadow: 0 8px 32px #0003;
-  filter: brightness(1) contrast(1.08) saturate(1.1);
-  transition: transform 0.7s cubic-bezier(.4,1.4,.6,1);
+  object-fit: cover; /* Usa 'cover' para preencher a tela, evitando barras pretas */
+  filter: brightness(1) contrast(1.05) saturate(1.05);
 }
-.carousel-img-wrapper.fullscreen-mode .carousel-img {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-}
+
+/* Oculta o botão de fullscreen quando já está em tela cheia */
 .fullscreen-btn {
-  position: absolute;
-  top: 18px;
-  right: 18px;
-  background: #fff7ef;
-  color: #ff6600;
-  border: 2px solid #ff6600;
-  border-radius: 50%;
-  width: 38px;
-  height: 38px;
-  font-size: 1.3em;
-  cursor: pointer;
-  z-index: 1001;
-  box-shadow: 0 2px 8px #ff66001a;
+  display: none;
 }
-.fullscreen-btn:hover {
-  background: #ff66001a;
-  border-color: #e65c00;
-}
+
 .carousel-indicator {
   position: absolute;
-  bottom: 32px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 32px);
   left: 0;
   right: 0;
   display: flex;
   justify-content: center;
-  gap: 8px;
+  gap: 12px;
+  z-index: 1001;
 }
 .carousel-indicator span {
   display: inline-block;
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #fff5;
-  border: 2px solid #fff;
-  transition: background 0.2s, border 0.2s, transform 0.2s;
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  transition: background 0.3s, transform 0.3s;
 }
 .carousel-indicator span.active {
   background: #FF6600;
-  border-color: #FF6600;
+  border-color: transparent;
   transform: scale(1.2);
 }
-@media (max-width: 700px) {
-  .carousel-img-wrapper {
-    width: 98vw;
-    height: 38vh;
-    max-width: 98vw;
-    max-height: 38vh;
-    border-radius: 18px;
-  }
-  .carousel-text {
-    font-size: 1.2rem;
-    padding: 18px 0 8px 0;
-    border-bottom-left-radius: 18px;
-    border-bottom-right-radius: 18px;
-  }
-}
+
+/* Remove media queries desnecessárias, o layout agora é fluido */
 </style>

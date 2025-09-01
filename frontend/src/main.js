@@ -111,4 +111,30 @@ if (typeof window !== 'undefined') {
   setInterval(checkFrontendOnline, 10000);
 }
 
+// --- WAKE LOCK: impede que a tela desligue enquanto o app estiver aberto ---
+let wakeLock = null;
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => {
+        // Tenta reativar se for liberado
+        requestWakeLock();
+      });
+    }
+  } catch (err) {
+    console.warn('Wake Lock não pôde ser ativado:', err);
+  }
+}
+
+if (typeof window !== 'undefined' && 'wakeLock' in navigator) {
+  requestWakeLock();
+  // Reativa o wake lock se a aba voltar ao foco
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      requestWakeLock();
+    }
+  });
+}
+
 createApp(App).mount('#app')

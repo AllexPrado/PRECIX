@@ -17,7 +17,7 @@
           <label class="remember">
             <input type="checkbox" v-model="remember" /> Lembrar-me
           </label>
-          <span class="hint">Ambiente seguro</span>
+          <span class="hint"><i class="pi pi-lock" style="font-size: .8rem;"></i> Ambiente seguro</span>
         </div>
         <button class="submit-btn" type="submit" :disabled="loading">{{ loading ? 'Entrando…' : 'Entrar' }}</button>
       </form>
@@ -114,14 +114,27 @@ async function login() {
   max-width: 350px;
   width: 100%;
 }
-.brand-logo { display: none; height: 44px; margin-bottom: 10px; }
+/* Badge de marca para evitar "empilhamento" com o título */
+.brand-logo {
+  display:block;
+  position: absolute;
+  top: -18px;
+  left: 16px;
+  height: 34px;
+  background: #fff;
+  border-radius: 10px;
+  padding: 4px 8px;
+  border: 1px solid #ffe0c2;
+  box-shadow: 0 6px 16px rgba(255,102,0,0.12);
+}
 .login-container h1 {
   color: #ff6600;
   font-size: 2rem;
   font-weight: 700;
+  margin-top: 12px;
   margin-bottom: 24px;
 }
-.subtitle { display:none; color:#6b7280; margin-top:-12px; margin-bottom: 14px; font-size: .96rem; }
+.subtitle { display:block; color:#6b7280; margin-top:-12px; margin-bottom: 14px; font-size: .96rem; }
 .login-form {
   width: 100%;
   display: flex;
@@ -138,6 +151,12 @@ async function login() {
   box-sizing: border-box;
   background: #fff;
   color: #222;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.login-container input:focus {
+  outline: none;
+  border-color: #ff7a1a;
+  box-shadow: 0 0 0 4px rgba(255,166,0,0.18), inset 0 1px 2px rgba(0,0,0,0.05);
 }
 /* Scoped autofill fallback */
 .login-container input:-webkit-autofill,
@@ -164,9 +183,9 @@ async function login() {
   cursor: pointer;
 }
 .toggle-icon:active { background: #fff4e6; }
-.actions-row { display: flex; align-items: center; justify-content: space-between; margin-top: 0; }
-.remember { color: #555; font-size: .95rem; display: inline-flex; align-items: center; gap: 8px; }
-.hint { color: #999; font-size: .9rem; }
+.actions-row { display: flex; align-items: center; justify-content: space-between; margin-top: 0; gap: 16px; }
+.remember { color: #555; font-size: .95rem; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; flex-shrink: 0; }
+.hint { color: #999; font-size: .9rem; display: inline-flex; align-items: center; gap: 6px; }
 .submit-btn {
   width: 100%;
   background: linear-gradient(90deg, #ff6600 60%, #ffa600 100%);
@@ -245,16 +264,8 @@ async function login() {
   }
   /* Badge de marca para evitar "empilhamento" com o título */
   .brand-logo {
-    display:block;
-    position: absolute;
-    top: -18px;
-    left: 16px;
-    height: 34px;
-    background: #fff;
-    border-radius: 10px;
-    padding: 4px 8px;
-    border: 1px solid #ffe0c2;
-    box-shadow: 0 6px 16px rgba(255,102,0,0.12);
+    /* Estilo já unificado no desktop, aqui apenas garantimos a sobreposição se necessário */
+    z-index: 10;
   }
   .login-container h1 { text-align: center; font-size: 1.68rem; margin: 12px 0 6px 0; letter-spacing: .2px; }
   .subtitle { display:block; text-align:center; }

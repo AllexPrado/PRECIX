@@ -34,18 +34,25 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div>
+  <div id="app-container">
     <PriceCheck />
     <Carousel />
   </div>
 </template>
 
 <style scoped>
-body, html, #app {
+#app-container {
   width: 100vw;
-  height: 100vh;
+  height: 100dvh; /* Usa altura dinâmica do viewport */
   margin: 0;
   padding: 0;
   overflow: hidden;
+  display: grid; /* Usa Grid para sobrepor os filhos */
+  grid-template-areas: "main";
+}
+
+/* Garante que os filhos diretos ocupem a mesma área do grid */
+#app-container > * {
+  grid-area: main;
 }
 </style>

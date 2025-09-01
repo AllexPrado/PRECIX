@@ -1,65 +1,69 @@
 <template>
-  <div class="price-check">
-    <!-- Ícone de configurações -->
+  <div class="price-check-container">
+    <!-- Ícone de configurações e Modal UUID (sem alterações) -->
     <button class="settings-btn" @click="showUUIDModal = true" title="Configurações">
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF6600" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09c0 .66.39 1.26 1 1.51a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 8c.66 0 1.26.39 1.51 1H21a2 2 0 1 1 0 4h-.09c-.66 0-1.26.39-1.51 1z"/></svg>
     </button>
-    <!-- Modal UUID -->
     <div v-if="showUUIDModal" class="uuid-modal-bg" @click.self="showUUIDModal = false">
       <div class="uuid-modal">
         <h3>Identificador do Dispositivo</h3>
         <div class="uuid-box">
-          <template v-if="uuidLocal && uuidLocal.length > 0">
-            {{ uuidLocal }}
-          </template>
-          <template v-else>
-            <span style="color:#aaa;">UUID não gerado</span>
-          </template>
+          <template v-if="uuidLocal && uuidLocal.length > 0">{{ uuidLocal }}</template>
+          <template v-else><span style="color:#aaa;">UUID não gerado</span></template>
         </div>
         <button class="copy-btn" @click="copyUUID" :disabled="!uuidLocal">{{ copied ? 'Copiado!' : 'Copiar UUID' }}</button>
         <button class="close-btn" @click="showUUIDModal = false">Fechar</button>
       </div>
     </div>
-    <!-- Status de conexão discreto no topo direito -->
+
+    <!-- Status de conexão -->
     <div class="connection-status-top" :class="{ online: isOnline, offline: !isOnline }">
       <span v-if="isOnline">● Online</span>
       <span v-else>● Offline</span>
     </div>
-    <div class="glass-card">
-      <div class="logo-mascot-row">
-        <img src="/logo-sonda.png" alt="Sonda Supermercados" class="main-logo" />
-        <img src="/mascote-sonda.jpg" alt="Mascote Sonda" class="mascot" />
-      </div>
-      <div class="input-row">
-        <input 
-          type="text" 
-          inputmode="numeric"
-          pattern="[0-9]*"
-          placeholder="Escaneie ou digite o código" 
-          v-model="barcode"
-          @keyup.enter="handleConsult"
-          @focus="onInputFocus"
-          @blur="onInputBlur"
-          autocomplete="off"
-          autocorrect="off"
-          spellcheck="false"
-          ref="barcodeInput"
-        />
-        <button @click="handleConsult">
-          <span>Consultar</span>
-        </button>
-      </div>
-      <transition name="fade">
-        <div v-if="product" class="result-card">
-          <div class="product-name">{{ product.name }}</div>
-          <div class="product-price">Preço: <span>R$ {{ product.price }}</span></div>
-          <div v-if="product.promo" class="promo-badge">{{ product.promo }}</div>
+
+    <!-- Conteúdo principal centralizado -->
+    <main class="main-content">
+      <div class="glass-card">
+        <div class="logo-mascot-row">
+          <img src="/logo-sonda.png" alt="Sonda Supermercados" class="main-logo" />
+          <img src="/mascote-sonda.jpg" alt="Mascote Sonda" class="mascot" />
         </div>
-      </transition>
-    </div>
-    <div class="footer">
+        <div class="input-row">
+          <input 
+            type="text" 
+            inputmode="numeric"
+            pattern="[0-9]*"
+            placeholder="Escaneie ou digite o código" 
+            v-model="barcode"
+            @keyup.enter="handleConsult"
+            @focus="onInputFocus"
+            @blur="onInputBlur"
+            autocomplete="off"
+            autocorrect="off"
+            spellcheck="false"
+            ref="barcodeInput"
+          />
+          <button @click="handleConsult">
+            <span>Consultar</span>
+          </button>
+        </div>
+        <transition name="fade">
+          <div v-if="product" class="result-card">
+            <div class="product-name">{{ product.name }}</div>
+            <div class="product-price">
+              <span>R$</span>{{ product.price.split(',')[0] }}<span>,{{ product.price.split(',')[1] }}</span>
+            </div>
+            <div v-if="product.promo" class="promo-badge">{{ product.promo }}</div>
+          </div>
+        </transition>
+      </div>
+    </main>
+
+    <!-- Rodapé fixo -->
+    <footer class="footer">
       <p>© {{ new Date().getFullYear() }} Sonda Supermercados</p>
-    </div>
+    </footer>
   </div>
 </template>
 
@@ -252,10 +256,32 @@ async function checkPrice() {
 </script>
 
 <style scoped>
+.price-check-container {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, #fff 60%, #fff3e0 100%);
+  padding: 
+    env(safe-area-inset-top, 18px)
+    env(safe-area-inset-right, 24px)
+    env(safe-area-inset-bottom, 10px)
+    env(safe-area-inset-left, 24px);
+}
+
+.main-content {
+  flex: 1; /* Ocupa todo o espaço disponível */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
 .connection-status-top {
   position: absolute;
-  top: 18px;
-  right: 24px;
+  top: calc(env(safe-area-inset-top, 0px) + 18px);
+  right: calc(env(safe-area-inset-right, 0px) + 24px);
   font-size: 1em;
   font-weight: 500;
   padding: 4px 12px;
@@ -270,18 +296,6 @@ async function checkPrice() {
   color: #d00000;
   background: #ffeaea;
 }
-.price-check {
-  position: relative;
-  min-height: 100vh;
-  width: 100vw;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #fff 60%, #fff3e0 100%);
-  box-sizing: border-box;
-  overflow: hidden;
-}
 
 .glass-card {
   background: rgba(255,255,255,0.85);
@@ -291,10 +305,8 @@ async function checkPrice() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 320px;
+  width: 100%;
   max-width: 420px;
-  width: 100vw;
-  margin: 0 auto;
   backdrop-filter: blur(2.5px);
   animation: glassIn 0.7s cubic-bezier(.4,1.4,.6,1) 1;
 }
@@ -302,14 +314,13 @@ async function checkPrice() {
 .logo-mascot-row {
   display: flex;
   align-items: center;
-  gap: 2vw;
-  margin-bottom: 3vh;
+  gap: 16px;
+  margin-bottom: 24px;
   justify-content: center;
 }
 
 .main-logo {
   width: 160px;
-  max-width: 40vw;
   height: auto;
   filter: drop-shadow(0 2px 8px #ff66001a);
 }
@@ -324,34 +335,15 @@ async function checkPrice() {
   background: #fff3e0;
 }
 
-.connection-status {
-  font-weight: bold;
-  margin-bottom: 12px;
-  padding: 6px 12px;
-  border-radius: 8px;
-  display: inline-block;
-}
-.connection-status.online {
-  background: #e6ffe6;
-  color: #008000;
-}
-.connection-status.offline {
-  background: #ffeaea;
-  color: #d00000;
-}
-
 .input-row {
   display: flex;
-  flex-direction: row;
-  gap: 1vw;
+  gap: 12px;
   width: 100%;
-  max-width: 350px;
-  margin-bottom: 2vh;
-  justify-content: center;
+  margin-bottom: 16px;
 }
 
 input {
-  flex: 1 1 0;
+  flex-grow: 1;
   padding: 15px 18px;
   font-size: 1.1rem;
   border: 2px solid #FF6600;
@@ -361,6 +353,7 @@ input {
   box-shadow: 0 2px 8px #ff66001a;
   transition: border 0.2s, box-shadow 0.2s;
   outline: none;
+  min-width: 0; /* Previne overflow em flex container */
 }
 
 input:focus {
@@ -368,10 +361,9 @@ input:focus {
   box-shadow: 0 4px 12px #ff66002a;
 }
 
-button {
+.input-row button {
   background: linear-gradient(90deg, #FF6600 60%, #FF9900 100%);
   color: #fff;
-  border: none;
   border-radius: 12px;
   padding: 0 28px;
   font-size: 1.1rem;
@@ -379,52 +371,57 @@ button {
   cursor: pointer;
   box-shadow: 0 2px 8px #ff66001a;
   transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
-  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
-button:hover {
+.input-row button:hover {
   background: linear-gradient(90deg, #FF4500 60%, #FF9900 100%);
   box-shadow: 0 4px 16px #ff66002a;
   transform: translateY(-2px) scale(1.03);
 }
 
 .result-card {
-  margin-top: 2vh;
-  background: rgba(255,255,255,0.97);
+  margin-top: 24px;
+  background: transparent;
   border-radius: 18px;
-  border: 2px solid #FF6600;
-  box-shadow: 0 6px 24px #ff66001a;
-  padding: 22px 18px 14px 18px;
-  min-width: 180px;
-  max-width: 320px;
+  border: none;
+  box-shadow: none;
+  padding: 0;
   width: 100%;
   text-align: center;
   animation: fadeIn 0.5s;
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 8px;
 }
 
 .product-name {
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: #FF6600;
-  margin-bottom: 10px;
-  letter-spacing: 0.5px;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #333;
+  letter-spacing: 0.2px;
 }
 
 .product-price {
-  font-size: 1.1rem;
-  color: #222;
-  margin-bottom: 10px;
+  font-size: 4.5rem;
+  font-weight: 800;
+  color: #FF6600;
+  line-height: 1;
 }
 
-.product-price span {
+.product-price span:first-child {
+  font-size: 2rem;
+  font-weight: 600;
+  vertical-align: super;
+  margin-right: 4px;
+}
+.product-price span:last-child {
+  font-size: 2.5rem;
   font-weight: 700;
-  color: #2d3a4a;
 }
 
 .promo-badge {
@@ -440,42 +437,57 @@ button:hover {
 }
 
 .footer {
-  margin-top: 2vh;
-  background: #f0f0f0;
-  width: 100vw;
-  padding: 10px 0 6px 0;
+  width: 100%;
+  padding: 10px 0 0 0;
   text-align: center;
   font-size: 0.9rem;
   color: #666;
+  flex-shrink: 0; /* Impede que o rodapé encolha */
 }
 
 @media (max-width: 600px) {
   .glass-card {
-    padding: 18px 2vw 12px 2vw;
-    min-width: unset;
-    max-width: 98vw;
+    padding: 24px 18px;
+    border-radius: 24px;
   }
   
   .main-logo {
-    width: 110px;
-    max-width: 60vw;
+    width: 140px;
   }
   
   .mascot {
-    width: 32px;
-    height: 32px;
+    width: 40px;
+    height: 40px;
   }
   
   .input-row {
     flex-direction: column;
-    gap: 12px;
-    max-width: 98vw;
+    align-items: center; /* Centraliza o conteúdo */
+    gap: 16px;
   }
-  
-  .result-card {
-    padding: 12px 2vw 8px 2vw;
-    min-width: unset;
-    max-width: 98vw;
+
+  .input-row input {
+    text-align: center;
+  }
+
+  .input-row button {
+    width: 80%; /* Define uma largura para o botão */
+    max-width: 280px;
+  }
+
+  .product-name {
+    font-size: 1.3rem;
+  }
+
+  .product-price {
+    font-size: 3.5rem;
+  }
+
+  .product-price span:first-child {
+    font-size: 1.5rem;
+  }
+  .product-price span:last-child {
+    font-size: 2rem;
   }
 }
 
@@ -491,10 +503,9 @@ button:hover {
 
 .settings-btn {
   position: fixed;
-  bottom: 18px;
-  right: 18px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+  right: calc(env(safe-area-inset-right, 0px) + 18px);
   background: #fff;
-  border: none;
   border-radius: 50%;
   box-shadow: 0 2px 8px #ff66001a;
   width: 48px;
@@ -512,20 +523,21 @@ button:hover {
 }
 .uuid-modal-bg {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
+  inset: 0;
   background: rgba(0,0,0,0.25);
   z-index: 2000;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 16px;
 }
 .uuid-modal {
   background: #fff;
   border-radius: 18px;
   box-shadow: 0 8px 40px #ff66002a;
   padding: 32px 24px 24px 24px;
-  min-width: 320px;
-  max-width: 90vw;
+  width: 100%;
+  max-width: 480px;
   text-align: center;
   animation: fadeIn 0.3s;
 }
@@ -539,13 +551,12 @@ button:hover {
   margin: 18px 0 18px 0;
   word-break: break-all;
   user-select: all;
-  color: #FF6600; /* Deixa o UUID bem visível */
+  color: #FF6600;
   font-weight: bold;
 }
 .copy-btn {
   background: linear-gradient(90deg, #FF6600 60%, #FF9900 100%);
   color: #fff;
-  border: none;
   border-radius: 8px;
   padding: 8px 22px;
   font-size: 1rem;
@@ -568,7 +579,6 @@ button:hover {
 .close-btn {
   background: #eee;
   color: #333;
-  border: none;
   border-radius: 8px;
   padding: 8px 22px;
   font-size: 1rem;

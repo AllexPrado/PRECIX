@@ -14,6 +14,39 @@
       <div v-if="feedback" class="p-mt-2">
         <Message :severity="feedback.success ? 'success' : 'error'">{{ feedback.message }}</Message>
       </div>
+      <!-- Checklist visual por tipo de integração -->
+      <div v-if="showModal" class="p-mt-2 checklist-box">
+        <div v-if="form.tipo === 'api'">
+          <b>Checklist Integração API:</b>
+          <ul>
+            <li>Endpoint da API (URL) <span :class="{'ok': !!form.parametro1}">({{ form.parametro1 ? 'OK' : 'Faltando' }})</span></li>
+            <li>Token de autenticação (se necessário) <span :class="{'ok': !!form.parametro2}">({{ form.parametro2 ? 'OK' : 'Opcional' }})</span></li>
+            <li>Formato esperado: JSON com <code>codigo</code>, <code>nome</code>, <code>preco</code></li>
+            <li>Botão <b>Testar API</b> para validar retorno</li>
+            <li>Exemplo de resposta disponível na documentação</li>
+          </ul>
+        </div>
+        <div v-else-if="form.tipo === 'arquivo'">
+          <b>Checklist Integração Arquivo:</b>
+          <ul>
+            <li>Caminho do arquivo/pasta <span :class="{'ok': !!form.parametro1}">({{ form.parametro1 ? 'OK' : 'Faltando' }})</span></li>
+            <li>Layout do arquivo (separador, colunas) <span :class="{'ok': !!form.layout}">({{ form.layout ? 'OK' : 'Faltando' }})</span></li>
+            <li>Exemplo de linha/arquivo preenchido</li>
+            <li>Validação do layout antes de salvar</li>
+            <li>Consulte exemplos na documentação</li>
+          </ul>
+        </div>
+        <div v-else-if="form.tipo === 'banco'">
+          <b>Checklist Integração Banco de Dados:</b>
+          <ul>
+            <li>String de conexão <span :class="{'ok': !!form.parametro1}">({{ form.parametro1 ? 'OK' : 'Faltando' }})</span></li>
+            <li>Query SQL ou tabela de origem <span :class="{'ok': !!form.parametro2}">({{ form.parametro2 ? 'OK' : 'Faltando' }})</span></li>
+            <li>Campos obrigatórios: código, nome, preço</li>
+            <li>Botão para testar conexão/consulta</li>
+            <li>Consulte exemplos na documentação</li>
+          </ul>
+        </div>
+      </div>
 
       <DataTable :value="configs" dataKey="id" paginator :rows="10" :rowsPerPageOptions="[10,20,50]" responsiveLayout="scroll" class="p-mt-3">
         <Column header="Loja">
@@ -53,7 +86,8 @@
       </Panel>
 
       <!-- Dialog Adicionar/Editar -->
-  <Dialog v-model:visible="showModal" modal :style="{ width: '720px' }" :breakpoints="{'960px': '90vw', '640px': '98vw'}" class="int-dialog">
+
+  <Dialog v-model:visible="showModal" modal :style="{ width: '720px' }" :breakpoints="{'960px': '95vw', '640px': '99vw'}" class="int-dialog">
     <template #header>
       <div class="dlg-header">
         <div class="dlg-title">{{ editMode ? 'Editar Integração' : 'Adicionar Integração' }}</div>
@@ -63,69 +97,60 @@
         </div>
       </div>
     </template>
-    <form @submit.prevent="saveConfig" class="p-fluid" :aria-busy="savingConfig">
-          <div class="p-formgrid p-grid box box-context">
-            <div class="p-field p-col-12 p-md-6">
-              <label class="p-d-block p-mb-2">Loja</label>
-      <Dropdown v-model="form.loja_id"
-        :options="storeOptions"
-        optionLabel="label"
-        optionValue="value"
-        placeholder="Global"
-        showClear
-        appendTo="self"
-        panelClass="dropdown-light"
-        class="dropdown-light input-compact"
-        :disabled="savingConfig"
-        @change="onStoreChange"/>
-      <small class="hint">Deixe em branco para integração Global (todas as lojas).</small>
-            </div>
-            <div class="p-field p-col-12 p-md-6">
-              <label class="p-d-block p-mb-2">Tipo</label>
-      <Dropdown v-model="form.tipo" :options="tipoOptions" optionLabel="label" optionValue="value" placeholder="Selecione" :disabled="savingConfig" required panelClass="dropdown-light" class="dropdown-light input-compact" />
-            </div>
-          </div>
+    <form @submit.prevent="saveConfig" class="modal-form" :aria-busy="savingConfig">
 
-          <div class="p-formgrid p-grid box box-details">
-            <div class="p-field p-col-12" v-if="form.tipo === 'arquivo'">
-              <label class="p-d-block p-mb-2">Caminho do arquivo</label>
-              <div class="p-d-flex gap-2">
-                <InputText v-model="form.parametro1" placeholder="Selecione ou digite o caminho do arquivo" class="p-flex-1 input-compact" :disabled="savingConfig" required />
-                <input type="file" style="display:none;" ref="fileInput" @change="onFileSelect" />
-                <Button type="button" label="Selecionar pasta" icon="pi pi-folder-open" severity="secondary" size="small" class="btn-compact" :disabled="savingConfig" @click="triggerFileInput" />
-                <Button type="button" label="Layout" icon="pi pi-sliders-h" severity="secondary" outlined size="small" class="btn-compact" :disabled="savingConfig" @click="openLayoutModal" />
-              </div>
-            </div>
-            <div class="p-field p-col-12" v-else>
-              <template v-if="form.tipo === 'api'">
-                <label class="p-d-block p-mb-2">Endpoint da API</label>
-                <div class="p-d-flex gap-2">
-                  <InputText v-model="form.parametro1" placeholder="Ex: http://host:porta/product/all" class="p-flex-1 input-compact" :disabled="savingConfig" required />
-                  <Button type="button" label="Testar API" icon="pi pi-play" size="small" class="btn-compact" :disabled="savingConfig || !form.parametro1" @click="testApi" />
-                </div>
-                <small class="hint">Suporte a Bearer token em Parâmetro 2. Resposta JSON deve conter lista de produtos com campos barcode/codigo, name/descricao, price/preco.</small>
-              </template>
-              <template v-else>
-                <label class="p-d-block p-mb-2">Parâmetro 1</label>
-                <InputText v-model="form.parametro1" placeholder="Ex: endpoint, string de conexão" class="input-compact" :disabled="savingConfig" required />
-              </template>
-            </div>
-            <div class="p-field p-col-12 p-md-8">
-              <label class="p-d-block p-mb-2">Parâmetro 2</label>
-              <InputText v-model="form.parametro2" placeholder="Ex: token, diretório, etc" class="input-compact" :disabled="savingConfig" />
-            </div>
-            <div class="p-field-checkbox p-col-12 p-md-4 p-d-flex p-ai-center p-jc-start">
-              <Checkbox v-model="form.ativo" :binary="true" inputId="ativoCheck" :disabled="savingConfig" />
-              <label for="ativoCheck" class="p-ml-2">Ativo</label>
-            </div>
-          </div>
 
-          <div class="p-d-flex p-jc-end gap-2 p-mt-3">
-            <Button type="button" label="Cancelar" severity="secondary" text size="small" class="btn-compact" :disabled="savingConfig" @click="closeModal" />
-            <Button type="submit" :label="savingConfig ? 'Salvando…' : 'Salvar'" icon="pi pi-check" size="small" class="btn-compact" :disabled="savingConfig" />
-          </div>
-        </form>
-      </Dialog>
+
+      <div class="modal-block">
+        <label>Loja</label>
+        <Dropdown v-model="form.loja_id" :options="storeOptions" optionLabel="label" optionValue="value" placeholder="Global" showClear appendTo="self" panelClass="dropdown-light" class="dropdown-light input-compact" :disabled="savingConfig" @change="onStoreChange" />
+        <small class="hint">Deixe em branco para integração Global (todas as lojas).</small>
+      </div>
+      <div class="modal-block">
+        <label>Tipo</label>
+        <Dropdown v-model="form.tipo" :options="tipoOptions" optionLabel="label" optionValue="value" :placeholder="tipoOptions.find(o => o.value === form.tipo)?.label || 'Selecione'" :disabled="savingConfig" required panelClass="dropdown-light" class="dropdown-light input-compact" />
+      </div>
+
+
+      <div v-if="form.tipo === 'arquivo'" class="modal-block">
+        <label>Caminho do arquivo</label>
+        <div class="modal-row">
+          <InputText v-model="form.parametro1" placeholder="Selecione ou digite o caminho do arquivo" class="input-compact" :disabled="savingConfig" required />
+          <input type="file" style="display:none;" ref="fileInput" @change="onFileSelect" />
+          <Button type="button" label="Selecionar pasta" icon="pi pi-folder-open" severity="secondary" size="small" class="btn-compact" :disabled="savingConfig" @click="triggerFileInput" />
+          <Button type="button" label="Layout" icon="pi pi-sliders-h" severity="secondary" outlined size="small" class="btn-compact" :disabled="savingConfig" @click="openLayoutModal" />
+        </div>
+        <small class="hint">Exemplo: <code>pricetab.txt</code> ou <code>/caminho/arquivo.csv</code></small>
+      </div>
+      <div v-else-if="form.tipo === 'api'" class="modal-block">
+        <label>Endpoint da API</label>
+        <div class="modal-row">
+          <InputText v-model="form.parametro1" placeholder="Ex: http://host:porta/product/all" class="input-compact" :disabled="savingConfig" required />
+          <Button type="button" label="Testar API" icon="pi pi-play" size="small" class="btn-compact" :disabled="savingConfig || !form.parametro1" @click="testApi" />
+        </div>
+        <small class="hint">Suporte a Bearer token em Parâmetro 2. Resposta JSON deve conter lista de produtos com campos <code>barcode/codigo</code>, <code>name/descricao</code>, <code>price/preco</code>.</small>
+      </div>
+      <div v-else class="modal-block">
+        <label>Parâmetro 1</label>
+        <InputText v-model="form.parametro1" placeholder="Ex: endpoint, string de conexão" class="input-compact" :disabled="savingConfig" required />
+      </div>
+
+      <div class="modal-block">
+        <label>Parâmetro 2</label>
+        <InputText v-model="form.parametro2" placeholder="Ex: token, diretório, etc" class="input-compact" :disabled="savingConfig" />
+      </div>
+
+      <div class="modal-block modal-row modal-checkbox-row">
+        <Checkbox v-model="form.ativo" :binary="true" inputId="ativoCheck" :disabled="savingConfig" />
+        <label for="ativoCheck" class="p-ml-2">Ativo</label>
+      </div>
+
+      <div class="modal-actions">
+        <Button type="button" label="Cancelar" severity="secondary" text size="small" class="btn-compact" :disabled="savingConfig" @click="closeModal" />
+        <Button type="submit" :label="savingConfig ? 'Salvando…' : 'Salvar'" icon="pi pi-check" size="small" class="btn-compact btn-save" :disabled="savingConfig" />
+      </div>
+    </form>
+  </Dialog>
 
       <!-- Dialog Layout Arquivo -->
       <Dialog v-model:visible="showLayoutModal" modal header="Configurar Layout do Arquivo" :style="{ width: '560px' }" :breakpoints="{'960px': '85vw', '640px': '98vw'}">
@@ -351,11 +376,52 @@ async function saveConfig() {
     // Normaliza flags e tipo obrigatório
     payload.ativo = payload.ativo ? 1 : 0
     payload.tipo = (payload.tipo || '').toString().toLowerCase()
-    if (!payload.tipo || !payload.parametro1) {
-      feedback.value = { success: false, message: 'Preencha Tipo e Caminho/Parâmetro 1.' }
+    // Validações guiadas por tipo
+    if (!payload.tipo) {
+      feedback.value = { success: false, message: 'Selecione o tipo de integração.' }
       return
     }
-  await axios.post(api('/admin/integracoes'), payload)
+    if (payload.tipo === 'api') {
+      if (!payload.parametro1) {
+        feedback.value = { success: false, message: 'Informe o endpoint da API.' }
+        return
+      }
+      // Opcional: validar formato do endpoint
+      if (!/^https?:\/\//.test(payload.parametro1)) {
+        feedback.value = { success: false, message: 'O endpoint da API deve começar com http:// ou https://.' }
+        return
+      }
+    } else if (payload.tipo === 'arquivo') {
+      if (!payload.parametro1) {
+        feedback.value = { success: false, message: 'Informe o caminho do arquivo ou pasta.' }
+        return
+      }
+      if (!payload.layout) {
+        feedback.value = { success: false, message: 'Configure o layout do arquivo.' }
+        return
+      }
+      // Validação básica do layout
+      try {
+        const l = JSON.parse(payload.layout)
+        if (!l.separador || !l.colunas) {
+          feedback.value = { success: false, message: 'Layout do arquivo incompleto.' }
+          return
+        }
+      } catch {
+        feedback.value = { success: false, message: 'Layout do arquivo inválido.' }
+        return
+      }
+    } else if (payload.tipo === 'banco') {
+      if (!payload.parametro1) {
+        feedback.value = { success: false, message: 'Informe a string de conexão.' }
+        return
+      }
+      if (!payload.parametro2) {
+        feedback.value = { success: false, message: 'Informe a query SQL ou tabela de origem.' }
+        return
+      }
+    }
+    await axios.post(api('/admin/integracoes'), payload)
     feedback.value = { success: true, message: 'Integração salva com sucesso!' }
     showModal.value = false
     await fetchConfigs()
@@ -400,6 +466,110 @@ async function testApi() {
   }
 }
 </script>
+
+<style scoped>
+/* ...existing code... */
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.modal-checklist {
+  background: #fffef7;
+  border: 1px solid #ffe0b2;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 6px;
+  font-size: 0.98rem;
+}
+.modal-checklist ul {
+  margin: 8px 0 0 0;
+  padding-left: 20px;
+}
+.modal-checklist li {
+  margin-bottom: 3px;
+}
+.modal-checklist .ok {
+  color: #388e3c;
+  font-weight: bold;
+}
+.modal-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.2rem;
+}
+.modal-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.modal-checkbox-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.7rem;
+  margin-top: 0.5rem;
+}
+.btn-save {
+  font-weight: bold;
+}
+@media (max-width: 720px) {
+  .modal-form {
+    gap: 0.4rem;
+  }
+  .modal-checklist {
+    padding: 7px 4px;
+    font-size: 0.95rem;
+  }
+  .modal-block {
+    gap: 0.1rem;
+  }
+  .modal-row {
+    gap: 0.3rem;
+  }
+  .modal-actions {
+    gap: 0.3rem;
+  }
+}
+/* ...existing code... */
+</style>
+
+<style scoped>
+/* ...existing code... */
+.checklist-box {
+  background: #fffef7;
+  border: 1px solid #ffe0b2;
+  border-radius: 8px;
+  padding: 12px 18px;
+  margin-bottom: 10px;
+  font-size: 1rem;
+}
+.checklist-box ul {
+  margin: 8px 0 0 0;
+  padding-left: 20px;
+}
+.checklist-box li {
+  margin-bottom: 4px;
+}
+.checklist-box .ok {
+  color: #388e3c;
+  font-weight: bold;
+}
+@media (max-width: 720px) {
+  .checklist-box {
+    padding: 8px 6px;
+    font-size: 0.97rem;
+  }
+}
+/* ...existing code... */
+</style>
 
 <style scoped>
 .delete-btn {
