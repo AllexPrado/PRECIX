@@ -52,7 +52,7 @@
           <div v-if="product" class="result-card">
             <div class="product-name">{{ product.name }}</div>
             <div class="product-price">
-              <span>R$</span>{{ product.price.split(',')[0] }}<span>,{{ product.price.split(',')[1] }}</span>
+              <span>R$</span>{{ formatPrice(product.price) }}
             </div>
             <div v-if="product.promo" class="promo-badge">{{ product.promo }}</div>
           </div>
@@ -110,6 +110,7 @@ const product = ref(null)
 const API_BASE = import.meta.env.VITE_API_URL || ''
 const isOnline = ref(navigator.onLine)
 const barcodeInput = ref(null)
+const resetTimeout = ref(null)
 window.addEventListener('online', () => isOnline.value = true)
 window.addEventListener('offline', () => isOnline.value = false)
 
@@ -121,11 +122,21 @@ function onInputFocus() {
 }
 function onInputBlur() {}
 
+function resetScreen() {
+  barcode.value = ''
+  product.value = null
+  if (barcodeInput.value) barcodeInput.value.focus()
+}
+
 function handleConsult() {
   checkPrice();
   nextTick(() => {
     if (barcodeInput.value) barcodeInput.value.focus();
   });
+  if (resetTimeout.value) clearTimeout(resetTimeout.value)
+  resetTimeout.value = setTimeout(() => {
+    resetScreen()
+  }, 10000) // 10 segundos
 }
 
 // Sincroniza todo o catálogo do backend para o IndexedDB
@@ -162,9 +173,26 @@ onMounted(() => {
   syncCatalog()
   syncInterval = setInterval(syncCatalog, 12 * 60 * 60 * 1000)
 })
+// Limpa o timer ao desmontar
 onUnmounted(() => {
   if (syncInterval) clearInterval(syncInterval)
+  if (resetTimeout.value) clearTimeout(resetTimeout.value)
 })
+
+function formatPrice(price) {
+  if (typeof price === 'number') {
+    return price.toFixed(2).replace('.', ',');
+  }
+  if (typeof price === 'string') {
+    // Se já está no formato correto
+    if (price.includes(',')) return price;
+    // Se está com ponto decimal
+    if (price.includes('.')) return price.replace('.', ',');
+    // Se é inteiro
+    return price + ',00';
+  }
+  return '--';
+}
 
 async function checkPrice() {
   const code = barcode.value.trim()
