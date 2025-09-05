@@ -1,0 +1,5 @@
+agent_id,identifier,name,tipo,status,last_update,ip,last_catalog_sync,catalog_count,store_code,store_name
+180747811358565,192.168.18.9:21,PC,LEGACY,offline,2025-08-28 15:30:09,192.168.18.9,,,1005,
+9447189816733,192.168.18.9:21,PC,LEGACY,offline,2025-09-04 22:33:38,192.168.18.9,,,1005,
+9447189816733,192.168.18.27:21,Simulador Cel,LEGACY,offline,2025-08-28 16:35:46,192.168.18.27,,,1002,
+9447189816733,192.168.18.7:21,PC,LEGACY,online,2025-09-04 22:33:38,192.168.18.7,,,1003,

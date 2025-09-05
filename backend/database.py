@@ -1,10 +1,25 @@
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import os
 from typing import Optional, Dict
 import logging
 import bcrypt  # Adicionado para hash de senha
 
 logging.basicConfig(level=logging.INFO)
+
+# Configuração do PostgreSQL
+PG_HOST = os.environ.get('PRECIX_PG_HOST', 'localhost')
+PG_PORT = os.environ.get('PRECIX_PG_PORT', '5432')
+PG_DB = os.environ.get('PRECIX_PG_DB', 'precix')
+PG_USER = os.environ.get('PRECIX_PG_USER', 'postgres')
+PG_PASS = os.environ.get('PRECIX_PG_PASS', 'Precix@2025')
+
+def get_db_connection():
+    conn = psycopg2.connect(
+        host=PG_HOST, port=PG_PORT, dbname=PG_DB, user=PG_USER, password=PG_PASS
+    )
+    conn.autocommit = True
+    return conn
 
 # Função para obter status do sistema (quantidade de produtos e última sincronização)
 def get_system_status():
@@ -15,6 +30,7 @@ def get_system_status():
     # Última sincronização: pega o maior last_sync dos devices
     cur.execute('SELECT MAX(last_sync) FROM devices WHERE last_sync IS NOT NULL')
     last_sync = cur.fetchone()[0]
+    cur.close()
     conn.close()
     return {
         'total_products': total_products,
@@ -46,7 +62,7 @@ def _resolve_db_path():
         try:
             if not os.path.exists(path):
                 continue
-            conn = sqlite3.connect(path)
+            # Removido: conexão SQLite legacy
             cur = conn.cursor()
             # Check table exists
             cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='devices'")
@@ -74,23 +90,17 @@ def get_db_connection():
     global DB_PATH
     if not DB_PATH:
         DB_PATH = _resolve_db_path()
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    try:
-        # Reduz "database is locked" em concorrência leve
-        conn.execute('PRAGMA busy_timeout=5000')
-        # Melhora concorrência de leitura/gravação
-        conn.execute('PRAGMA journal_mode=WAL')
-        conn.execute('PRAGMA synchronous=NORMAL')
-    except Exception:
-        pass
-    conn.row_factory = sqlite3.Row
-    return conn
+    # Função agora só retorna conexão PostgreSQL
+    return psycopg2.connect(
+        host=PG_HOST, port=PG_PORT, dbname=PG_DB, user=PG_USER, password=PG_PASS
+    )
 
 def get_product_by_barcode(barcode: str) -> Optional[Dict]:
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT barcode, name, price, promo FROM products WHERE barcode = ?', (barcode,))
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cur.execute('SELECT barcode, name, price, promo FROM products WHERE barcode = %s', (barcode,))
     row = cur.fetchone()
+    cur.close()
     conn.close()
     if row:
         return dict(row)
@@ -143,134 +153,10 @@ def upsert_products(products: list):
 
 # Função para inicializar o banco (criação das tabelas)
 def init_db():
+    # No PostgreSQL, o schema deve ser criado e migrado via scripts SQL externos.
+    # Esta função pode ser usada apenas para logar a conexão.
     conn = get_db_connection()
-    cur = conn.cursor()
-    logging.info(f"[DB] Usando banco em: {DB_PATH}")
-    # Tabela de produtos
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS products (
-            barcode TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            price REAL NOT NULL,
-            promo TEXT
-        )
-    ''')
-    # Tabela de usuários admin
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS admin_users (
-            username TEXT PRIMARY KEY,
-            password TEXT NOT NULL
-        )
-    ''')
-    # MIGRAÇÃO: Garante que a coluna 'role' existe
-    cur.execute("PRAGMA table_info(admin_users)")
-    admin_columns = [row[1] for row in cur.fetchall()]
-    if 'role' not in admin_columns:
-        logging.info("[DB] Adicionando coluna 'role' na tabela admin_users")
-        cur.execute("ALTER TABLE admin_users ADD COLUMN role TEXT DEFAULT 'admin'")
-    # MIGRAÇÃO: Garante que a coluna 'store_id' existe
-    if 'store_id' not in admin_columns:
-        logging.info("[DB] Adicionando coluna 'store_id' na tabela admin_users")
-        cur.execute("ALTER TABLE admin_users ADD COLUMN store_id INTEGER")
-    # MIGRAÇÃO: Garante que a coluna 'permissoes' existe
-    if 'permissoes' not in admin_columns:
-        logging.info("[DB] Adicionando coluna 'permissoes' na tabela admin_users")
-        cur.execute("ALTER TABLE admin_users ADD COLUMN permissoes TEXT")
-    # Loga usuários admin existentes
-    cur.execute('SELECT * FROM admin_users')
-    logging.info(f"[DB] Usuários admin existentes ao iniciar: {cur.fetchall()}")
-    # Tabela de lojas
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS stores (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            codigo TEXT UNIQUE NOT NULL,
-            name TEXT NOT NULL,
-            status TEXT DEFAULT 'ativo'
-        )
-    ''')
-    # Tabela de equipamentos
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS devices (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            store_id INTEGER,
-            name TEXT NOT NULL,
-            status TEXT DEFAULT 'ativo',
-            last_sync TEXT,
-            online INTEGER DEFAULT 0,
-            identifier TEXT,
-            last_catalog_sync TEXT,
-            catalog_count INTEGER,
-            FOREIGN KEY(store_id) REFERENCES stores(id)
-        )
-    ''')
-    # MIGRAÇÃO: Garante que a coluna 'identifier' existe mesmo em bancos antigos
-    cur.execute("PRAGMA table_info(devices)")
-    columns = [row[1] for row in cur.fetchall()]
-    if 'identifier' not in columns:
-        logging.info("[DB] Adicionando coluna 'identifier' na tabela devices")
-        cur.execute('ALTER TABLE devices ADD COLUMN identifier TEXT')
-    # MIGRAÇÃO: adiciona colunas de catálogo
-    if 'last_catalog_sync' not in columns:
-        logging.info("[DB] Adicionando coluna 'last_catalog_sync' na tabela devices")
-        cur.execute('ALTER TABLE devices ADD COLUMN last_catalog_sync TEXT')
-    if 'catalog_count' not in columns:
-        logging.info("[DB] Adicionando coluna 'catalog_count' na tabela devices")
-        cur.execute('ALTER TABLE devices ADD COLUMN catalog_count INTEGER')
-    # Tabela de auditoria/logs
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS audit_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT NOT NULL,
-            device_id INTEGER,
-            device_name TEXT,
-            action TEXT NOT NULL,
-            details TEXT,
-            FOREIGN KEY(device_id) REFERENCES devices(id)
-        )
-    ''')
-    # Tabela de dispositivos legados gerenciados por agentes locais
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS agent_devices (
-            agent_id TEXT NOT NULL,
-            identifier TEXT NOT NULL,
-            name TEXT,
-            tipo TEXT DEFAULT 'LEGACY',
-            status TEXT,
-            last_update TEXT,
-            ip TEXT,
-            last_catalog_sync TEXT,
-            catalog_count INTEGER,
-            PRIMARY KEY (agent_id, identifier)
-        )
-    ''')
-    # Migração: acrescenta colunas de loja se não existirem
-    cur.execute("PRAGMA table_info(agent_devices)")
-    ad_cols = [row[1] for row in cur.fetchall()]
-    if 'store_code' not in ad_cols:
-        cur.execute('ALTER TABLE agent_devices ADD COLUMN store_code TEXT')
-    if 'store_name' not in ad_cols:
-        cur.execute('ALTER TABLE agent_devices ADD COLUMN store_name TEXT')
-    # Tabela de status dos agentes locais (persistência)
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS agents_status (
-            agent_id TEXT PRIMARY KEY,
-            loja_codigo TEXT,
-            loja_nome TEXT,
-            status TEXT,
-            last_update TEXT,
-            ip TEXT
-        )
-    ''')
-    # Tabela de lojas vinculadas por agente (para múltiplas lojas)
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS agent_stores (
-            agent_id TEXT NOT NULL,
-            loja_codigo TEXT,
-            loja_nome TEXT,
-            PRIMARY KEY(agent_id, loja_codigo)
-        )
-    ''')
-    conn.commit()
+    logging.info(f"[DB] Conectado ao banco PostgreSQL: {PG_DB} em {PG_HOST}:{PG_PORT}")
     conn.close()
 
 # Função para popular o banco com dados de exemplo
@@ -727,7 +613,7 @@ def dedupe_agents():
     """
     try:
         conn = get_db_connection()
-        cur = conn.cursor()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cur.execute('SELECT agent_id, loja_codigo, loja_nome, status, last_update, ip FROM agents_status')
         rows = cur.fetchall()
         # Agrupa por id normalizado
@@ -760,11 +646,11 @@ def dedupe_agents():
                 if not raw or normalize_agent_id(raw) == norm_id:
                     continue
                 # Atualiza agent_stores
-                cur.execute('UPDATE agent_stores SET agent_id = ? WHERE agent_id = ?', (norm_id, raw))
+                cur.execute('UPDATE agent_stores SET agent_id = %s WHERE agent_id = %s', (norm_id, raw))
                 # Atualiza agent_devices
-                cur.execute('UPDATE agent_devices SET agent_id = ? WHERE agent_id = ?', (norm_id, raw))
+                cur.execute('UPDATE agent_devices SET agent_id = %s WHERE agent_id = %s', (norm_id, raw))
                 # Remove antigo em agents_status
-                cur.execute('DELETE FROM agents_status WHERE agent_id = ?', (raw,))
+                cur.execute('DELETE FROM agents_status WHERE agent_id = %s', (raw,))
         conn.commit()
         conn.close()
     except Exception as e:
@@ -777,8 +663,8 @@ def _latest_agent_id_for_ip(ip: str):
         if not ip:
             return None, None
         conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('SELECT agent_id, last_update FROM agents_status WHERE ip = ?', (ip,))
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute('SELECT agent_id, last_update FROM agents_status WHERE ip = %s', (ip,))
         rows = cur.fetchall()
         conn.close()
         if not rows:

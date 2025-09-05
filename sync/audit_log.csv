@@ -1,0 +1,341 @@
+id,timestamp,device_id,device_name,action,details
+1,2025-07-19T21:35:31.893491,1,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+2,2025-07-19T21:35:34.693114,1,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_ONLINE,Dispositivo voltou online
+3,2025-07-19T21:50:05.376461,2,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_CREATED,Dispositivo criado na loja ID 1
+4,2025-07-19T21:50:10.052212,2,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_ONLINE,Dispositivo voltou online
+5,2025-07-19T22:19:17.814962,1,,DEVICE_DELETED,Dispositivo removido do sistema
+6,2025-07-19T22:19:19.183646,2,,DEVICE_DELETED,Dispositivo removido do sistema
+7,2025-07-19T22:39:10.433707,3,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+8,2025-07-19T22:39:13.816066,3,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_ONLINE,Dispositivo voltou online
+9,2025-07-19T23:37:35.889859,3,,DEVICE_DELETED,Dispositivo removido do sistema
+10,2025-07-19T23:47:34.422834,4,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_CREATED,Dispositivo criado na loja ID 1
+11,2025-07-19T23:47:38.523235,4,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_ONLINE,Dispositivo voltou online
+12,2025-07-20T00:25:35.267180,5,"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36",DEVICE_CREATED,Dispositivo criado na loja ID 1
+13,2025-07-20T00:25:38.107090,5,"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36",DEVICE_ONLINE,Dispositivo voltou online
+14,2025-07-20T03:46:41.879998,6,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_CREATED,Dispositivo criado na loja ID 1
+15,2025-07-20T03:46:45.029562,6,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_ONLINE,Dispositivo voltou online
+16,2025-07-20T03:49:04.326973,7,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+17,2025-07-20T03:49:07.075609,7,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_ONLINE,Dispositivo voltou online
+18,2025-07-20T03:50:55.323630,8,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+19,2025-07-20T03:50:57.984677,8,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_ONLINE,Dispositivo voltou online
+20,2025-07-20T18:20:18.269710,4,,DEVICE_OFFLINE,Dispositivo ficou offline
+21,2025-07-20T18:20:20.433779,5,,DEVICE_OFFLINE,Dispositivo ficou offline
+22,2025-07-20T18:20:20.519248,5,,DEVICE_OFFLINE,Dispositivo ficou offline
+23,2025-07-20T18:20:22.737011,6,,DEVICE_OFFLINE,Dispositivo ficou offline
+24,2025-07-20T18:20:22.836740,6,,DEVICE_OFFLINE,Dispositivo ficou offline
+25,2025-07-20T18:20:24.989652,7,,DEVICE_OFFLINE,Dispositivo ficou offline
+26,2025-07-20T18:20:25.085221,7,,DEVICE_OFFLINE,Dispositivo ficou offline
+27,2025-07-20T18:20:27.385638,8,,DEVICE_OFFLINE,Dispositivo ficou offline
+28,2025-07-20T18:20:27.515954,8,,DEVICE_OFFLINE,Dispositivo ficou offline
+29,2025-07-20T19:34:42.753597,9,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+30,2025-07-20T19:34:45.964605,9,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_ONLINE,Dispositivo voltou online
+31,2025-07-20T19:35:10.375140,10,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+32,2025-07-20T19:35:12.963860,10,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_ONLINE,Dispositivo voltou online
+33,2025-07-20T19:36:08.766249,6,,DEVICE_ONLINE,Dispositivo voltou online
+34,2025-07-20T19:51:07.533699,11,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+35,2025-07-20T19:51:10.227758,11,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_ONLINE,Dispositivo voltou online
+36,2025-07-20T20:34:22.642101,12,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+37,2025-07-20T20:34:25.404765,12,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_ONLINE,Dispositivo voltou online
+38,2025-07-20T20:34:31.949924,13,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+39,2025-07-20T20:34:34.621201,13,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_ONLINE,Dispositivo voltou online
+40,2025-07-20T20:58:52.408816,14,"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36",DEVICE_CREATED,Dispositivo criado na loja ID 1
+41,2025-07-20T20:58:55.109184,14,"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36",DEVICE_ONLINE,Dispositivo voltou online
+42,2025-07-20T21:00:28.725492,15,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+43,2025-07-20T21:00:31.511831,15,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_ONLINE,Dispositivo voltou online
+44,2025-07-20T21:00:49.847718,16,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+45,2025-07-20T21:00:52.586744,16,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_ONLINE,Dispositivo voltou online
+46,2025-07-20T21:02:48.953384,4,,DEVICE_DELETED,Dispositivo removido do sistema
+47,2025-07-20T21:02:49.267503,5,,DEVICE_DELETED,Dispositivo removido do sistema
+48,2025-07-20T21:02:49.814546,6,,DEVICE_DELETED,Dispositivo removido do sistema
+49,2025-07-20T21:02:49.921467,6,Device 6,DEVICE_DELETED,Dispositivo removido do sistema
+50,2025-07-20T21:02:50.092706,7,,DEVICE_DELETED,Dispositivo removido do sistema
+51,2025-07-20T21:02:50.200153,7,Device 7,DEVICE_DELETED,Dispositivo removido do sistema
+52,2025-07-20T21:02:50.456745,8,,DEVICE_DELETED,Dispositivo removido do sistema
+53,2025-07-20T21:02:50.574698,8,Device 8,DEVICE_DELETED,Dispositivo removido do sistema
+54,2025-07-20T21:02:50.772501,9,,DEVICE_DELETED,Dispositivo removido do sistema
+55,2025-07-20T21:02:51.261071,10,,DEVICE_DELETED,Dispositivo removido do sistema
+56,2025-07-20T21:02:51.339703,10,Device 10,DEVICE_DELETED,Dispositivo removido do sistema
+57,2025-07-20T21:02:51.540309,11,,DEVICE_DELETED,Dispositivo removido do sistema
+58,2025-07-20T21:02:51.624599,11,Device 11,DEVICE_DELETED,Dispositivo removido do sistema
+59,2025-07-20T21:02:52.124810,12,,DEVICE_DELETED,Dispositivo removido do sistema
+60,2025-07-20T21:02:52.217106,12,Device 12,DEVICE_DELETED,Dispositivo removido do sistema
+61,2025-07-20T21:02:52.523186,13,,DEVICE_DELETED,Dispositivo removido do sistema
+62,2025-07-20T21:02:52.624587,13,Device 13,DEVICE_DELETED,Dispositivo removido do sistema
+63,2025-07-20T21:02:54.660006,14,,DEVICE_DELETED,Dispositivo removido do sistema
+64,2025-07-20T21:02:56.106933,15,,DEVICE_DELETED,Dispositivo removido do sistema
+65,2025-07-20T21:02:56.219914,15,Device 15,DEVICE_DELETED,Dispositivo removido do sistema
+66,2025-07-20T21:02:57.392653,16,,DEVICE_DELETED,Dispositivo removido do sistema
+67,2025-07-20T21:11:23.796250,17,CelularAlex,DEVICE_CREATED,Dispositivo criado na loja ID 3
+68,2025-07-20T21:11:59.538429,17,CelularAlex,DEVICE_ONLINE,Dispositivo voltou online
+69,2025-07-20T21:12:29.797382,17,,DEVICE_ONLINE,Dispositivo voltou online
+70,2025-07-20T21:30:56.398771,17,,DEVICE_DELETED,Dispositivo removido do sistema
+71,2025-07-20T21:31:28.348242,18,CelularAlex,DEVICE_CREATED,Dispositivo criado na loja ID 3
+72,2025-07-20T21:32:58.768077,18,CelularAlex,DEVICE_ONLINE,Dispositivo voltou online
+73,2025-07-20T21:44:02.834745,18,,DEVICE_DELETED,Dispositivo removido do sistema
+74,2025-07-20T21:44:34.420084,19,CelularAlex,DEVICE_CREATED,Dispositivo criado na loja ID 3
+75,2025-07-20T21:51:52.027167,19,CelularAlex,DEVICE_DELETED,Dispositivo removido do sistema
+76,2025-07-20T21:52:16.681240,20,CelularAlex,DEVICE_CREATED,Dispositivo criado na loja ID 3
+77,2025-07-20T21:57:04.765391,20,CelularAlex,DEVICE_DELETED,Dispositivo removido do sistema
+78,2025-07-20T22:02:30.642017,21,CelularAlex,DEVICE_CREATED,Dispositivo criado na loja ID 3
+79,2025-07-20T22:04:45.256982,21,CelularAlex,DEVICE_DELETED,Dispositivo removido do sistema
+80,2025-07-20T22:04:53.519832,22,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+81,2025-07-20T22:04:59.824443,23,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+82,2025-07-20T22:05:42.564387,24,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+83,2025-07-20T22:05:53.239759,25,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+84,2025-07-20T22:14:55.393253,22,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_DELETED,Dispositivo removido do sistema
+85,2025-07-20T22:14:56.187529,23,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_DELETED,Dispositivo removido do sistema
+86,2025-07-20T22:14:56.804091,24,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_DELETED,Dispositivo removido do sistema
+87,2025-07-20T22:14:59.156191,25,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_DELETED,Dispositivo removido do sistema
+88,2025-07-20T22:18:31.420439,26,AlexCelular,DEVICE_CREATED,Dispositivo criado na loja ID 3
+89,2025-07-20T22:25:00.289339,27,teste,DEVICE_CREATED,Dispositivo criado na loja ID 3
+90,2025-07-20T22:25:02.608498,28,teste,DEVICE_CREATED,Dispositivo criado na loja ID 3
+91,2025-07-20T22:25:08.643902,27,teste,DEVICE_DELETED,Dispositivo removido do sistema
+92,2025-07-20T22:25:10.775917,28,teste,DEVICE_DELETED,Dispositivo removido do sistema
+93,2025-07-20T22:44:18.633082,29,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+94,2025-07-20T22:44:31.325612,30,"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36",DEVICE_CREATED,Dispositivo criado na loja ID 1
+95,2025-07-20T22:44:55.775092,31,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_CREATED,Dispositivo criado na loja ID 1
+96,2025-07-20T22:45:13.842249,29,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_DELETED,Dispositivo removido do sistema
+97,2025-07-20T22:45:13.940690,29,Device 29,DEVICE_DELETED,Dispositivo removido do sistema
+98,2025-07-20T22:45:14.033728,29,Device 29,DEVICE_DELETED,Dispositivo removido do sistema
+99,2025-07-20T22:45:14.346402,30,"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36",DEVICE_DELETED,Dispositivo removido do sistema
+100,2025-07-20T22:45:15.751064,31,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_DELETED,Dispositivo removido do sistema
+101,2025-07-20T22:48:04.969556,32,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+102,2025-07-20T22:49:25.953686,32,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_DELETED,Dispositivo removido do sistema
+103,2025-07-20T23:00:37.580130,33,"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36",DEVICE_CREATED,Dispositivo criado na loja ID 1
+104,2025-07-20T23:01:15.672224,26,AlexCelular,DEVICE_OFFLINE,Dispositivo ficou offline
+105,2025-07-20T23:16:41.980924,33,"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36",DEVICE_DELETED,Dispositivo removido do sistema
+106,2025-07-20T23:50:37.169533,34,"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36",DEVICE_CREATED,Dispositivo criado na loja ID 1
+107,2025-07-20T23:52:03.240533,34,"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36",DEVICE_DELETED,Dispositivo removido do sistema
+108,2025-07-20T23:52:17.335047,35,CelularLolo,DEVICE_CREATED,Dispositivo criado na loja ID 4
+109,2025-07-21T00:04:43.674975,36,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+110,2025-07-21T00:06:14.813756,36,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_DELETED,Dispositivo removido do sistema
+111,2025-07-21T18:23:58.326272,26,AlexCelular,DEVICE_OFFLINE,Dispositivo ficou offline
+112,2025-07-21T18:24:02.255327,35,CelularLolo,DEVICE_OFFLINE,Dispositivo ficou offline
+113,2025-07-21T18:24:02.512657,35,CelularLolo,DEVICE_OFFLINE,Dispositivo ficou offline
+114,2025-07-21T19:27:47.233661,37,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+115,2025-07-21T19:28:54.309723,37,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_DELETED,Dispositivo removido do sistema
+116,2025-07-21T20:17:42.918199,38,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_CREATED,Dispositivo criado na loja ID 1
+117,2025-07-22T11:08:32.207271,26,AlexCelular,DEVICE_OFFLINE,Dispositivo ficou offline
+118,2025-07-22T11:08:36.168371,38,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_OFFLINE,Dispositivo ficou offline
+119,2025-07-22T11:08:36.411658,38,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_OFFLINE,Dispositivo ficou offline
+120,2025-07-22T23:20:25.220995,38,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_DELETED,Dispositivo removido do sistema
+121,2025-07-23T00:41:31.813558,39,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_CREATED,Dispositivo criado na loja ID 1
+122,2025-07-23T00:41:40.488716,39,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_DELETED,Dispositivo removido do sistema
+123,2025-07-23T00:41:48.023594,40,PC,DEVICE_CREATED,Dispositivo criado na loja ID 4
+124,2025-07-23T11:11:20.005196,40,PC,DEVICE_OFFLINE,Dispositivo ficou offline
+125,2025-07-23T11:51:26.336890,41,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_CREATED,Dispositivo criado na loja ID 1
+126,2025-07-23T15:11:29.846076,41,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_OFFLINE,Dispositivo ficou offline
+127,2025-07-23T15:11:29.846076,41,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_OFFLINE,Dispositivo ficou offline
+128,2025-07-24T14:25:06.723524,26,AlexCelular,DEVICE_OFFLINE,Dispositivo ficou offline
+129,2025-07-24T14:25:10.788629,41,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_OFFLINE,Dispositivo ficou offline
+130,2025-07-24T14:25:10.911080,41,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_OFFLINE,Dispositivo ficou offline
+131,2025-07-25T16:18:18.135064,26,AlexCelular,DEVICE_OFFLINE,Dispositivo ficou offline
+132,2025-07-27T00:58:38.088855,41,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_OFFLINE,Dispositivo ficou offline
+133,2025-07-27T15:44:10.503638,40,PC,DEVICE_OFFLINE,Dispositivo ficou offline
+134,2025-07-28T16:37:06.316521,26,AlexCelular,DEVICE_OFFLINE,Dispositivo ficou offline
+135,2025-07-28T16:37:08.352006,40,PC,DEVICE_OFFLINE,Dispositivo ficou offline
+136,2025-07-28T16:37:08.500159,40,PC,DEVICE_OFFLINE,Dispositivo ficou offline
+137,2025-07-29T11:56:19.130815,40,PC,DEVICE_OFFLINE,Dispositivo ficou offline
+138,2025-07-29T18:30:06.376381,40,PC,DEVICE_OFFLINE,Dispositivo ficou offline
+139,2025-07-31T13:24:15.822782,40,PC,DEVICE_OFFLINE,Dispositivo ficou offline
+140,2025-07-31T22:35:09.008756,40,PC,DEVICE_OFFLINE,Dispositivo ficou offline
+141,2025-07-31T22:35:09.122006,40,PC,DEVICE_OFFLINE,Dispositivo ficou offline
+142,2025-08-02T01:10:17.156456,41,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",DEVICE_DELETED,Dispositivo removido do sistema
+143,2025-08-03T00:18:43.612541,42,"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36",DEVICE_CREATED,Dispositivo criado na loja ID 1
+144,2025-08-03T02:26:50.228171,42,"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36",DEVICE_DELETED,Dispositivo removido do sistema
+145,2025-08-04T20:48:55.745050,26,AlexCelular,DEVICE_OFFLINE,Dispositivo ficou offline
+146,2025-08-04T20:48:57.899561,35,CelularLolo,DEVICE_OFFLINE,Dispositivo ficou offline
+147,2025-08-04T20:48:58.014887,35,CelularLolo,DEVICE_OFFLINE,Dispositivo ficou offline
+148,2025-08-04T20:49:00.255256,40,PC,DEVICE_OFFLINE,Dispositivo ficou offline
+149,2025-08-04T20:49:00.367385,40,PC,DEVICE_OFFLINE,Dispositivo ficou offline
+150,2025-08-06T22:10:31.392553,26,AlexCelular,DEVICE_OFFLINE,Dispositivo ficou offline
+151,2025-08-06T22:10:33.428555,40,PC,DEVICE_OFFLINE,Dispositivo ficou offline
+152,2025-08-06T22:10:33.588532,40,PC,DEVICE_OFFLINE,Dispositivo ficou offline
+153,2025-08-07T00:01:46.308743,43,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",DEVICE_CREATED,Dispositivo criado na loja ID 1
+154,2025-08-07T16:57:40.512192,43,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",DEVICE_DELETED,Dispositivo removido do sistema
+155,2025-08-07T23:04:35.471975,40,PC,DEVICE_DELETED,Dispositivo removido do sistema
+156,2025-08-07T23:04:53.099253,44,PCAlex,DEVICE_CREATED,Dispositivo criado na loja ID 1
+157,2025-08-09T16:43:58.987375,26,AlexCelular,DEVICE_OFFLINE,Dispositivo ficou offline
+158,2025-08-09T16:43:59.085172,26,AlexCelular,DEVICE_OFFLINE,Dispositivo ficou offline
+159,2025-08-09T16:44:01.311100,35,CelularLolo,DEVICE_OFFLINE,Dispositivo ficou offline
+160,2025-08-09T16:44:01.412295,35,CelularLolo,DEVICE_OFFLINE,Dispositivo ficou offline
+161,2025-08-09T16:44:03.567570,44,PCAlex,DEVICE_OFFLINE,Dispositivo ficou offline
+162,2025-08-09T16:44:03.682677,44,PCAlex,DEVICE_OFFLINE,Dispositivo ficou offline
+163,2025-08-09T20:24:07.668984,26,AlexCelular,DEVICE_DELETED,Dispositivo removido do sistema
+164,2025-08-09T20:24:12.186324,35,CelularLolo,DEVICE_DELETED,Dispositivo removido do sistema
+165,2025-08-09T20:24:15.118250,44,PCAlex,DEVICE_DELETED,Dispositivo removido do sistema
+166,2025-08-09T20:24:35.570428,45,PCALEX,DEVICE_CREATED,Dispositivo criado na loja ID 8
+167,2025-08-09T20:29:37.957238,46,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+168,2025-08-09T20:56:58.896867,47,"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36",DEVICE_CREATED,Dispositivo criado na loja ID 1
+169,2025-08-09T22:52:42.248592,47,"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36",DEVICE_DELETED,Dispositivo removido do sistema
+170,2025-08-09T22:52:43.499628,46,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",DEVICE_DELETED,Dispositivo removido do sistema
+171,2025-08-09T23:26:09.587223,48,"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36",DEVICE_CREATED,Dispositivo criado na loja ID 1
+172,2025-08-11T19:01:35.821491,49,"Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1",DEVICE_CREATED,Dispositivo criado na loja ID 1
+173,2025-08-13T16:59:39.452811,50,Novo Equipamento 4147978b,DEVICE_CREATED,Dispositivo criado na loja ID 6
+174,2025-08-13T17:10:49.482347,50,MEuCel,DEVICE_DELETED,Dispositivo removido do sistema
+175,2025-08-13T17:18:31.159546,51,Novo Equipamento 4147978b,DEVICE_CREATED,Dispositivo criado na loja ID 6
+176,2025-08-13T17:18:56.069941,51,Novo Equipamento 4147978b,DEVICE_DELETED,Dispositivo removido do sistema
+177,2025-08-13T17:19:02.584252,52,Novo Equipamento 4147978b,DEVICE_CREATED,Dispositivo criado na loja ID 6
+178,2025-08-13T17:19:40.787532,52,Novo Equipamento 4147978b,DEVICE_DELETED,Dispositivo removido do sistema
+179,2025-08-13T17:23:05.371460,53,Novo Equipamento 4147978b,DEVICE_CREATED,Dispositivo criado na loja ID 6
+180,2025-08-13T17:23:50.499397,49,CelAlex,DEVICE_DELETED,Dispositivo removido do sistema
+181,2025-08-13T17:23:52.898868,53,Novo Equipamento 4147978b,DEVICE_DELETED,Dispositivo removido do sistema
+182,2025-08-13T17:23:56.109559,54,Novo Equipamento 4147978b,DEVICE_CREATED,Dispositivo criado na loja ID 6
+183,2025-08-13T17:29:40.109250,55,Novo Equipamento 4147978b,DEVICE_CREATED,Dispositivo criado na loja ID 6
+184,2025-08-13T17:39:31.906626,56,Novo Equipamento 4147978b,DEVICE_CREATED,Dispositivo criado na loja ID 6
+185,2025-08-13T17:39:41.555240,55,Novo Equipamento 4147978b,DEVICE_DELETED,Dispositivo removido do sistema
+186,2025-08-13T17:39:45.590330,54,CelAlex,DEVICE_DELETED,Dispositivo removido do sistema
+187,2025-08-13T17:39:48.323822,56,Novo Equipamento 4147978b,DEVICE_DELETED,Dispositivo removido do sistema
+188,2025-08-13T17:39:55.087683,57,Novo Equipamento 4147978b,DEVICE_CREATED,Dispositivo criado na loja ID 6
+189,2025-08-13T17:41:44.465805,58,Novo Equipamento 4147978b,DEVICE_CREATED,Dispositivo criado na loja ID 6
+190,2025-08-13T17:45:06.769573,59,Novo Equipamento 4147978b,DEVICE_CREATED,Dispositivo criado na loja ID 6
+191,2025-08-13T17:45:16.943262,57,CelAlex,DEVICE_DELETED,Dispositivo removido do sistema
+192,2025-08-13T17:45:18.612987,58,Novo Equipamento 4147978b,DEVICE_DELETED,Dispositivo removido do sistema
+193,2025-08-13T17:45:20.685720,59,Novo Equipamento 4147978b,DEVICE_DELETED,Dispositivo removido do sistema
+194,2025-08-13T17:50:20.369558,60,Novo Equipamento 4147978b,DEVICE_CREATED,Dispositivo criado na loja ID 6
+195,2025-08-13T17:57:09.927962,61,Novo Equipamento 1e08d649,DEVICE_CREATED,Dispositivo criado na loja ID 6
+196,2025-08-13T17:57:36.382033,61,Novo Equipamento 1e08d649,DEVICE_DELETED,Dispositivo removido do sistema
+197,2025-08-13T17:57:40.146179,62,Novo Equipamento 1e08d649,DEVICE_CREATED,Dispositivo criado na loja ID 6
+198,2025-08-13T18:01:37.584725,62,Novo Equipamento 1e08d649,DEVICE_DELETED,Dispositivo removido do sistema
+199,2025-08-13T18:01:57.584652,63,Novo Equipamento 1e08d649,DEVICE_CREATED,Dispositivo criado na loja ID 6
+200,2025-08-13T18:02:13.349061,63,Novo Equipamento 1e08d649,DEVICE_DELETED,Dispositivo removido do sistema
+201,2025-08-13T18:03:09.765162,64,Novo Equipamento 1e08d649,DEVICE_CREATED,Dispositivo criado na loja ID 6
+202,2025-08-13T18:03:21.455716,64,Novo Equipamento 1e08d649,DEVICE_DELETED,Dispositivo removido do sistema
+203,2025-08-14T23:11:07.027158,65,Novo Equipamento 6d77449c,DEVICE_CREATED,Dispositivo criado na loja ID 6
+204,2025-08-23T00:50:18.479472,,,PRODUCTS_BULK_UPSERT,"{""user"": ""deploytest"", ""result"": {""inserted"": 2, ""updated"": 0, ""ignored"": 0}}"
+205,2025-08-23T21:52:06.572789,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+206,2025-08-23T21:52:24.917624,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_FAIL,"{""barcode"": ""50"", ""price"": null, ""error"": ""network""}"
+207,2025-08-23T21:52:27.411685,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_FAIL,"{""barcode"": ""50"", ""price"": null, ""error"": ""network""}"
+208,2025-08-23T21:52:32.282610,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_FAIL,"{""barcode"": ""70"", ""price"": null, ""error"": ""network""}"
+209,2025-08-23T21:52:35.760993,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""470"", ""price"": 61.9, ""error"": null}"
+210,2025-08-23T23:15:41.456768,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+211,2025-08-23T23:53:58.960894,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+212,2025-08-24T00:48:33.989648,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+213,2025-08-24T01:19:56.041752,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+214,2025-08-24T01:31:16.768479,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+215,2025-08-24T01:44:28.471804,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+216,2025-08-24T01:59:57.985159,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+217,2025-08-24T02:01:37.699986,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+218,2025-08-24T02:19:11.142844,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+219,2025-08-24T02:31:40.957912,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+220,2025-08-24T03:01:44.226546,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+221,2025-08-24T03:31:47.527465,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+222,2025-08-24T04:01:51.296255,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+223,2025-08-24T04:31:54.771113,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+224,2025-08-24T04:37:04.888690,,4147978b-91c0-42f1-92e1-45bc49038c9b,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+225,2025-08-24T17:47:13.789525,66,Novo Equipamento 3c9f6460,DEVICE_DELETED,Dispositivo removido do sistema
+226,2025-08-25T00:13:10.221889,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+227,2025-08-25T01:47:31.471949,,Global,IMPORT_FAIL,[arquivo] Arquivo não encontrado
+228,2025-08-25T18:49:55.212049,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+229,2025-08-27T18:51:32.585230,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+230,2025-08-27T19:21:35.904142,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+231,2025-08-27T19:22:33.768892,,Global,IMPORT_FAIL,[arquivo] Arquivo não encontrado
+232,2025-08-27T19:29:35.712897,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+233,2025-08-27T19:36:06.146860,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+234,2025-08-27T22:39:26.717324,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+235,2025-08-27T22:39:34.984443,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+236,2025-08-27T22:40:21.077983,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+237,2025-08-27T22:43:52.930030,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+238,2025-08-27T22:58:00.909101,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+239,2025-08-27T22:58:09.046978,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+240,2025-08-27T22:58:39.961514,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+241,2025-08-27T22:59:49.533737,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+242,2025-08-27T23:28:41.360875,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+243,2025-08-27T23:28:48.860710,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+244,2025-08-27T23:58:51.990429,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+245,2025-08-28T00:28:55.276774,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+246,2025-08-28T00:58:58.677369,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+247,2025-08-28T01:03:09.858267,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+248,2025-08-28T01:03:18.266038,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+249,2025-08-28T01:05:31.885470,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+250,2025-08-28T01:13:46.348957,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+251,2025-08-28T01:15:14.656174,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+252,2025-08-28T01:24:15.693225,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+253,2025-08-28T01:26:05.858501,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+254,2025-08-28T01:27:18.291224,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+255,2025-08-28T01:31:01.921814,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+256,2025-08-28T01:31:10.649309,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+257,2025-08-28T02:01:13.889646,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+258,2025-08-28T02:31:17.308147,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+259,2025-08-28T03:01:20.653315,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+260,2025-08-28T03:31:27.533375,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+261,2025-08-28T15:57:40.333549,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+262,2025-08-28T16:27:43.612325,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+263,2025-08-28T16:56:23.791839,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+264,2025-08-28T17:11:58.717081,,4147978b-91c0-42f1-92e1-45bc49038c9b,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+265,2025-08-28T17:26:28.467442,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+266,2025-08-28T17:38:36.715454,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+267,2025-08-28T18:02:27.314528,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+268,2025-08-28T18:10:20.816978,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+269,2025-08-28T18:30:21.546129,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+270,2025-08-28T18:32:56.735506,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+271,2025-08-28T19:01:24.039731,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+272,2025-08-28T19:09:39.302347,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+273,2025-08-28T19:35:59.164083,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+274,2025-08-28T20:06:02.438980,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+275,2025-08-28T20:11:32.534114,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+276,2025-08-28T20:36:05.658330,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+277,2025-08-28T21:06:09.073766,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+278,2025-08-28T21:11:40.817839,,Global,IMPORT_FAIL,[arquivo] Arquivo não encontrado
+279,2025-08-28T21:36:12.342409,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+280,2025-08-28T22:06:15.911498,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+281,2025-08-28T22:18:02.752901,,47f41ad0-7cd6-40c7-83c3-09300ab2826d,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+282,2025-08-28T22:36:18.938527,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+283,2025-08-28T23:06:21.911587,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+284,2025-08-28T23:36:25.266308,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+285,2025-08-29T00:06:28.367350,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+286,2025-09-01T18:33:33.613811,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+287,2025-09-01T19:03:37.132717,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+288,2025-09-01T19:33:40.527820,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+289,2025-09-01T20:03:43.834306,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+290,2025-09-01T20:33:47.087757,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+291,2025-09-01T21:03:50.746861,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+292,2025-09-01T21:20:42.425485,,4147978b-91c0-42f1-92e1-45bc49038c9b,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+293,2025-09-01T21:24:35.625202,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+294,2025-09-01T21:33:53.853303,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+295,2025-09-01T22:03:57.121719,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+296,2025-09-01T22:34:00.348911,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+297,2025-09-01T22:41:19.004018,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+298,2025-09-01T22:41:20.007201,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+299,2025-09-01T22:41:22.399923,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+300,2025-09-01T22:41:22.814976,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+301,2025-09-01T22:41:23.174452,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+302,2025-09-01T22:41:23.439499,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+303,2025-09-01T22:41:23.591499,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+304,2025-09-01T22:41:23.735656,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+305,2025-09-01T22:41:24.074543,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+306,2025-09-01T22:41:24.273816,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+307,2025-09-01T22:41:24.373936,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+308,2025-09-01T22:41:41.057920,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+309,2025-09-01T22:45:46.659748,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+310,2025-09-01T22:45:46.659748,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+311,2025-09-01T22:46:20.678853,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_FAIL,"{""barcode"": ""450"", ""price"": null, ""error"": ""network""}"
+312,2025-09-01T22:46:23.619276,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""470"", ""price"": 61.9, ""error"": null}"
+313,2025-09-01T22:54:05.689916,,918177ed-43a1-4361-b40a-fa9979d750a9,PRICE_QUERY_OK,"{""barcode"": ""30"", ""price"": 15.97, ""error"": null}"
+314,2025-09-01T22:54:32.222668,,4147978b-91c0-42f1-92e1-45bc49038c9b,PRICE_QUERY_OK,"{""barcode"": ""470"", ""price"": 61.9, ""error"": null}"
+315,2025-09-01T23:04:03.758940,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+316,2025-09-01T23:34:06.924590,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+317,2025-09-02T00:04:10.284273,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+318,2025-09-02T00:34:13.281499,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+319,2025-09-02T01:04:16.536317,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+320,2025-09-02T01:34:19.573795,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+321,2025-09-02T02:04:22.846926,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+322,2025-09-02T03:04:46.411709,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+323,2025-09-02T03:34:49.652640,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+324,2025-09-02T04:04:53.040622,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+325,2025-09-04T17:11:37.276398,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+326,2025-09-04T17:41:40.896437,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+327,2025-09-04T18:11:44.630561,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+328,2025-09-04T18:41:47.941170,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+329,2025-09-04T19:11:51.159204,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+330,2025-09-04T19:41:54.460128,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+331,2025-09-04T20:11:57.743975,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+332,2025-09-04T20:42:01.039296,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+333,2025-09-04T21:12:04.286777,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+334,2025-09-04T21:42:07.454276,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+335,2025-09-04T22:12:11.051260,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+336,2025-09-04T22:42:14.615668,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+337,2025-09-04T23:12:17.851338,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+338,2025-09-04T23:42:21.726326,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+339,2025-09-05T00:12:25.298800,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"
+340,2025-09-05T01:11:45.136478,,,PRODUCTS_BULK_UPSERT,"{""user"": ""admin"", ""result"": {""inserted"": 0, ""updated"": 23472, ""ignored"": 0}}"

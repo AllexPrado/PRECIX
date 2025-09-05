@@ -1,0 +1,4 @@
+username,password,role,store_id,permissoes
+alexp,$2b$12$WXZs5DQ1Q8Jz.jc4KKNGfOaV0H09FGUWtES8Py5Yt0YTOQH2yIpN6,admin,,
+teste,$2b$12$MFKa.hWMu3jDf7XhzDHUR..Lq/3yYqb6eoeEQyMyDtJ0WkUkPtrVm,operador,8,"[""dashboard"", ""banners"", ""equipamentos"", ""central_ia""]"
+admin,admin123,admin,,
