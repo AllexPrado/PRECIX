@@ -1,3 +1,50 @@
+# Status Atual do Projeto PRECIX
+
+## 1. Visão Geral da Conversa
+- **Objetivos Principais:** Migrar todo o banco SQLite para PostgreSQL, garantir funcionamento do backend com o novo banco, remover todo legado SQLite, resolver todos os erros e deixar o sistema pronto para produção.
+- **Contexto da Sessão:** Migração e integração completas, com resolução de problemas de schema, dados e código. O único bloqueio restante é um UnicodeDecodeError na conexão com o banco.
+- **Evolução da Intenção:** O usuário passou da migração e integração para troubleshooting avançado e solicitou um handoff claro para retomada.
+
+## 2. Fundamentos Técnicos
+- **Backend:** Python (FastAPI), psycopg2 para PostgreSQL, anteriormente SQLite.
+- **Migração de Dados:** Exportação/importação via CSV, adaptação de schema, uso de ON CONFLICT para upserts.
+- **Troubleshooting:** Encoding (UTF-8), variáveis de ambiente, arquivos de configuração, scripts de teste.
+- **Ferramentas:** VS Code, pgAdmin, PowerShell, scripts Python.
+
+## 3. Status do Código
+- `backend/database.py`: Refatorado para PostgreSQL, todo código SQLite removido, queries adaptadas, try/except e identação corrigidos, uso de DictCursor garantido.
+- `backend/test_postgres_connection.py`: Script imprime todos os parâmetros de conexão e testa conexão, usado para isolar problemas de encoding.
+- `d:/Sonda/Precix/sync/*.csv`: Todos os dados exportados e limpos para importação.
+- `d:/Sonda/Precix/sync/import_all_csv_postgres.sql`: Script de importação SQL atualizado para dados limpos.
+
+## 4. Resolução de Problemas
+- **Problemas Encontrados:** Erros de foreign key na importação, erros de sintaxe/identação, UnicodeDecodeError persistente na conexão com o banco.
+- **Soluções Implementadas:** Limpeza de registros órfãos, adaptação de queries, correção de estrutura de código, criação de scripts de teste, checagem de todos os parâmetros de conexão.
+- **Contexto de Debug:** O UnicodeDecodeError persiste mesmo com parâmetros ASCII e encoding UTF-8 no banco.
+- **Lições Aprendidas:** Problemas de encoding podem ser causados por caracteres invisíveis/corrompidos em variáveis/arquivos, não apenas nos parâmetros visíveis.
+
+## 5. Progresso
+- **Tarefas Concluídas:** Migração de dados, adaptação de schema, refatoração do backend, limpeza de código, scripts de teste.
+- **Trabalho Parcialmente Completo:** Troubleshooting final do UnicodeDecodeError.
+- **Resultados Validados:** Todos os dados e código, exceto o erro de conexão.
+
+## 6. Estado Ativo de Trabalho
+- **Foco Atual:** Isolar e resolver o UnicodeDecodeError na conexão PostgreSQL.
+- **Contexto Recente:** Script de teste confirmou todos os parâmetros como ASCII, erro persiste, sugerido revisar .env, .pgpass, config.json e ambiente.
+- **Código em Uso:** test_postgres_connection.py, database.py (versão PostgreSQL).
+- **Próximos Passos:** Retomar troubleshooting do erro de encoding, revisar todos os arquivos e variáveis do ambiente, garantir tudo salvo como UTF-8.
+
+## 7. Operações Recentes
+- **Últimos Comandos:** Criação/atualização e execução de test_postgres_connection.py, impressão de todos os parâmetros, erro persiste.
+- **Resumo dos Resultados:** Todos os parâmetros impressos corretamente, erro permanece.
+- **Pré-Sumário:** Troubleshooting do erro de encoding e preparação de handoff.
+- **Contexto Operacional:** Passos diretamente ligados ao objetivo de backend PostgreSQL robusto e pronto para produção.
+
+## 8. Plano de Continuação
+- **Tarefa Pendente 1:** Revisar arquivos .env, .pgpass, config.json e variáveis de ambiente para encoding inválido; testar conexão em ambiente limpo.
+- **Tarefa Pendente 2:** Se erro persistir, isolar ambiente e revisar possíveis fontes externas de encoding corrompido.
+- **Informação Prioritária:** O UnicodeDecodeError é o único bloqueio para produção.
+- **Próxima Ação:** Retomar troubleshooting do erro de encoding na conexão PostgreSQL, revisando todos os arquivos e variáveis do ambiente, e garantir que tudo está salvo como UTF-8.
 # STATUS ATUAL - 13/08/2025
 
 ## Resumo das ações realizadas
