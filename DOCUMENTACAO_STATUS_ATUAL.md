@@ -1,50 +1,70 @@
-# Status Atual do Projeto PRECIX
 
-## 1. Visão Geral da Conversa
-- **Objetivos Principais:** Migrar todo o banco SQLite para PostgreSQL, garantir funcionamento do backend com o novo banco, remover todo legado SQLite, resolver todos os erros e deixar o sistema pronto para produção.
-- **Contexto da Sessão:** Migração e integração completas, com resolução de problemas de schema, dados e código. O único bloqueio restante é um UnicodeDecodeError na conexão com o banco.
-- **Evolução da Intenção:** O usuário passou da migração e integração para troubleshooting avançado e solicitou um handoff claro para retomada.
+# STATUS ATUAL DO PROJETO PRECIX — 05/09/2025
+
+## 1. Resumo Geral
+- **Objetivo:** Sistema de consulta de preços para supermercados, com backend FastAPI (PostgreSQL), painel admin Vue 3, frontend PWA, agente local, integração IA/LLM e controle centralizado por loja/equipamento.
+- **Situação:** Todos os módulos principais implementados e integrados. ÚNICO BLOQUEIO: erro de encoding (UnicodeDecodeError) na conexão backend ↔ PostgreSQL.
 
 ## 2. Fundamentos Técnicos
-- **Backend:** Python (FastAPI), psycopg2 para PostgreSQL, anteriormente SQLite.
-- **Migração de Dados:** Exportação/importação via CSV, adaptação de schema, uso de ON CONFLICT para upserts.
-- **Troubleshooting:** Encoding (UTF-8), variáveis de ambiente, arquivos de configuração, scripts de teste.
-- **Ferramentas:** VS Code, pgAdmin, PowerShell, scripts Python.
+- **Backend:** FastAPI (Python), PostgreSQL (psycopg2), JWT, endpoints para produtos, banners, agentes, IA, logs, automações.
+- **Admin Panel:** Vue 3, tabs para banners, produtos, IA central, agentes, logs, automações.
+- **Frontend:** Vue 3 (Vite), PWA, IndexedDB, carrossel dinâmico.
+- **Agente Local:** PyQt5, config.json, integração FTP/TCP, status/logs, Inno Setup.
+- **IA/LLM:** Orquestrador chat, logs, automações, especialistas planejados (NOC/QA).
+- **Infra:** .env, Axios, scripts de deploy, documentação.
 
-## 3. Status do Código
-- `backend/database.py`: Refatorado para PostgreSQL, todo código SQLite removido, queries adaptadas, try/except e identação corrigidos, uso de DictCursor garantido.
-- `backend/test_postgres_connection.py`: Script imprime todos os parâmetros de conexão e testa conexão, usado para isolar problemas de encoding.
-- `d:/Sonda/Precix/sync/*.csv`: Todos os dados exportados e limpos para importação.
-- `d:/Sonda/Precix/sync/import_all_csv_postgres.sql`: Script de importação SQL atualizado para dados limpos.
+## 3. Status dos Módulos
+- **Backend:** Endpoints implementados, integração com PostgreSQL, refatoração completa, scripts de teste e importação prontos. UnicodeDecodeError impede operação.
+- **Admin Panel:** Funcional, tela de agentes locais pronta, melhorias recentes precisam ser restauradas do git.
+- **Frontend:** PWA funcional, carrossel dinâmico, integração com backend e IndexedDB.
+- **Agente Local:** 100% funcional, integração automática com painel admin, status/logs centralizados.
+- **IA/LLM:** Orquestrador e logs integrados, automações básicas, especialistas planejados.
+- **Documentação:** Completa, faltando apenas guias finais de deploy e troubleshooting.
 
-## 4. Resolução de Problemas
-- **Problemas Encontrados:** Erros de foreign key na importação, erros de sintaxe/identação, UnicodeDecodeError persistente na conexão com o banco.
-- **Soluções Implementadas:** Limpeza de registros órfãos, adaptação de queries, correção de estrutura de código, criação de scripts de teste, checagem de todos os parâmetros de conexão.
-- **Contexto de Debug:** O UnicodeDecodeError persiste mesmo com parâmetros ASCII e encoding UTF-8 no banco.
-- **Lições Aprendidas:** Problemas de encoding podem ser causados por caracteres invisíveis/corrompidos em variáveis/arquivos, não apenas nos parâmetros visíveis.
+## 4. Problemas e Soluções
+- **Principais problemas:**
+   - Foreign key na importação
+   - Sintaxe/identação
+   - UnicodeDecodeError na conexão PostgreSQL (bloqueio atual)
+- **Soluções já aplicadas:**
+   - Limpeza de registros órfãos
+   - Adaptação de queries
+   - Refatoração de código
+   - Scripts de teste e importação
+   - Checagem de encoding e variáveis
+- **Lição:** Encoding pode ser afetado por caracteres invisíveis/corrompidos em arquivos/variáveis, não só nos parâmetros visíveis.
 
 ## 5. Progresso
-- **Tarefas Concluídas:** Migração de dados, adaptação de schema, refatoração do backend, limpeza de código, scripts de teste.
-- **Trabalho Parcialmente Completo:** Troubleshooting final do UnicodeDecodeError.
-- **Resultados Validados:** Todos os dados e código, exceto o erro de conexão.
+- **Concluído:**
+   - Migração de dados e schema
+   - Refatoração backend
+   - Integração frontend/admin/agent/IA
+   - Scripts de teste e importação
+- **Pendente:**
+   - Resolver UnicodeDecodeError (backend ↔ PostgreSQL)
+   - Restaurar melhorias do admin panel
+   - Finalizar documentação de deploy
 
-## 6. Estado Ativo de Trabalho
-- **Foco Atual:** Isolar e resolver o UnicodeDecodeError na conexão PostgreSQL.
-- **Contexto Recente:** Script de teste confirmou todos os parâmetros como ASCII, erro persiste, sugerido revisar .env, .pgpass, config.json e ambiente.
-- **Código em Uso:** test_postgres_connection.py, database.py (versão PostgreSQL).
-- **Próximos Passos:** Retomar troubleshooting do erro de encoding, revisar todos os arquivos e variáveis do ambiente, garantir tudo salvo como UTF-8.
+## 6. Estado Atual e Foco
+- **Foco:** Isolar e resolver o UnicodeDecodeError na conexão PostgreSQL.
+- **Contexto:** Parâmetros e arquivos revisados, erro persiste. Próximo passo: revisar .env, .pgpass, config.json, ambiente e garantir UTF-8 em tudo.
 
 ## 7. Operações Recentes
-- **Últimos Comandos:** Criação/atualização e execução de test_postgres_connection.py, impressão de todos os parâmetros, erro persiste.
-- **Resumo dos Resultados:** Todos os parâmetros impressos corretamente, erro permanece.
-- **Pré-Sumário:** Troubleshooting do erro de encoding e preparação de handoff.
-- **Contexto Operacional:** Passos diretamente ligados ao objetivo de backend PostgreSQL robusto e pronto para produção.
+- Testes e scripts de conexão executados, parâmetros revisados, erro persiste.
+- Backend pronto para produção, exceto pelo erro de encoding.
 
-## 8. Plano de Continuação
-- **Tarefa Pendente 1:** Revisar arquivos .env, .pgpass, config.json e variáveis de ambiente para encoding inválido; testar conexão em ambiente limpo.
-- **Tarefa Pendente 2:** Se erro persistir, isolar ambiente e revisar possíveis fontes externas de encoding corrompido.
-- **Informação Prioritária:** O UnicodeDecodeError é o único bloqueio para produção.
-- **Próxima Ação:** Retomar troubleshooting do erro de encoding na conexão PostgreSQL, revisando todos os arquivos e variáveis do ambiente, e garantir que tudo está salvo como UTF-8.
+# 8. Próximos Passos (Prioridade)
+1. **Resolver UnicodeDecodeError:**
+   - Revisar .env, .pgpass, config.json, variáveis e arquivos para encoding inválido.
+   - Testar conexão em ambiente limpo.
+   - Garantir todos os arquivos salvos como UTF-8.
+2. **Restaurar melhorias do painel admin:**
+   - Recuperar últimas alterações perdidas via git.
+   - Validar tela de agentes locais e logs.
+3. **Finalizar documentação de deploy e troubleshooting.**
+4. **Testar integração ponta a ponta:**
+   - Agente local → backend → painel admin → frontend.
+5. **Aprimorar logs, automações e dashboard.**
 # STATUS ATUAL - 13/08/2025
 
 ## Resumo das ações realizadas
@@ -107,106 +127,3 @@ Implementação e correção do sistema de gerenciamento de integrações de pre
 - Execução dos scripts de migração de schema.
 - Verificação da estrutura da tabela via SQLiteOnline.
 - Orientação para garantir uso do banco correto e reinício do backend.
-
-## Próximos Passos
-1. Buscar por todos os arquivos products.db no projeto para garantir que não há duplicidade.
-2. Renomear d:\Sonda\Precix\sync\products.db e reiniciar o backend para confirmar se ele realmente usa esse arquivo.
-3. Se o backend criar um novo banco, migrar a tabela integration_configs (com layout) para o novo arquivo.
-4. Garantir que só há um backend rodando e sem cache.
-5. Após garantir o backend usando o banco correto, testar novamente o POST /admin/integracoes.
-6. Se persistir erro, coletar e analisar o novo log.
-7. Após validação, realizar commit das alterações no git.
-
----
-_Documento gerado automaticamente pelo assistente em 13/08/2025._
-- Todas as alterações foram salvas e documentadas.
-- O código está pronto para commit.
-- Caso o erro persista, revisar o fluxo de associação de loja ao device e garantir que o frontend está enviando corretamente os dados.
-- **Novo:** O status online/offline agora é atualizado em tempo real (30s) tanto no backend quanto no frontend.
-
----
-
-*Documentação gerada automaticamente por GitHub Copilot em 13/08/2025.*
-# Documentação: Status Atual do Sistema PRECIX
-
-## Resumo das Implementações e Correções (28/07/2025)
-
-### Agente Local
-- Interface gráfica (PyQt5) robusta, com abas para Lojas, Equipamentos, Arquivo de Preços, Integração PRECIX, Envio, Monitoramento, Logs e Automação.
-- Cadastro, edição e remoção de lojas e equipamentos legados.
-- Persistência confiável em `config.json` (tratamento de arquivos corrompidos ou vazios).
-- Geração de arquivo de preços customizável e validada.
-- Teste de envio FTP, TCP e local.
-- Monitoramento de status dos equipamentos, histórico e alertas.
-- Visualização e exportação de logs.
-- Automação de atualização manual e por intervalo.
-- Correção de falha ao cadastrar loja (tratamento de exceção).
-- Instalador Inno Setup revisado e funcional.
-- **NOVO:** Integração automática com o painel admin: o agente local agora envia periodicamente seu status para o backend PRECIX, permitindo monitoramento centralizado e visualização automática no painel admin, sem necessidade de cadastro manual.
-
-### Agente IA
-- Estrutura inicial embarcada no agente local para monitoramento, sugestão de correções e automação.
-- Integração com backend PRECIX para supervisão distribuída.
-- Pronto para expandir rotinas de detecção e correção automática.
-
-### Agno
-- Integração IA ativável na interface do agente local.
-- Sugestão de layout e campos exportados via IA.
-- Pronto para expandir automações e recomendações inteligentes.
-
-### Admin
-- Painel web para banners, status de sincronização, contagem de produtos, gerenciamento de lojas e equipamentos.
-- Proteção de acesso via login.
-- **NOVO:** Tela de gerenciamento de agentes locais criada, com visual padronizado, exibição automática dos agentes que reportam status ao backend, visualização de logs e envio de comandos.
-
-### Backend
-- API FastAPI para produtos, lojas, equipamentos e integração com IA.
-- Exportação de arquivos de preços no formato legado.
-- Auditoria e logs centralizados.
-- **NOVO:** Endpoints para status, logs e comandos dos agentes locais, permitindo integração e monitoramento centralizado.
-
-### Frontend
-- PWA Vue 3 para tablets/web, sincronização com backend.
-- Gerenciamento de produtos, banners, lojas e equipamentos.
-- **NOVO:** Tela de agentes locais integrada ao backend, visual moderno e responsivo.
-
----
-
-## Status Atual de Cada Módulo
-- **Agente Local:** 100% funcional, integração automática com painel admin implementada, pronto para testes operacionais.
-- **Agente IA:** Estrutura inicial embarcada, integração básica, pronto para expandir automações e correções.
-- **Agno:** IA integrada ao agente local, pronta para expandir sugestões e automações.
-- **Admin:** Painel funcional, tela de agentes locais pronta para testes.
-- **Backend:** API funcional, endpoints de agentes locais prontos para testes.
-- **Frontend:** PWA funcional, tela de agentes locais pronta para testes.
-
----
-
-## Próximos Passos
-1. **Testar o agente local em ambiente real:**
-   - Validar se o agente aparece automaticamente no painel admin após iniciar o serviço.
-   - Verificar logs do agente local e do backend para eventuais erros de comunicação.
-2. **Testar visualização de logs e envio de comandos pelo painel admin.**
-3. **Ajustar detalhes de integração/configuração se necessário:**
-   - Validar campo `backend_url` no `config.json` do agente local.
-   - Ajustar intervalos e formato de status, se necessário.
-4. **Documentar procedimentos de suporte e troubleshooting.**
-5. **Expandir rotinas de automação e correção no agente IA.**
-6. **Aprimorar sugestões e automações inteligentes no Agno.**
-7. **Implementar uploads e relatórios no painel Admin.**
-8. **Expandir endpoints e dashboard no backend.**
-9. **Testar e aprimorar funcionalidades do frontend (PWA).**
-
----
-
-**Status atualizado em 28/07/2025.**
-
----
-
-<!--
-PROMPT PARA CONTINUIDADE (AI):
-- Última atualização: 28/07/2025
-- Próximos passos imediatos: Testar integração automática do agente local com o painel admin, validar logs e comandos, revisar README e documentar troubleshooting.
-- Se for retomar amanhã: Comece revisando os testes do agente local e painel admin, depois avance para integração contínua e automação de builds.
-- Lembre-se de atualizar este status e remover este prompt após concluir a próxima rodada de testes e documentação.
--->

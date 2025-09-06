@@ -4,22 +4,156 @@ import os
 from typing import Optional, Dict
 import logging
 import bcrypt  # Adicionado para hash de senha
+import tempfile
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
 
 # Configuração do PostgreSQL
+
 PG_HOST = os.environ.get('PRECIX_PG_HOST', 'localhost')
 PG_PORT = os.environ.get('PRECIX_PG_PORT', '5432')
 PG_DB = os.environ.get('PRECIX_PG_DB', 'precix')
-PG_USER = os.environ.get('PRECIX_PG_USER', 'postgres')
-PG_PASS = os.environ.get('PRECIX_PG_PASS', 'Precix@2025')
+PG_USER = os.environ.get('PRECIX_PG_USER')
+PG_PASS = os.environ.get('PRECIX_PG_PASS')
+
+# Validação obrigatória de usuário e senha
+if not PG_USER or not PG_PASS:
+    raise RuntimeError("Variáveis de ambiente PRECIX_PG_USER e PRECIX_PG_PASS são obrigatórias. Configure no .env ou ambiente do sistema.")
+
+# Força client encoding UTF-8 no libpq
+os.environ.setdefault('PGCLIENTENCODING', 'UTF8')
+
+_DUMMY_PASSFILE_PATH = None
+
+def _ensure_dummy_passfile():
+    """Cria um passfile dummy somente ASCII para evitar leitura de .pgpass com encoding inválido."""
+    global _DUMMY_PASSFILE_PATH
+    if _DUMMY_PASSFILE_PATH and Path(_DUMMY_PASSFILE_PATH).exists():
+        return _DUMMY_PASSFILE_PATH
+    try:
+        tmpdir = Path(tempfile.gettempdir())
+        pf = tmpdir / 'precix_dummy_pgpass'
+        # Linha dummy (host:port:db:user:password) - todos ASCII
+        pf.write_text(f"{PG_HOST}:{PG_PORT}:{PG_DB}:{PG_USER}:{PG_PASS}\n", encoding='utf-8')
+        _DUMMY_PASSFILE_PATH = str(pf)
+    except Exception as e:
+        logging.warning(f"[DB] Falha ao criar dummy passfile: {e}")
+    return _DUMMY_PASSFILE_PATH
 
 def get_db_connection():
-    conn = psycopg2.connect(
-        host=PG_HOST, port=PG_PORT, dbname=PG_DB, user=PG_USER, password=PG_PASS
-    )
-    conn.autocommit = True
-    return conn
+    """Abre conexão PostgreSQL com diagnóstico detalhado de encoding.
+
+    Se ocorrer UnicodeDecodeError, loga os parâmetros em forma hex para inspeção.
+    """
+    # Garante passfile dummy seguro (evita .pgpass legado possivelmente Latin-1)
+    passfile = _ensure_dummy_passfile()
+    if passfile:
+        os.environ['PGPASSFILE'] = passfile
+    # Isola o libpq de arquivos/serviços externos com encoding duvidoso
+    try:
+        import tempfile as _tf
+        os.environ.setdefault('PGSYSCONFDIR', _tf.gettempdir())
+    except Exception:
+        pass
+    for _var in ('PGSERVICE', 'PGSERVICEFILE'):
+        try:
+            if _var in os.environ:
+                os.environ.pop(_var, None)
+        except Exception:
+            pass
+    params = {
+        'host': PG_HOST,
+        'port': PG_PORT,
+        'dbname': PG_DB,
+        'user': PG_USER,
+        'password': PG_PASS,
+        # Usa options para setar client_encoding pois client_encoding direto não é parâmetro oficial
+        'options': '-c client_encoding=UTF8',
+    }
+    def _sanitize(v: str):
+        if v is None:
+            return v
+        s = str(v)
+        cleaned = ''.join(ch for ch in s if ord(ch) < 128)
+        return cleaned
+    sanitized = {}
+    changed = False
+    for k, v in params.items():
+        sv = _sanitize(v)
+        sanitized[k] = sv
+        if sv != v:
+            changed = True
+            logging.warning(f"[DB][sanitize] Removidos caracteres não-ASCII em '{k}': original={repr(v)} -> usado={repr(sv)}")
+    if changed:
+        params = sanitized
+    # Validação: todos devem ser str ASCII/UTF-8 codificáveis
+    for k, v in params.items():
+        try:
+            if v is None:
+                continue
+            _ = str(v).encode('utf-8')
+        except Exception as e:
+            logging.error(f"[DB][param-encoding] Falha ao codificar {k}={repr(v)} -> {e}")
+    # Temporarily scrub PG* env vars and force neutral locale to avoid libpq decoding surprises
+    _backup_env = {}
+    try:
+        # Backup and remove PG* except the ones we just set/need
+        for k in list(os.environ.keys()):
+            ku = k.upper()
+            if ku.startswith('PG') and ku not in ('PGCLIENTENCODING', 'PGPASSFILE', 'PGSYSCONFDIR'):
+                _backup_env[k] = os.environ.pop(k)
+        # Force neutral C locale for the connect call
+        for loc in ('LC_ALL', 'LANG'):
+            if loc in os.environ:
+                _backup_env[loc] = os.environ[loc]
+        os.environ['LC_ALL'] = 'C'
+        os.environ['LANG'] = 'C'
+    except Exception:
+        pass
+    try:
+        logging.info('[DB][connect] Tentando conexão primária UTF8...')
+        conn = psycopg2.connect(**params)
+        conn.autocommit = True
+        return conn
+    except UnicodeDecodeError as ue:
+        # Debug aprofundado
+        debug_lines = ["[DB][connect][UnicodeDecodeError] Falha na tentativa UTF8. Parâmetros (hex):"]
+        for k, v in params.items():
+            sv = str(v)
+            hex_repr = ' '.join(f"{ord(c):02x}" for c in sv)
+            debug_lines.append(f"  {k}='{sv}' (hex: {hex_repr})")
+        logging.error('\n'.join(debug_lines))
+        logging.warning('[DB][connect] Fallback: tentando conexão com PGCLIENTENCODING=LATIN1 e depois forçando UTF8...')
+        try:
+            os.environ['PGCLIENTENCODING'] = 'LATIN1'
+            # Isola configs externas
+            os.environ.setdefault('PGSYSCONFDIR', tempfile.gettempdir())
+            alt_params = dict(params)
+            # Remove options para evitar forçar UTF8 antes de conectar
+            alt_params.pop('options', None)
+            conn = psycopg2.connect(**alt_params)
+            conn.set_client_encoding('UTF8')
+            conn.autocommit = True
+            logging.info('[DB][connect] Conectado via fallback LATIN1->UTF8.')
+            return conn
+        except Exception as inner:
+            logging.error(f'[DB][connect][fallback] Falha também no fallback: {inner}')
+            print("[DB][connect][RAW EXCEPTION]", repr(inner))
+            raise ue
+    except Exception as e:
+        logging.error(f"[DB][connect] Erro genérico na conexão: {e}")
+        raise
+    finally:
+        # Restore environment
+        try:
+            for k, v in _backup_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        except Exception:
+            pass
 
 # Função para obter status do sistema (quantidade de produtos e última sincronização)
 def get_system_status():
@@ -37,7 +171,7 @@ def get_system_status():
         'last_sync': last_sync
     }
 
-DB_PATH = None
+"""Removido código legado SQLite (DB_PATH, _resolve_db_path, segunda get_db_connection)."""
 
 # Utilitário: normaliza identificadores de agente para evitar duplicidade por case/espacos
 def normalize_agent_id(agent_id: str) -> str:
@@ -46,65 +180,25 @@ def normalize_agent_id(agent_id: str) -> str:
     except Exception:
         return ''
 
-def _resolve_db_path():
-    # 1) Env var wins
-    env = os.environ.get('PRECIX_DB_PATH')
-    if env:
-        return env
-    # 2) Candidates (prefer the one with devices data)
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    candidate_sync = os.path.join(repo_root, 'sync', 'products.db')
-    candidate_backend = os.path.join(os.path.dirname(__file__), 'products.db')
-    candidates = [candidate_backend, candidate_sync]
-    best = None
-    best_devices = -1
-    for path in candidates:
-        try:
-            if not os.path.exists(path):
-                continue
-            # Removido: conexão SQLite legacy
-            cur = conn.cursor()
-            # Check table exists
-            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='devices'")
-            has_table = cur.fetchone() is not None
-            devices_count = 0
-            if has_table:
-                try:
-                    cur.execute('SELECT COUNT(*) FROM devices')
-                    devices_count = cur.fetchone()[0]
-                except Exception:
-                    devices_count = 0
-            conn.close()
-            # Prefer the DB with more devices
-            if has_table and devices_count > best_devices:
-                best_devices = devices_count
-                best = path
-            elif best is None:
-                # Fallback to the first existing candidate
-                best = path
-        except Exception:
-            continue
-    return best or candidate_sync
-
-def get_db_connection():
-    global DB_PATH
-    if not DB_PATH:
-        DB_PATH = _resolve_db_path()
-    # Função agora só retorna conexão PostgreSQL
-    return psycopg2.connect(
-        host=PG_HOST, port=PG_PORT, dbname=PG_DB, user=PG_USER, password=PG_PASS
-    )
-
 def get_product_by_barcode(barcode: str) -> Optional[Dict]:
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cur.execute('SELECT barcode, name, price, promo FROM products WHERE barcode = %s', (barcode,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    if row:
-        return dict(row)
-    return None
+    try:
+        cur.execute('SELECT barcode, name, price, promo FROM products WHERE barcode = %s', (barcode,))
+        row = cur.fetchone()
+        if row:
+            try:
+                return dict(row)
+            except Exception as e:
+                logging.error(f"[DB][get_product_by_barcode] Erro ao decodificar linha: {row} - {e}")
+                return None
+        return None
+    except Exception as e:
+        logging.error(f"[DB][get_product_by_barcode] Erro na query: {e}")
+        return None
+    finally:
+        cur.close()
+        conn.close()
 
 
 def upsert_products(products: list):
@@ -136,12 +230,12 @@ def upsert_products(products: list):
                 price = 0.0
             promo = p.get('promo') or p.get('promocao') or None
             # detecta presença
-            cur.execute('SELECT 1 FROM products WHERE barcode = ?', (barcode,))
+            cur.execute('SELECT 1 FROM products WHERE barcode = %s', (barcode,))
             if cur.fetchone():
-                cur.execute('UPDATE products SET name = ?, price = ?, promo = ? WHERE barcode = ?', (name, price, promo, barcode))
+                cur.execute('UPDATE products SET name = %s, price = %s, promo = %s WHERE barcode = %s', (name, price, promo, barcode))
                 updated += 1
             else:
-                cur.execute('INSERT INTO products (barcode, name, price, promo) VALUES (?, ?, ?, ?)', (barcode, name, price, promo))
+                cur.execute('INSERT INTO products (barcode, name, price, promo) VALUES (%s, %s, %s, %s)', (barcode, name, price, promo))
                 inserted += 1
         except Exception:
             ignored += 1
@@ -174,9 +268,15 @@ def populate_example_data():
         ('7894443332221', 'Café Tradicional 500g', 13.99, 'Brinde Caneca'),
     ]
     for prod in example_products:
-        cur.execute('INSERT OR IGNORE INTO products (barcode, name, price, promo) VALUES (?, ?, ?, ?)', prod)
+        try:
+            cur.execute('INSERT INTO products (barcode, name, price, promo) VALUES (%s, %s, %s, %s) ON CONFLICT (barcode) DO NOTHING', prod)
+        except Exception:
+            pass
     # Usuário admin padrão: admin / admin123
-    cur.execute('INSERT OR IGNORE INTO admin_users (username, password) VALUES (?, ?)', ('admin', 'admin123'))
+    try:
+        cur.execute('INSERT INTO admin_users (username, password) VALUES (%s, %s) ON CONFLICT (username) DO NOTHING', ('admin', 'admin123'))
+    except Exception:
+        pass
     # Loga depois de inserir admin
     cur.execute('SELECT * FROM admin_users')
     logging.info(f"[DB] Usuários admin após popular: {cur.fetchall()}")
@@ -198,8 +298,8 @@ def verify_password(password: str, hashed: str) -> bool:
 # Compatível com senhas antigas (texto puro) e novas (hash)
 def authenticate_admin(username: str, password: str) -> bool:
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM admin_users WHERE username = ?', (username,))
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute('SELECT * FROM admin_users WHERE username = %s', (username,))
     user = cur.fetchone()
     conn.close()
     if not user:
@@ -218,23 +318,23 @@ def add_audit_log(device_id: int = None, device_name: str = None, action: str = 
     conn = get_db_connection()
     cur = conn.cursor()
     timestamp = datetime.utcnow().isoformat()
-    cur.execute('INSERT INTO audit_log (timestamp, device_id, device_name, action, details) VALUES (?, ?, ?, ?, ?)', 
+    cur.execute('INSERT INTO audit_log (timestamp, device_id, device_name, action, details) VALUES (%s, %s, %s, %s, %s)', 
                 (timestamp, device_id, device_name, action, details))
     conn.commit()
     conn.close()
 
 def get_audit_logs(limit: int = 50):
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT ?', (limit,))
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute('SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT %s', (limit,))
     rows = cur.fetchall()
     conn.close()
     return [dict(row) for row in rows]
 
 def get_device_audit_logs(device_id: int, limit: int = 20):
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM audit_log WHERE device_id = ? ORDER BY timestamp DESC LIMIT ?', (device_id, limit))
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute('SELECT * FROM audit_log WHERE device_id = %s ORDER BY timestamp DESC LIMIT %s', (device_id, limit))
     rows = cur.fetchall()
     conn.close()
     return [dict(row) for row in rows]
@@ -243,7 +343,7 @@ def get_device_audit_logs(device_id: int, limit: int = 20):
 # CRUD de lojas
 def get_all_stores():
     conn = get_db_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute('SELECT * FROM stores ORDER BY codigo')
     rows = cur.fetchall()
     conn.close()
@@ -258,27 +358,27 @@ def add_store(name: str, status: str = 'ativo'):
 def add_store_with_code(codigo: str, name: str, status: str = 'ativo'):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('INSERT INTO stores (codigo, name, status) VALUES (?, ?, ?)', (codigo, name, status))
-    conn.commit()
-    conn.close()
+    cur.execute('INSERT INTO stores (codigo, name, status) VALUES (%s, %s, %s)', (codigo, name, status))
     conn.commit()
     conn.close()
 
 def update_store(store_id: int, name: str, status: str):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('UPDATE stores SET name = ?, status = ? WHERE id = ?', (name, status, store_id))
+    cur.execute('UPDATE stores SET name = %s, status = %s WHERE id = %s', (name, status, store_id))
+    conn.commit()
+    conn.close()
 
 def update_store_code(store_id: int, codigo: str, name: str, status: str):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('UPDATE stores SET codigo = ?, name = ?, status = ? WHERE id = ?', (codigo, name, status, store_id))
+    cur.execute('UPDATE stores SET codigo = %s, name = %s, status = %s WHERE id = %s', (codigo, name, status, store_id))
     conn.commit()
     conn.close()
 def get_store_by_code(codigo: str):
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM stores WHERE codigo = ?', (codigo,))
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute('SELECT * FROM stores WHERE codigo = %s', (codigo,))
     row = cur.fetchone()
     conn.close()
     return dict(row) if row else None
@@ -289,7 +389,7 @@ def delete_store(store_id: int):
     conn = get_db_connection()
     cur = conn.cursor()
     logging.info(f"[DB] Deletando loja id={store_id}")
-    cur.execute('DELETE FROM stores WHERE id = ?', (store_id,))
+    cur.execute('DELETE FROM stores WHERE id = %s', (store_id,))
     conn.commit()
     conn.close()
 
@@ -297,21 +397,27 @@ def delete_store(store_id: int):
 def get_all_devices():
     from datetime import datetime, timedelta
     conn = get_db_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute('SELECT * FROM devices')
     rows = cur.fetchall()
     conn.close()
     devices = []
-    now = datetime.utcnow()
+    from datetime import timezone
+    now = datetime.utcnow().replace(tzinfo=timezone.utc, microsecond=0)
     for row in rows:
         device = dict(row)
         last_sync = device.get('last_sync')
-        # Considera online se o último heartbeat (last_sync) foi há menos de 120 segundos
-        if last_sync:
+        if isinstance(last_sync, str) and last_sync:
             try:
                 dt = datetime.fromisoformat(last_sync)
-                device['online'] = int((now - dt) < timedelta(seconds=120))
-            except Exception:
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                dt = dt.replace(microsecond=0)
+                diff = (now - dt).total_seconds()
+                device['online'] = int(diff < 30)
+                logging.debug(f"[ONLINE-CHECK] Device {device.get('identifier')} diff={diff}s now={now.isoformat()} last_sync={dt.isoformat()} online={device['online']}")
+            except Exception as e:
+                logging.warning(f"[ONLINE-CHECK] Erro ao calcular online: {e}")
                 device['online'] = 0
         else:
             device['online'] = 0
@@ -325,8 +431,8 @@ def add_device(store_id: int, name: str, status: str = 'ativo', last_sync: str =
     if not identifier:
         import uuid
         identifier = str(uuid.uuid4())
-    cur.execute('INSERT INTO devices (store_id, name, status, last_sync, online, identifier) VALUES (?, ?, ?, ?, ?, ?)', (store_id, name, status, last_sync, online, identifier))
-    device_id = cur.lastrowid
+    cur.execute('INSERT INTO devices (store_id, name, status, last_sync, online, identifier) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id', (store_id, name, status, last_sync, online, identifier))
+    device_id = cur.fetchone()[0]
     conn.commit()
     conn.close()
     # Log de auditoria
@@ -335,9 +441,9 @@ def add_device(store_id: int, name: str, status: str = 'ativo', last_sync: str =
 
 def update_device(device_id: int, name: str = None, status: str = None, last_sync: str = None, online: int = None, store_id: int = None, identifier: str = None):
     conn = get_db_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     # Busca valores atuais
-    cur.execute('SELECT name, status, store_id, identifier FROM devices WHERE id = ?', (device_id,))
+    cur.execute('SELECT name, status, store_id, identifier FROM devices WHERE id = %s', (device_id,))
     row = cur.fetchone()
     current_name = row['name'] if row else ''
     current_status = row['status'] if row else ''
@@ -350,10 +456,10 @@ def update_device(device_id: int, name: str = None, status: str = None, last_syn
     if identifier not in (None, '', current_identifier):
         conn_check = get_db_connection()
         cur_check = conn_check.cursor()
-        cur_check.execute('SELECT id FROM devices WHERE identifier = ?', (identifier,))
+        cur_check.execute('SELECT id FROM devices WHERE identifier = %s', (identifier,))
         found = cur_check.fetchone()
         conn_check.close()
-        if found and found['id'] != device_id:
+        if found and (found[0] if not isinstance(found, dict) else found['id']) != device_id:
             raise Exception(f"Já existe outro equipamento com o identificador {identifier}.")
     # Nunca remove ou sobrescreve identifier de outro device
     name = name if name not in (None, '') else current_name
@@ -366,16 +472,16 @@ def update_device(device_id: int, name: str = None, status: str = None, last_syn
     else:
         identifier = identifier
     if online is not None:
-        cur.execute('UPDATE devices SET name = ?, status = ?, last_sync = ?, online = ?, store_id = ?, identifier = ? WHERE id = ?', (name, status, last_sync, online, store_id, identifier, device_id))
+        cur.execute('UPDATE devices SET name = %s, status = %s, last_sync = %s, online = %s, store_id = %s, identifier = %s WHERE id = %s', (name, status, last_sync, online, store_id, identifier, device_id))
     else:
-        cur.execute('UPDATE devices SET name = ?, status = ?, last_sync = ?, store_id = ?, identifier = ? WHERE id = ?', (name, status, last_sync, store_id, identifier, device_id))
+        cur.execute('UPDATE devices SET name = %s, status = %s, last_sync = %s, store_id = %s, identifier = %s WHERE id = %s', (name, status, last_sync, store_id, identifier, device_id))
     conn.commit()
     conn.close()
 # Novo endpoint: atualizar status online (heartbeat)
 def set_device_online(identifier: str):
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT id FROM devices WHERE identifier = ?', (identifier,))
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute('SELECT id FROM devices WHERE identifier = %s', (identifier,))
     row = cur.fetchone()
     from datetime import datetime
     now = datetime.utcnow().isoformat()
@@ -385,66 +491,19 @@ def set_device_online(identifier: str):
         update_device(device_id, last_sync=now, online=1)
         logging.info(f"[HEARTBEAT] Device online: id={device_id}, identifier={identifier}")
     else:
-        # Garante que não existe outro device com esse identifier (unicidade)
-        # Busca device com o identifier informado
-        cur.execute('SELECT id FROM devices WHERE identifier = ?', (identifier,))
-        row = cur.fetchone()
-        from datetime import datetime
-        now = datetime.utcnow().isoformat()
-        if row:
-            device_id = row['id']
-            # Só atualiza online e last_sync, nunca mexe no identifier
-            update_device(device_id, last_sync=now, online=1)
-            logging.info(f"[HEARTBEAT] Device online: id={device_id}, identifier={identifier}")
-        else:
-            # Não existe device com esse identifier, cria novo
-            logging.warning(f"[HEARTBEAT] Device NOT FOUND for identifier={identifier}. Criando novo device.")
-            default_name = f"Novo Equipamento {identifier[:8]}"
-            cur.execute('SELECT id FROM stores ORDER BY id LIMIT 1')
-            store_row = cur.fetchone()
-            default_store_id = store_row['id'] if store_row else None
-            from database import add_device
-            add_device(default_store_id, default_name, identifier=identifier, last_sync=now, online=1)
-
-def get_device_by_identifier(identifier: str):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM devices WHERE identifier = ?', (identifier,))
-    row = cur.fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-def update_device_catalog_sync(identifier: str, total_products: int = None, timestamp: str = None):
-    """Atualiza colunas de sincronização de catálogo por identifier."""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    # Define timestamp
-    if not timestamp:
-        from datetime import datetime
-        timestamp = datetime.utcnow().isoformat()
-    # Garante que o device existe
-    cur.execute('SELECT id FROM devices WHERE identifier = ?', (identifier,))
-    row = cur.fetchone()
-    if not row:
-        # cria placeholder
+        # Não existe device com esse identifier, cria novo
+        logging.warning(f"[HEARTBEAT] Device NOT FOUND for identifier={identifier}. Criando novo device.")
         default_name = f"Novo Equipamento {identifier[:8]}"
         cur.execute('SELECT id FROM stores ORDER BY id LIMIT 1')
         store_row = cur.fetchone()
-        default_store_id = store_row['id'] if store_row else None
-        cur.execute('INSERT INTO devices (store_id, name, status, last_sync, online, identifier, last_catalog_sync, catalog_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                    (default_store_id, default_name, 'ativo', timestamp, 1, identifier, timestamp, total_products or 0))
-        conn.commit()
-        conn.close()
-        return
-    # Atualiza existentes
-    cur.execute('UPDATE devices SET last_catalog_sync = ?, catalog_count = ? WHERE identifier = ?', (timestamp, total_products, identifier))
-    conn.commit()
+        default_store_id = (store_row['id'] if store_row else None)
+        add_device(default_store_id, default_name, identifier=identifier, last_sync=now, online=1)
     conn.close()
 
 def set_device_offline(device_id: int):
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT name FROM devices WHERE id = ?', (device_id,))
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute('SELECT name FROM devices WHERE id = %s', (device_id,))
     result = cur.fetchone()
     device_name = result['name'] if result else f'Device {device_id}'
     conn.close()
@@ -454,22 +513,71 @@ def set_device_offline(device_id: int):
 def delete_device(device_id: int):
     # Busca nome do device antes de deletar
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT name FROM devices WHERE id = ?', (device_id,))
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute('SELECT name FROM devices WHERE id = %s', (device_id,))
     result = cur.fetchone()
     device_name = result['name'] if result else f'Device {device_id}'
     logging.info(f"[DB] Deletando device id={device_id} nome={device_name}")
-    cur.execute('DELETE FROM devices WHERE id = ?', (device_id,))
+    cur.execute('DELETE FROM devices WHERE id = %s', (device_id,))
     conn.commit()
     conn.close()
     # Log de auditoria
     add_audit_log(device_id, device_name, 'DEVICE_DELETED', 'Dispositivo removido do sistema')
 
 
+# Helpers de devices
+def get_device_by_identifier(identifier: str) -> Optional[Dict]:
+    """Retorna um device pelo identifier ou None."""
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute('SELECT * FROM devices WHERE identifier = %s', (identifier,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+def update_device_catalog_sync(identifier: str, total_products: int = 0, timestamp: Optional[str] = None):
+    """Atualiza métricas de catálogo de um device PWA.
+    - Garante last_sync/online via set_device_online
+    - Tenta atualizar catalog_count e last_catalog_sync (se colunas existirem). Ignora se não existirem.
+    """
+    from datetime import datetime as _dt
+    ts = timestamp or _dt.utcnow().isoformat()
+    # Garante presença do device + last_sync/online
+    try:
+        set_device_online(identifier)
+    except Exception:
+        pass
+    # Atualiza métricas opcionais
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        # Primeiro tenta com last_catalog_sync/catalog_count
+        try:
+            cur.execute(
+                'UPDATE devices SET last_catalog_sync = %s, catalog_count = %s WHERE identifier = %s',
+                (ts, int(total_products or 0), identifier)
+            )
+            conn.commit()
+        except Exception:
+            # Fallback: atualiza apenas last_sync
+            try:
+                cur.execute('UPDATE devices SET last_sync = %s WHERE identifier = %s', (ts, identifier))
+                conn.commit()
+            except Exception:
+                pass
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 # Exportador de produtos para .txt
 def export_products_to_txt(txt_path: str = 'produtos.txt'):
     conn = get_db_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute('SELECT barcode, name, price, promo FROM products')
     rows = cur.fetchall()
     conn.close()
@@ -484,7 +592,7 @@ def export_products_to_txt(txt_path: str = 'produtos.txt'):
 
 def debug_list_device_identifiers():
     conn = get_db_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute('SELECT id, identifier, name FROM devices')
     rows = cur.fetchall()
     conn.close()
@@ -498,13 +606,13 @@ def upsert_agent_status(agent_id: str, loja_codigo: str = None, loja_nome: str =
         cur = conn.cursor()
         cur.execute('''
             INSERT INTO agents_status (agent_id, loja_codigo, loja_nome, status, last_update, ip)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(agent_id) DO UPDATE SET
-                loja_codigo=excluded.loja_codigo,
-                loja_nome=excluded.loja_nome,
-                status=excluded.status,
-                last_update=excluded.last_update,
-                ip=excluded.ip
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (agent_id) DO UPDATE SET
+                loja_codigo=EXCLUDED.loja_codigo,
+                loja_nome=EXCLUDED.loja_nome,
+                status=EXCLUDED.status,
+                last_update=EXCLUDED.last_update,
+                ip=EXCLUDED.ip
         ''', (agent_id, loja_codigo, loja_nome, status, last_update, ip))
         conn.commit()
         conn.close()
@@ -518,7 +626,7 @@ def replace_agent_stores(agent_id: str, lojas: list):
         agent_id = normalize_agent_id(agent_id)
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute('DELETE FROM agent_stores WHERE agent_id = ?', (agent_id,))
+        cur.execute('DELETE FROM agent_stores WHERE agent_id = %s', (agent_id,))
         for lj in lojas or []:
             if not isinstance(lj, dict):
                 continue
@@ -526,7 +634,11 @@ def replace_agent_stores(agent_id: str, lojas: list):
             nome = (lj.get('nome') or lj.get('name') or '').strip()
             if not codigo and not nome:
                 continue
-            cur.execute('INSERT OR REPLACE INTO agent_stores (agent_id, loja_codigo, loja_nome) VALUES (?, ?, ?)', (agent_id, codigo or None, nome or None))
+            cur.execute(
+                'INSERT INTO agent_stores (agent_id, loja_codigo, loja_nome) VALUES (%s, %s, %s) '
+                'ON CONFLICT (agent_id, loja_codigo) DO UPDATE SET loja_nome = EXCLUDED.loja_nome',
+                (agent_id, codigo or None, nome or None)
+            )
         conn.commit()
         conn.close()
     except Exception as e:
@@ -536,15 +648,15 @@ def replace_agent_stores(agent_id: str, lojas: list):
 def get_agent_stores(agent_id: str):
     agent_id = normalize_agent_id(agent_id)
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT loja_codigo, loja_nome FROM agent_stores WHERE agent_id = ? ORDER BY loja_codigo', (agent_id,))
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute('SELECT loja_codigo, loja_nome FROM agent_stores WHERE agent_id = %s ORDER BY loja_codigo', (agent_id,))
     rows = cur.fetchall()
     conn.close()
     return [dict(row) for row in rows]
 
 def get_all_agents_status():
     conn = get_db_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute('SELECT * FROM agents_status')
     rows = cur.fetchall()
     conn.close()
@@ -560,16 +672,16 @@ def delete_agent_status(agent_id: str):
     agent_id = normalize_agent_id(agent_id)
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('DELETE FROM agents_status WHERE agent_id = ?', (agent_id,))
+    cur.execute('DELETE FROM agents_status WHERE agent_id = %s', (agent_id,))
     conn.commit()
     conn.close()
 
 def update_agent_status(agent_id: str, loja_codigo: str = None, loja_nome: str = None, status: str = None, ip: str = None, last_update: str = None):
     agent_id = normalize_agent_id(agent_id)
     conn = get_db_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     # Busca valores atuais
-    cur.execute('SELECT loja_codigo, loja_nome, status, last_update, ip FROM agents_status WHERE agent_id = ?', (agent_id,))
+    cur.execute('SELECT loja_codigo, loja_nome, status, last_update, ip FROM agents_status WHERE agent_id = %s', (agent_id,))
     row = cur.fetchone()
     if not row:
         # Se não existir, cria com os dados fornecidos
@@ -583,9 +695,9 @@ def update_agent_status(agent_id: str, loja_codigo: str = None, loja_nome: str =
     new_last_update = last_update if last_update is not None else current.get('last_update')
     new_ip = ip if ip is not None else current.get('ip')
     cur.execute('''
-        UPDATE agents_status
-           SET loja_codigo = ?, loja_nome = ?, status = ?, last_update = ?, ip = ?
-         WHERE agent_id = ?
+            UPDATE agents_status
+                 SET loja_codigo = %s, loja_nome = %s, status = %s, last_update = %s, ip = %s
+             WHERE agent_id = %s
     ''', (new_loja_codigo, new_loja_nome, new_status, new_last_update, new_ip, agent_id))
     conn.commit()
     conn.close()
@@ -688,23 +800,23 @@ def dedupe_agents_by_ip():
     """
     try:
         conn = get_db_connection()
-        cur = conn.cursor()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
             "SELECT ip, COUNT(*) as c FROM agents_status "
             "WHERE ip IS NOT NULL AND TRIM(ip) <> '' "
-            "GROUP BY ip HAVING c > 1"
+            "GROUP BY ip HAVING COUNT(*) > 1"
         )
         groups = cur.fetchall()
         for g in groups:
-            ip = g['ip']
+            ip = g['ip'] if isinstance(g, dict) else g[0]
             # Determina id canônico
-            cur.execute('SELECT agent_id, last_update FROM agents_status WHERE ip = ?', (ip,))
+            cur.execute('SELECT agent_id, last_update FROM agents_status WHERE ip = %s', (ip,))
             rows = cur.fetchall()
             canonical_id = None
             best_dt = None
             for r in rows:
-                dt = _parse_dt(r['last_update'])
-                aid = normalize_agent_id(r['agent_id'])
+                dt = _parse_dt(r['last_update'] if isinstance(r, dict) else r[1])
+                aid = normalize_agent_id(r['agent_id'] if isinstance(r, dict) else r[0])
                 if dt and (best_dt is None or dt > best_dt):
                     best_dt = dt
                     canonical_id = aid
@@ -714,48 +826,59 @@ def dedupe_agents_by_ip():
                 continue
             # Garante registro canônico atualizado
             cur.execute(
-                'SELECT loja_codigo, loja_nome, status, last_update, ip FROM agents_status WHERE agent_id = ?',
+                'SELECT loja_codigo, loja_nome, status, last_update, ip FROM agents_status WHERE agent_id = %s',
                 (canonical_id,)
             )
             best = cur.fetchone()
             if best:
                 upsert_agent_status(
                     canonical_id,
-                    best['loja_codigo'],
-                    best['loja_nome'],
-                    best['status'],
-                    best['last_update'],
-                    best['ip']
+                    (best['loja_codigo'] if isinstance(best, dict) else best[0]),
+                    (best['loja_nome'] if isinstance(best, dict) else best[1]),
+                    (best['status'] if isinstance(best, dict) else best[2]),
+                    (best['last_update'] if isinstance(best, dict) else best[3]),
+                    (best['ip'] if isinstance(best, dict) else best[4])
                 )
             # Migra filhos e remove duplicados com segurança (evita UNIQUE conflicts)
-            cur.execute('SELECT agent_id FROM agents_status WHERE ip = ?', (ip,))
+            cur.execute('SELECT agent_id FROM agents_status WHERE ip = %s', (ip,))
             others = cur.fetchall()
             for r in others:
-                raw = r['agent_id']
+                raw = r['agent_id'] if isinstance(r, dict) else r[0]
                 if not raw:
                     continue
                 if normalize_agent_id(raw) == canonical_id:
                     continue
                 # Copia lojas da origem para o canônico (upsert por (agent_id, loja_codigo))
-                cur.execute('SELECT loja_codigo, loja_nome FROM agent_stores WHERE agent_id = ?', (raw,))
+                cur.execute('SELECT loja_codigo, loja_nome FROM agent_stores WHERE agent_id = %s', (raw,))
                 stores_rows = cur.fetchall()
                 for s in stores_rows or []:
+                    sc = s if isinstance(s, dict) else {'loja_codigo': s[0], 'loja_nome': s[1]}
                     cur.execute(
-                        'INSERT OR REPLACE INTO agent_stores (agent_id, loja_codigo, loja_nome) VALUES (?, ?, ?)',
-                        (canonical_id, s['loja_codigo'], s['loja_nome'])
+                        'INSERT INTO agent_stores (agent_id, loja_codigo, loja_nome) VALUES (%s, %s, %s) '
+                        'ON CONFLICT (agent_id, loja_codigo) DO UPDATE SET loja_nome = EXCLUDED.loja_nome',
+                        (canonical_id, sc['loja_codigo'], sc['loja_nome'])
                     )
                 # Copia devices da origem para o canônico (upsert por (agent_id, identifier))
-                cur.execute('SELECT identifier, name, tipo, status, last_update, ip, last_catalog_sync, catalog_count, store_code, store_name FROM agent_devices WHERE agent_id = ?', (raw,))
+                cur.execute('SELECT identifier, name, tipo, status, last_update, ip, last_catalog_sync, catalog_count, store_code, store_name FROM agent_devices WHERE agent_id = %s', (raw,))
                 dev_rows = cur.fetchall()
                 for d in dev_rows or []:
+                    dd = d if isinstance(d, dict) else {
+                        'identifier': d[0], 'name': d[1], 'tipo': d[2], 'status': d[3], 'last_update': d[4], 'ip': d[5],
+                        'last_catalog_sync': d[6], 'catalog_count': d[7], 'store_code': d[8], 'store_name': d[9]
+                    }
                     cur.execute(
-                        'INSERT OR REPLACE INTO agent_devices (agent_id, identifier, name, tipo, status, last_update, ip, last_catalog_sync, catalog_count, store_code, store_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                        (canonical_id, d['identifier'], d['name'], d['tipo'], d['status'], d['last_update'], d['ip'], d['last_catalog_sync'], d['catalog_count'], d['store_code'], d['store_name'])
+                        'INSERT INTO agent_devices (agent_id, identifier, name, tipo, status, last_update, ip, last_catalog_sync, catalog_count, store_code, store_name) '
+                        'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
+                        'ON CONFLICT (agent_id, identifier) DO UPDATE SET '
+                        'name=EXCLUDED.name, tipo=EXCLUDED.tipo, status=EXCLUDED.status, last_update=EXCLUDED.last_update, '
+                        'ip=EXCLUDED.ip, last_catalog_sync=EXCLUDED.last_catalog_sync, catalog_count=EXCLUDED.catalog_count, '
+                        'store_code=EXCLUDED.store_code, store_name=EXCLUDED.store_name',
+                        (canonical_id, dd['identifier'], dd['name'], dd['tipo'], dd['status'], dd['last_update'], dd['ip'], dd['last_catalog_sync'], dd['catalog_count'], dd['store_code'], dd['store_name'])
                     )
                 # Remove origem após copiar
-                cur.execute('DELETE FROM agent_stores WHERE agent_id = ?', (raw,))
-                cur.execute('DELETE FROM agent_devices WHERE agent_id = ?', (raw,))
-                cur.execute('DELETE FROM agents_status WHERE agent_id = ?', (raw,))
+                cur.execute('DELETE FROM agent_stores WHERE agent_id = %s', (raw,))
+                cur.execute('DELETE FROM agent_devices WHERE agent_id = %s', (raw,))
+                cur.execute('DELETE FROM agents_status WHERE agent_id = %s', (raw,))
         conn.commit()
         conn.close()
     except Exception as e:
@@ -774,8 +897,8 @@ def get_recent_agent_by_ip(ip: str, window_seconds: int = 300) -> Optional[str]:
         if not ip:
             return None
         conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('SELECT agent_id, last_update FROM agents_status WHERE ip = ?', (ip,))
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute('SELECT agent_id, last_update FROM agents_status WHERE ip = %s', (ip,))
         rows = cur.fetchall()
         conn.close()
         if not rows:
@@ -799,7 +922,7 @@ def get_recent_agent_by_ip(ip: str, window_seconds: int = 300) -> Optional[str]:
 
 def get_all_users():
     conn = get_db_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute('SELECT * FROM admin_users')
     rows = cur.fetchall()
     conn.close()
@@ -815,7 +938,7 @@ def reassign_orphan_agent_devices_by_ip():
     """
     try:
         conn = get_db_connection()
-        cur = conn.cursor()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         # Seleciona devices cujo agent_id não está presente em agents_status
         cur.execute(
             'SELECT d.agent_id, d.identifier, d.name, d.tipo, d.status, d.last_update, d.ip, '
@@ -837,12 +960,15 @@ def reassign_orphan_agent_devices_by_ip():
                 continue
             # Copia para o canônico e remove origem
             cur.execute(
-                'INSERT OR REPLACE INTO agent_devices '
+                'INSERT INTO agent_devices '
                 ' (agent_id, identifier, name, tipo, status, last_update, ip, last_catalog_sync, catalog_count, store_code, store_name) '
-                ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
+                'ON CONFLICT (agent_id, identifier) DO UPDATE SET '
+                'name=EXCLUDED.name, tipo=EXCLUDED.tipo, status=EXCLUDED.status, last_update=EXCLUDED.last_update, '
+                'ip=EXCLUDED.ip, last_catalog_sync=EXCLUDED.last_catalog_sync, catalog_count=EXCLUDED.catalog_count, store_code=EXCLUDED.store_code, store_name=EXCLUDED.store_name',
                 (normalize_agent_id(canonical_id), r['identifier'], r['name'], r['tipo'], r['status'], r['last_update'], r['ip'], r['last_catalog_sync'], r['catalog_count'], r['store_code'], r['store_name'])
             )
-            cur.execute('DELETE FROM agent_devices WHERE agent_id = ? AND identifier = ?', (r['agent_id'], r['identifier']))
+            cur.execute('DELETE FROM agent_devices WHERE agent_id = %s AND identifier = %s', (r['agent_id'], r['identifier']))
             moved += 1
         if moved:
             conn.commit()
@@ -857,17 +983,17 @@ def upsert_agent_device(agent_id: str, identifier: str, name: str = None, tipo: 
     cur = conn.cursor()
     cur.execute('''
     INSERT INTO agent_devices (agent_id, identifier, name, tipo, status, last_update, ip, last_catalog_sync, catalog_count, store_code, store_name)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(agent_id, identifier) DO UPDATE SET
-            name=COALESCE(excluded.name, agent_devices.name),
-            tipo=COALESCE(excluded.tipo, agent_devices.tipo),
-            status=COALESCE(excluded.status, agent_devices.status),
-            last_update=COALESCE(excluded.last_update, agent_devices.last_update),
-            ip=COALESCE(excluded.ip, agent_devices.ip),
-            last_catalog_sync=COALESCE(excluded.last_catalog_sync, agent_devices.last_catalog_sync),
-        catalog_count=COALESCE(excluded.catalog_count, agent_devices.catalog_count),
-        store_code=COALESCE(excluded.store_code, agent_devices.store_code),
-        store_name=COALESCE(excluded.store_name, agent_devices.store_name)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (agent_id, identifier) DO UPDATE SET
+            name=COALESCE(EXCLUDED.name, agent_devices.name),
+            tipo=COALESCE(EXCLUDED.tipo, agent_devices.tipo),
+            status=COALESCE(EXCLUDED.status, agent_devices.status),
+            last_update=COALESCE(EXCLUDED.last_update, agent_devices.last_update),
+            ip=COALESCE(EXCLUDED.ip, agent_devices.ip),
+            last_catalog_sync=COALESCE(EXCLUDED.last_catalog_sync, agent_devices.last_catalog_sync),
+            catalog_count=COALESCE(EXCLUDED.catalog_count, agent_devices.catalog_count),
+            store_code=COALESCE(EXCLUDED.store_code, agent_devices.store_code),
+            store_name=COALESCE(EXCLUDED.store_name, agent_devices.store_name)
     ''', (agent_id, identifier, name, tipo, status, last_update, ip, last_catalog_sync, catalog_count, store_code, store_name))
     conn.commit()
     conn.close()
@@ -898,8 +1024,8 @@ def get_agent_devices(agent_id: str):
     """
     agent_id = normalize_agent_id(agent_id)
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM agent_devices WHERE agent_id = ? ORDER BY name, identifier', (agent_id,))
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute('SELECT * FROM agent_devices WHERE agent_id = %s ORDER BY name, identifier', (agent_id,))
     rows = cur.fetchall()
     conn.close()
     devices = []
@@ -945,23 +1071,23 @@ def delete_agent_device(agent_id: str, identifier: str):
     agent_id = normalize_agent_id(agent_id)
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('DELETE FROM agent_devices WHERE agent_id = ? AND identifier = ?', (agent_id, identifier))
+    cur.execute('DELETE FROM agent_devices WHERE agent_id = %s AND identifier = %s', (agent_id, identifier))
     conn.commit()
     conn.close()
 
 def add_user(username: str, password: str, role: str = 'operador', store_id: int = None, permissoes: str = None):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('INSERT INTO admin_users (username, password, role, store_id, permissoes) VALUES (?, ?, ?, ?, ?)',
+    cur.execute('INSERT INTO admin_users (username, password, role, store_id, permissoes) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (username) DO NOTHING',
                 (username, password, role, store_id, permissoes))
     conn.commit()
     conn.close()
 
 def update_user(username: str, password: str = None, role: str = None, store_id: int = None, permissoes: str = None):
     conn = get_db_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     # Busca valores atuais
-    cur.execute('SELECT password, role, store_id, permissoes FROM admin_users WHERE username = ?', (username,))
+    cur.execute('SELECT password, role, store_id, permissoes FROM admin_users WHERE username = %s', (username,))
     row = cur.fetchone()
     current_password = row['password'] if row else None
     current_role = row['role'] if row else None
@@ -971,7 +1097,7 @@ def update_user(username: str, password: str = None, role: str = None, store_id:
     role = role if role else current_role
     store_id = store_id if store_id is not None else current_store_id
     permissoes = permissoes if permissoes is not None else current_permissoes
-    cur.execute('UPDATE admin_users SET password = ?, role = ?, store_id = ?, permissoes = ? WHERE username = ?',
+    cur.execute('UPDATE admin_users SET password = %s, role = %s, store_id = %s, permissoes = %s WHERE username = %s',
                 (password, role, store_id, permissoes, username))
     conn.commit()
     conn.close()
@@ -979,6 +1105,6 @@ def update_user(username: str, password: str = None, role: str = None, store_id:
 def delete_user(username: str):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('DELETE FROM admin_users WHERE username = ?', (username,))
+    cur.execute('DELETE FROM admin_users WHERE username = %s', (username,))
     conn.commit()
     conn.close()

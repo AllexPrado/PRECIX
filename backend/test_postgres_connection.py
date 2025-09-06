@@ -3,7 +3,7 @@ import psycopg2
 host = "localhost"
 port = "5432"
 dbname = "precix"
-user = "postgres"
+user = "precix_user"
 password = "precix2025"
 
 print(f"host: {repr(host)}")
@@ -17,7 +17,7 @@ try:
         host="localhost",
         port="5432",
         dbname="precix",
-        user="postgres",
+        user="precix_user",
         password="precix2025"
     )
     print("Conexão com PostgreSQL bem-sucedida!")

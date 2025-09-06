@@ -1,3 +1,10 @@
+## Segurança e variáveis de ambiente
+
+- Nunca comite senhas/segredos no repositório.
+- Use o arquivo `.env` local (copie de `.env.example`) para configurar `PRECIX_PG_USER` e `PRECIX_PG_PASS`.
+- O backend tenta carregar `.env` (se `python-dotenv` estiver instalado) e também lê variáveis do ambiente do processo.
+- Em produção, use secret stores (GitHub Actions secrets, Azure Key Vault, etc.).
+
 # PreciX – Sistema Profissional de Consulta de Preços
 
 Projeto completo para totens/terminais de consulta de preços em supermercados, com painel administrativo, funcionamento offline e integração moderna.
