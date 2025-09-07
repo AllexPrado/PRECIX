@@ -38,6 +38,11 @@
         <h2>Gerenciar Equipamentos</h2>
         <button @click="$router.back()">&larr; Voltar</button>
       </header>
+      <div class="summary-row" v-if="deviceSummary">
+        <span class="chip total">Total: {{ deviceSummary.total }}</span>
+        <span class="chip online">Online: {{ deviceSummary.online }}</span>
+        <span class="chip offline">Offline: {{ deviceSummary.offline }}</span>
+      </div>
       <form @submit.prevent="addDevice">
         <select v-model="selectedStore" required>
           <option disabled value="">Selecione a loja</option>
@@ -114,18 +119,27 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
-import { getUserRole } from '../auth.js'
-import { api } from '../apiBase.js'
+
+import { ref, computed, onMounted } from 'vue'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 import relativeTime from 'dayjs/plugin/relativeTime'
-import ptBr from 'dayjs/locale/pt-br'
+import timezone from 'dayjs/plugin/timezone'
+import 'dayjs/locale/pt-br'
+import { getUserRole } from '../auth.js'
+import { api } from '../apiBase.js'
 dayjs.extend(utc)
+dayjs.extend(timezone)
 dayjs.extend(relativeTime)
-dayjs.locale(ptBr)
+dayjs.locale('pt-br')
 
 const devices = ref([])
+const deviceSummary = computed(() => {
+  const total = devices.value.length
+  const online = devices.value.filter(d => d.online).length
+  const offline = total - online
+  return { total, online, offline }
+})
 const stores = ref([])
 const newDevice = ref('')
 const newDeviceIdentifier = ref('')
@@ -197,14 +211,15 @@ const filteredDevices = computed(() => {
   if (userRole.value === 'operador' && userStoreId.value) {
     list = list.filter(device => String(device.store_id) === String(userStoreId.value))
   }
-  return list.filter(device => {
-    if (filterName.value && !device.name.toLowerCase().includes(filterName.value.toLowerCase())) {
+  // Filtros
+  list = list.filter(device => {
+    if (filterName.value && device.name && !device.name.toLowerCase().includes(filterName.value.toLowerCase())) {
       return false
     }
     if (filterStore.value && device.store_id !== filterStore.value) {
       return false
     }
-    if (filterStatus.value) {
+    if (filterStatus.value && ['online','offline','ativo','inativo'].includes(filterStatus.value)) {
       if (filterStatus.value === 'online' && !device.online) return false
       if (filterStatus.value === 'offline' && device.online) return false
       if (filterStatus.value === 'ativo' && device.status !== 'ativo') return false
@@ -214,6 +229,11 @@ const filteredDevices = computed(() => {
       return false
     }
     return true
+  })
+  // Ordena: online primeiro, depois offline, ambos por nome
+  return list.slice().sort((a, b) => {
+    if (a.online !== b.online) return b.online - a.online
+    return (a.name || '').localeCompare(b.name || '')
   })
 })
 
@@ -232,10 +252,14 @@ function getStoreName(id) {
 async function fetchDevices() {
   try {
     const res = await fetch(api('/admin/devices'))
-    if (!res.ok) { devices.value = []; return }
+    if (!res.ok) { devices.value = []; console.error('Erro ao buscar equipamentos:', res.status); return }
     const data = await res.json().catch(() => ([]))
+    console.log('Equipamentos recebidos:', data)
     devices.value = Array.isArray(data) ? data : []
-  } catch { devices.value = [] }
+  } catch (err) {
+    devices.value = []
+    console.error('Erro na requisição de equipamentos:', err)
+  }
 }
 
 async function fetchStores() {
@@ -270,10 +294,15 @@ async function deleteDevice(id) {
 }
 
 function formatLastHeartbeat(ts) {
-  return dayjs(ts).format('DD/MM/YYYY HH:mm:ss')
+  // Sempre interpreta como UTC e converte para GMT-3 na exibição
+  if (!ts) return '---'
+  const d = dayjs.utc(ts).tz('America/Sao_Paulo')
+  return d.isValid() ? d.format('ddd, DD/MM/YYYY HH:mm:ss') : String(ts)
 }
 function fromNow(ts) {
-  return dayjs(ts).fromNow()
+  if (!ts) return ''
+  const d = dayjs.utc(ts).tz('America/Sao_Paulo')
+  return d.isValid() ? d.fromNow() : ''
 }
 
 function openEvents(identifier) {
@@ -284,19 +313,46 @@ function openEvents(identifier) {
 
 function offlineSeconds(device) {
   if (!device.last_sync) return 9999;
-  const now = dayjs.utc();
-  const last = dayjs(device.last_sync).utc();
+  const now = dayjs.utc().tz('America/Sao_Paulo');
+  const last = dayjs.utc(device.last_sync).tz('America/Sao_Paulo');
   return Math.round(now.diff(last, 'second', true));
 }
 
 onMounted(() => {
   fetchDevices()
   fetchStores()
+  clearFilters()
   setInterval(fetchDevices, 5000)
 })
 </script>
 
 <style scoped>
+.summary-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.chip {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 1em;
+  font-weight: 600;
+  background: #e6f7ff;
+  color: #0d47a1;
+}
+.chip.online {
+  background: #e6ffe6;
+  color: #2e7d32;
+}
+.chip.offline {
+  background: #ffeaea;
+  color: #c62828;
+}
+.chip.total {
+  background: #e6f0ff;
+  color: #1976d2;
+}
 .device-manager-bg {
   min-height: 100vh;
   background: #fff3e0;
@@ -329,7 +385,7 @@ form {
   background: #f8f9fa;
   border-radius: 12px;
   padding: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 32px; /* margem maior para separar do bloco de equipamentos */
   border: 1px solid #e0e0e0;
 }
 .filters h3 {

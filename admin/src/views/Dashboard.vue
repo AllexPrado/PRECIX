@@ -32,10 +32,15 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
-import dayjs from 'dayjs'
-import relativeTime from 'dayjs/plugin/relativeTime'
-import 'dayjs/locale/pt-br'
 
+
+import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
+import relativeTime from 'dayjs/plugin/relativeTime'
+import timezone from 'dayjs/plugin/timezone'
+import 'dayjs/locale/pt-br'
+dayjs.extend(utc)
+dayjs.extend(timezone)
 dayjs.extend(relativeTime)
 dayjs.locale('pt-br')
 
@@ -43,12 +48,12 @@ const status = ref({})
 
 function formatTS(ts) {
   if (!ts) return '---'
-  const d = dayjs(ts)
-  return d.isValid() ? d.format('DD/MM/YYYY HH:mm:ss') : String(ts)
+  const d = dayjs.utc(ts).tz('America/Sao_Paulo')
+  return d.isValid() ? d.format('ddd, DD/MM/YYYY HH:mm:ss') : String(ts)
 }
 function fromNow(ts) {
   if (!ts) return ''
-  const d = dayjs(ts)
+  const d = dayjs.utc(ts).tz('America/Sao_Paulo')
   return d.isValid() ? d.fromNow() : ''
 }
 

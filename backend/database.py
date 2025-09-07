@@ -403,24 +403,48 @@ def get_all_devices():
     conn.close()
     devices = []
     from datetime import timezone
-    now = datetime.utcnow().replace(tzinfo=timezone.utc, microsecond=0)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
     for row in rows:
         device = dict(row)
         last_sync = device.get('last_sync')
-        if isinstance(last_sync, str) and last_sync:
+        dt = None
+        if last_sync:
             try:
-                dt = datetime.fromisoformat(last_sync)
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                dt = dt.replace(microsecond=0)
-                diff = (now - dt).total_seconds()
-                device['online'] = int(diff < 30)
-                logging.debug(f"[ONLINE-CHECK] Device {device.get('identifier')} diff={diff}s now={now.isoformat()} last_sync={dt.isoformat()} online={device['online']}")
+                # Aceita datetime, string ISO, string sem microsegundos, string com timezone, etc
+                if isinstance(last_sync, str):
+                    try:
+                        dt = datetime.fromisoformat(last_sync)
+                    except Exception:
+                        # Tenta remover microsegundos se houver
+                        if '.' in last_sync:
+                            base, rest = last_sync.split('.', 1)
+                            rest = rest.split('+')[0].split('Z')[0].split('-')[0]
+                            last_sync_clean = base
+                            if '+' in last_sync:
+                                last_sync_clean += '+' + last_sync.split('+')[1]
+                            elif 'Z' in last_sync:
+                                last_sync_clean += 'Z'
+                            dt = datetime.fromisoformat(last_sync_clean)
+                        else:
+                            raise
+                elif hasattr(last_sync, 'isoformat'):
+                    dt = last_sync
+                if dt:
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    dt = dt.astimezone(timezone.utc).replace(microsecond=0)
+                    diff = (now - dt).total_seconds()
+                    device['online'] = int(diff < 30)
+                    logging.debug(f"[ONLINE-CHECK] Device {device.get('identifier')} diff={diff}s now={now.isoformat()} last_sync={dt.isoformat()} online={device['online']}")
+                else:
+                    device['online'] = 0
             except Exception as e:
-                logging.warning(f"[ONLINE-CHECK] Erro ao calcular online: {e}")
+                logging.warning(f"[ONLINE-CHECK] Erro ao calcular online para {device.get('identifier')}: {e} | last_sync={last_sync}")
                 device['online'] = 0
         else:
             device['online'] = 0
+        # Garante que online seja sempre 0 ou 1
+        device['online'] = int(bool(device.get('online', 0)))
         devices.append(device)
     return devices
 
