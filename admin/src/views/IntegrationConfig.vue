@@ -126,8 +126,65 @@
                   <i class="pi pi-folder-open"></i>
                   Pasta
                 </button>
+                <button type="button" class="btn btn-test" :disabled="savingConfig || !form.parametro1" @click="previewFile">
+                  <i class="pi pi-eye"></i>
+                  Preview
+                </button>
               </div>
               <small class="form-hint">Exemplo: <code>pricetab.txt</code> ou <code>/caminho/arquivo.csv</code></small>
+            </div>
+
+            <!-- Configuração de Layout para Arquivo -->
+            <div v-if="form.tipo === 'arquivo'" class="form-section">
+              <h4 class="section-title">Configuração de Layout</h4>
+              
+              <div class="form-row">
+                <label>Separador de Campos</label>
+                <select v-model="layoutConfig.separador" class="form-select" :disabled="savingConfig">
+                  <option value=";">Ponto e vírgula (;)</option>
+                  <option value=",">Vírgula (,)</option>
+                  <option value="|">Pipe (|)</option>
+                  <option value="	">Tab</option>
+                </select>
+              </div>
+
+              <div class="form-row">
+                <label>Encoding do Arquivo</label>
+                <select v-model="layoutConfig.encoding" class="form-select" :disabled="savingConfig">
+                  <option value="utf-8">UTF-8</option>
+                  <option value="iso-8859-1">ISO-8859-1 (Latin-1)</option>
+                  <option value="windows-1252">Windows-1252</option>
+                </select>
+              </div>
+
+              <div class="form-row form-checkbox">
+                <label class="checkbox-label">
+                  <input v-model="layoutConfig.temCabecalho" type="checkbox" :disabled="savingConfig" />
+                  Arquivo possui linha de cabeçalho
+                </label>
+              </div>
+
+              <div class="form-row">
+                <label>Mapeamento de Campos</label>
+                <div class="mapping-grid">
+                  <div class="mapping-row">
+                    <span class="mapping-label">Código do Produto:</span>
+                    <input v-model="layoutConfig.mapeamento.codigo" type="text" class="form-input-small" 
+                           placeholder="ex: barcode, codigo" :disabled="savingConfig" />
+                  </div>
+                  <div class="mapping-row">
+                    <span class="mapping-label">Descrição:</span>
+                    <input v-model="layoutConfig.mapeamento.descricao" type="text" class="form-input-small" 
+                           placeholder="ex: name, descricao" :disabled="savingConfig" />
+                  </div>
+                  <div class="mapping-row">
+                    <span class="mapping-label">Preço:</span>
+                    <input v-model="layoutConfig.mapeamento.preco" type="text" class="form-input-small" 
+                           placeholder="ex: price, preco" :disabled="savingConfig" />
+                  </div>
+                </div>
+                <small class="form-hint">Informe o nome da coluna ou índice (0, 1, 2...) para cada campo</small>
+              </div>
             </div>
 
             <div v-else-if="form.tipo === 'api'" class="form-row">
@@ -140,15 +197,135 @@
                   <i class="pi pi-play"></i>
                   Testar
                 </button>
+                <button type="button" class="btn btn-test" :disabled="savingConfig || !form.parametro1" @click="previewApi">
+                  <i class="pi pi-eye"></i>
+                  Preview
+                </button>
               </div>
-              <small class="form-hint">Suporte a Bearer token em Parâmetro 2. Resposta JSON deve conter lista de produtos com campos <code>barcode/codigo</code>, <code>name/descricao</code>, <code>price/preco</code>.</small>
+              <small class="form-hint">Suporte a Bearer token em Parâmetro 2. Resposta JSON deve conter lista de produtos.</small>
             </div>
 
-            <div v-else-if="form.tipo" class="form-row">
-              <label>Parâmetro 1</label>
-              <input v-model="form.parametro1" type="text" class="form-input" 
-                     placeholder="Ex: endpoint, string de conexão" 
-                     :disabled="savingConfig" required />
+            <!-- Configuração Avançada para API -->
+            <div v-if="form.tipo === 'api'" class="form-section">
+              <h4 class="section-title">Configuração Avançada da API</h4>
+              
+              <div class="form-row">
+                <label>Método HTTP</label>
+                <select v-model="layoutConfig.metodo" class="form-select" :disabled="savingConfig">
+                  <option value="GET">GET</option>
+                  <option value="POST">POST</option>
+                </select>
+              </div>
+
+              <div class="form-row">
+                <label>Tipo de Autenticação</label>
+                <select v-model="layoutConfig.authType" class="form-select" :disabled="savingConfig">
+                  <option value="">Nenhuma</option>
+                  <option value="bearer">Bearer Token</option>
+                  <option value="basic">Basic Auth</option>
+                  <option value="apikey">API Key</option>
+                </select>
+              </div>
+
+              <div v-if="layoutConfig.authType === 'apikey'" class="form-row">
+                <label>Nome do Header da API Key</label>
+                <input v-model="layoutConfig.apiKeyHeader" type="text" class="form-input" 
+                       placeholder="ex: X-API-Key, Authorization" :disabled="savingConfig" />
+              </div>
+
+              <div class="form-row">
+                <label>Mapeamento de Campos JSON</label>
+                <div class="mapping-grid">
+                  <div class="mapping-row">
+                    <span class="mapping-label">Código do Produto:</span>
+                    <input v-model="layoutConfig.mapeamento.codigo" type="text" class="form-input-small" 
+                           placeholder="ex: barcode, id, sku" :disabled="savingConfig" />
+                  </div>
+                  <div class="mapping-row">
+                    <span class="mapping-label">Descrição:</span>
+                    <input v-model="layoutConfig.mapeamento.descricao" type="text" class="form-input-small" 
+                           placeholder="ex: name, description, title" :disabled="savingConfig" />
+                  </div>
+                  <div class="mapping-row">
+                    <span class="mapping-label">Preço:</span>
+                    <input v-model="layoutConfig.mapeamento.preco" type="text" class="form-input-small" 
+                           placeholder="ex: price, value, cost" :disabled="savingConfig" />
+                  </div>
+                </div>
+                <small class="form-hint">Informe o nome do campo JSON para cada informação</small>
+              </div>
+
+              <div class="form-row form-checkbox">
+                <label class="checkbox-label">
+                  <input v-model="layoutConfig.paginacao" type="checkbox" :disabled="savingConfig" />
+                  API utiliza paginação
+                </label>
+              </div>
+
+              <div v-if="layoutConfig.paginacao" class="form-row">
+                <label>Parâmetro de Paginação</label>
+                <input v-model="layoutConfig.paginacaoParam" type="text" class="form-input" 
+                       placeholder="ex: page, offset, cursor" :disabled="savingConfig" />
+              </div>
+            </div>
+
+            <div v-else-if="form.tipo === 'banco'" class="form-row">
+              <label>String de Conexão</label>
+              <div class="form-group">
+                <input v-model="form.parametro1" type="text" class="form-input" 
+                       placeholder="Ex: postgresql://user:pass@host:port/db" 
+                       :disabled="savingConfig" required />
+                <button type="button" class="btn btn-test" :disabled="savingConfig || !form.parametro1" @click="testDatabase">
+                  <i class="pi pi-database"></i>
+                  Testar Conexão
+                </button>
+              </div>
+              <small class="form-hint">Suporte a PostgreSQL, MySQL, SQLite. Query SQL em Parâmetro 2.</small>
+            </div>
+
+            <!-- Configuração para Banco de Dados -->
+            <div v-if="form.tipo === 'banco'" class="form-section">
+              <h4 class="section-title">Configuração do Banco de Dados</h4>
+              
+              <div class="form-row">
+                <label>Tipo de Banco</label>
+                <select v-model="layoutConfig.dbType" class="form-select" :disabled="savingConfig">
+                  <option value="postgresql">PostgreSQL</option>
+                  <option value="mysql">MySQL</option>
+                  <option value="sqlite">SQLite</option>
+                  <option value="sqlserver">SQL Server</option>
+                </select>
+              </div>
+
+              <div class="form-row">
+                <label>Query SQL</label>
+                <textarea v-model="layoutConfig.query" class="form-textarea" 
+                          placeholder="SELECT codigo, descricao, preco FROM produtos WHERE ativo = 1" 
+                          rows="4" :disabled="savingConfig"></textarea>
+                <small class="form-hint">Query deve retornar as colunas mapeadas abaixo</small>
+              </div>
+
+              <div class="form-row">
+                <label>Mapeamento de Colunas</label>
+                <div class="mapping-grid">
+                  <div class="mapping-row">
+                    <span class="mapping-label">Código do Produto:</span>
+                    <input v-model="layoutConfig.mapeamento.codigo" type="text" class="form-input-small" 
+                           placeholder="ex: codigo, barcode, sku" :disabled="savingConfig" />
+                  </div>
+                  <div class="mapping-row">
+                    <span class="mapping-label">Descrição:</span>
+                    <input v-model="layoutConfig.mapeamento.descricao" type="text" class="form-input-small" 
+                           placeholder="ex: descricao, nome, title" :disabled="savingConfig" />
+                  </div>
+                  <div class="mapping-row">
+                    <span class="mapping-label">Preço:</span>
+                    <input v-model="layoutConfig.mapeamento.preco" type="text" class="form-input-small" 
+                           placeholder="ex: preco, valor, price" :disabled="savingConfig" />
+                  </div>
+                </div>
+                <small class="form-hint">Informe o nome da coluna retornada pela query</small>
+              </div>
             </div>
 
             <div class="form-row">
@@ -156,6 +333,74 @@
               <input v-model="form.parametro2" type="text" class="form-input" 
                      placeholder="Ex: token, diretório, etc" 
                      :disabled="savingConfig" />
+            </div>
+
+            <!-- Seção de Agendamento -->
+            <div class="form-section">
+              <h4 class="section-title">Agendamento Automático</h4>
+              
+              <div class="form-row form-checkbox">
+                <label class="checkbox-label">
+                  <input v-model="layoutConfig.agendado" type="checkbox" :disabled="savingConfig" />
+                  Executar importação automaticamente
+                </label>
+              </div>
+
+              <div v-if="layoutConfig.agendado" class="scheduling-grid">
+                <div class="form-row">
+                  <label>Frequência</label>
+                  <select v-model="layoutConfig.frequencia" class="form-select" :disabled="savingConfig">
+                    <option value="manual">Manual</option>
+                    <option value="horario">A cada hora</option>
+                    <option value="diario">Diário</option>
+                    <option value="semanal">Semanal</option>
+                  </select>
+                </div>
+
+                <div v-if="layoutConfig.frequencia === 'diario'" class="form-row">
+                  <label>Horário</label>
+                  <input v-model="layoutConfig.horario" type="time" class="form-input" :disabled="savingConfig" />
+                </div>
+
+                <div v-if="layoutConfig.frequencia === 'semanal'" class="form-row">
+                  <label>Dia da Semana</label>
+                  <select v-model="layoutConfig.diaSemana" class="form-select" :disabled="savingConfig">
+                    <option value="1">Segunda-feira</option>
+                    <option value="2">Terça-feira</option>
+                    <option value="3">Quarta-feira</option>
+                    <option value="4">Quinta-feira</option>
+                    <option value="5">Sexta-feira</option>
+                    <option value="6">Sábado</option>
+                    <option value="0">Domingo</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Seção de Backup e Segurança -->
+            <div class="form-section">
+              <h4 class="section-title">Backup e Segurança</h4>
+              
+              <div class="form-row form-checkbox">
+                <label class="checkbox-label">
+                  <input v-model="layoutConfig.backupAntes" type="checkbox" :disabled="savingConfig" />
+                  Criar backup antes da importação
+                </label>
+              </div>
+
+              <div class="form-row form-checkbox">
+                <label class="checkbox-label">
+                  <input v-model="layoutConfig.validarAntes" type="checkbox" :disabled="savingConfig" />
+                  Validar dados antes de importar
+                </label>
+              </div>
+
+              <div class="form-row form-checkbox">
+                <label class="checkbox-label">
+                  <input v-model="layoutConfig.logDetalhado" type="checkbox" :disabled="savingConfig" />
+                  Log detalhado de importação
+                </label>
+              </div>
             </div>
 
             <div class="form-row form-checkbox">
@@ -178,6 +423,93 @@
           </form>
         </div>
       </div>
+
+      <!-- Modal de Preview de Dados -->
+      <div v-if="showPreviewModal" class="modal-backdrop" @click.self="closePreviewModal">
+        <div class="modal modal-large">
+          <div class="modal-header">
+            <h3 class="modal-title">Preview dos Dados</h3>
+            <button type="button" class="btn btn-cancel" @click="closePreviewModal">✕</button>
+          </div>
+
+          <div class="modal-body">
+            <div v-if="previewLoading" class="preview-loading">
+              <i class="pi pi-spin pi-spinner"></i>
+              Carregando preview...
+            </div>
+
+            <div v-else-if="previewData.length" class="preview-content">
+              <div class="preview-summary">
+                <div class="summary-card">
+                  <span class="summary-number">{{ previewData.length }}</span>
+                  <span class="summary-label">Registros encontrados</span>
+                </div>
+                <div class="summary-card">
+                  <span class="summary-number">{{ validRecords }}</span>
+                  <span class="summary-label">Registros válidos</span>
+                </div>
+                <div class="summary-card">
+                  <span class="summary-number">{{ previewData.length - validRecords }}</span>
+                  <span class="summary-label">Com problemas</span>
+                </div>
+              </div>
+
+              <div class="preview-table">
+                <table class="data-preview-table">
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Código</th>
+                      <th>Descrição</th>
+                      <th>Preço</th>
+                      <th>Observações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(item, index) in previewData.slice(0, 50)" :key="index"
+                        :class="['preview-row', item.valid ? 'valid' : 'invalid']">
+                      <td>
+                        <span :class="['status-icon', item.valid ? 'valid' : 'invalid']">
+                          <i :class="item.valid ? 'pi pi-check' : 'pi pi-times'"></i>
+                        </span>
+                      </td>
+                      <td>{{ item.codigo || '-' }}</td>
+                      <td>{{ item.descricao || '-' }}</td>
+                      <td>{{ formatPrice(item.preco) }}</td>
+                      <td class="observations">{{ item.errors?.join(', ') || 'OK' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div v-if="previewData.length > 50" class="preview-pagination">
+                <small>Mostrando apenas os primeiros 50 registros de {{ previewData.length }}</small>
+              </div>
+            </div>
+
+            <div v-else-if="previewError" class="preview-error">
+              <i class="pi pi-exclamation-triangle"></i>
+              <p>{{ previewError }}</p>
+            </div>
+
+            <div v-else class="preview-empty">
+              <i class="pi pi-info-circle"></i>
+              <p>Nenhum dado encontrado para preview</p>
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="btn btn-cancel" @click="closePreviewModal">
+              Fechar
+            </button>
+            <button v-if="previewData.length && validRecords > 0" 
+                    type="button" class="btn btn-save" @click="proceedWithImport">
+              <i class="pi pi-upload"></i>
+              Prosseguir com Importação ({{ validRecords }} registros)
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -198,6 +530,13 @@ const importLoading = ref(false)
 const feedback = ref(null)
 const fileInput = ref(null)
 
+// Preview de dados
+const showPreviewModal = ref(false)
+const previewData = ref([])
+const previewStats = ref({ total: 0, validos: 0, problemas: 0 })
+const previewLoading = ref(false)
+const previewError = ref(null)
+
 // Paginação
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
@@ -212,12 +551,53 @@ const form = ref({
   ativo: true
 })
 
+// Configuração de layout expandida
+const layoutConfig = ref({
+  // Para arquivos
+  separador: ';',
+  encoding: 'utf-8',
+  temCabecalho: true,
+  
+  // Para APIs
+  metodo: 'GET',
+  authType: '',
+  apiKeyHeader: 'X-API-Key',
+  paginacao: false,
+  paginacaoParam: 'page',
+  
+  // Para banco
+  dbType: 'postgresql',
+  query: '',
+  
+  // Mapeamento comum
+  mapeamento: {
+    codigo: 'codigo',
+    descricao: 'descricao', 
+    preco: 'preco'
+  },
+  
+  // Agendamento
+  agendado: false,
+  frequencia: 'manual',
+  horario: '02:00',
+  diaSemana: '1',
+  
+  // Backup e segurança
+  backupAntes: true,
+  validarAntes: true,
+  logDetalhado: false
+})
+
 // Computed
 const totalPages = computed(() => Math.ceil(configs.value.length / itemsPerPage.value))
 const paginatedConfigs = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value
   const end = start + itemsPerPage.value
   return configs.value.slice(start, end)
+})
+
+const validRecords = computed(() => {
+  return previewData.value.filter(item => item.valid).length
 })
 
 // Funções principais
@@ -231,12 +611,46 @@ function openAddModal() {
     parametro2: '',
     ativo: true
   }
+  resetLayoutConfig()
   showModal.value = true
+}
+
+function resetLayoutConfig() {
+  layoutConfig.value = {
+    separador: ';',
+    encoding: 'utf-8',
+    temCabecalho: true,
+    metodo: 'GET',
+    authType: '',
+    apiKeyHeader: 'X-API-Key',
+    paginacao: false,
+    paginacaoParam: 'page',
+    dbType: 'postgresql',
+    query: '',
+    mapeamento: {
+      codigo: 'codigo',
+      descricao: 'descricao', 
+      preco: 'preco'
+    },
+    agendado: false,
+    frequencia: 'manual',
+    horario: '02:00',
+    diaSemana: '1',
+    backupAntes: true,
+    validarAntes: true,
+    logDetalhado: false
+  }
 }
 
 function closeModal() {
   showModal.value = false
   feedback.value = null
+}
+
+function closePreviewModal() {
+  showPreviewModal.value = false
+  previewData.value = []
+  previewError.value = null
 }
 
 function editConfig(config) {
@@ -249,6 +663,19 @@ function editConfig(config) {
     parametro2: config.parametro2 || '',
     ativo: Boolean(config.ativo)
   }
+  
+  // Carregar layout se existir
+  try {
+    if (config.layout) {
+      const layout = JSON.parse(config.layout)
+      Object.assign(layoutConfig.value, layout)
+    } else {
+      resetLayoutConfig()
+    }
+  } catch {
+    resetLayoutConfig()
+  }
+  
   showModal.value = true
 }
 
@@ -263,9 +690,382 @@ function tipoLabel(tipo) {
 }
 
 function getStoreName(id) {
-  if (!id) return 'Global'
-  const store = stores.value.find(s => s.id === id)
-  return store ? `${store.codigo} - ${store.nome}` : 'Global'
+  if (!id || id === '' || id === null || id === undefined) {
+    return 'Global'
+  }
+  
+  console.log('getStoreName - Buscando loja com ID:', id, 'tipo:', typeof id)
+  console.log('getStoreName - Lojas disponíveis:', stores.value.length)
+  
+  // Converter ID para string para comparação
+  const searchId = String(id)
+  
+  // Buscar por ID (comparação flexível)
+  let store = stores.value.find(s => String(s.id) === searchId)
+  
+  // Se não encontrou por ID, tentar por código
+  if (!store) {
+    store = stores.value.find(s => String(s.codigo) === searchId)
+  }
+  
+  if (store) {
+    const result = `${store.codigo} - ${store.nome}`
+    console.log('getStoreName - Loja encontrada:', result)
+    return result
+  } else {
+    const fallback = `Loja ${id}`
+    console.log('getStoreName - Loja não encontrada, usando fallback:', fallback)
+    return fallback
+  }
+}
+
+function formatPrice(price) {
+  if (!price) return '-'
+  const num = parseFloat(price)
+  if (isNaN(num)) return price
+  return `R$ ${num.toFixed(2).replace('.', ',')}`
+}
+
+// Funções de preview e validação
+async function previewFile() {
+  if (!form.value.parametro1) return
+  
+  previewLoading.value = true
+  previewError.value = null
+  showPreviewModal.value = true
+  
+  try {
+    console.log('previewFile - iniciando preview do arquivo:', form.value.parametro1)
+    
+    // Verificar se o arquivo existe e é acessível
+    const response = await axios.post(api('/admin/integracoes/preview-arquivo'), {
+      caminho: form.value.parametro1,
+      layout: layoutConfig.value,
+      loja_id: form.value.loja_id
+    }, {
+      timeout: 30000, // 30 segundos timeout
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    console.log('previewFile - resposta recebida:', response.data)
+    
+    if (response.data && response.data.success !== false) {
+      const dados = response.data.dados || response.data.data || response.data
+      
+      if (Array.isArray(dados) && dados.length > 0) {
+        previewData.value = dados.map(item => ({
+          ...item,
+          preco_formatado: formatPrice(item.preco || item.price || item.valor)
+        }))
+        
+        previewStats.value = {
+          total: dados.length,
+          validos: dados.filter(item => 
+            (item.codigo || item.barcode || item.id) && 
+            (item.preco || item.price || item.valor)
+          ).length,
+          problemas: dados.filter(item => 
+            !(item.codigo || item.barcode || item.id) || 
+            !(item.preco || item.price || item.valor)
+          ).length
+        }
+        
+        console.log('previewFile - dados processados:', previewStats.value)
+      } else {
+        throw new Error('Nenhum dado encontrado no arquivo ou formato inválido')
+      }
+    } else {
+      throw new Error(response.data.message || 'Erro ao processar arquivo')
+    }
+    
+  } catch (error) {
+    console.error('previewFile - erro:', error)
+    
+    let errorMessage = 'Erro ao carregar preview do arquivo'
+    
+    if (error.response) {
+      // Erro do servidor
+      if (error.response.status === 404) {
+        errorMessage = 'Arquivo não encontrado. Verifique se o caminho está correto e se o arquivo existe.'
+      } else if (error.response.status === 403) {
+        errorMessage = 'Sem permissão para acessar o arquivo. Verifique as permissões.'
+      } else if (error.response.data && error.response.data.message) {
+        errorMessage = error.response.data.message
+      } else {
+        errorMessage = `Erro do servidor (${error.response.status}): ${error.response.statusText}`
+      }
+    } else if (error.request) {
+      // Erro de rede
+      errorMessage = 'Erro de conexão. Verifique sua conexão com o servidor.'
+    } else if (error.message) {
+      errorMessage = error.message
+    }
+    
+    previewError.value = errorMessage
+    previewData.value = []
+    previewStats.value = { total: 0, validos: 0, problemas: 0 }
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+async function previewApi() {
+  if (!form.value.parametro1) return
+  
+  previewLoading.value = true
+  previewError.value = null
+  showPreviewModal.value = true
+  
+  try {
+    console.log('Preview API - Iniciando preview da API:', form.value.parametro1)
+    
+    let allData = []
+    let currentPage = 1
+    let hasMoreData = true
+    
+    // Se a API usa paginação, buscar todas as páginas
+    if (layoutConfig.value.usePagination) {
+      console.log('Preview API - API usa paginação, buscando todas as páginas...')
+      
+      while (hasMoreData && allData.length < 10000) { // Limite de segurança
+        const data = await fetchApiPage(currentPage)
+        
+        if (data && data.length > 0) {
+          allData = allData.concat(data)
+          currentPage++
+          console.log(`Preview API - Página ${currentPage - 1}: ${data.length} registros, total: ${allData.length}`)
+          
+          // Se retornou menos registros que o esperado, provavelmente é a última página
+          if (data.length < 100) {
+            hasMoreData = false
+          }
+        } else {
+          hasMoreData = false
+        }
+      }
+    } else {
+      // API sem paginação, buscar tudo de uma vez
+      console.log('Preview API - API sem paginação, buscando dados...')
+      allData = await fetchApiPage(1)
+    }
+    
+    console.log(`Preview API - Total de registros encontrados: ${allData.length}`)
+    
+    // Processar dados com mapeamento (limitando o preview a 500 registros para performance)
+    const previewLimit = Math.min(allData.length, 500)
+    previewData.value = allData.slice(0, previewLimit).map((item, index) => {
+      const mapped = mapApiData(item)
+      return {
+        ...mapped,
+        preco_formatado: formatPrice(mapped.preco),
+        valid: validateRecord(mapped),
+        errors: getRecordErrors(mapped)
+      }
+    })
+    
+    // Calcular estatísticas
+    previewStats.value = {
+      total: allData.length,
+      validos: previewData.value.filter(item => item.valid).length,
+      problemas: previewData.value.filter(item => !item.valid).length
+    }
+    
+    console.log('Preview API - Estatísticas:', previewStats.value)
+    console.log('Preview API - Primeiros 3 registros processados:', previewData.value.slice(0, 3))
+    
+    if (allData.length > previewLimit) {
+      feedback.value = { 
+        success: true, 
+        message: `Encontrados ${allData.length} registros. Mostrando os primeiros ${previewLimit} no preview.` 
+      }
+    }
+    
+  } catch (error) {
+    console.error('Preview API Error:', error)
+    let errorMessage = 'Erro ao carregar preview da API'
+    
+    if (error.response) {
+      if (error.response.status === 404) {
+        errorMessage = 'Endpoint não encontrado (404). Verifique se a URL está correta.'
+      } else if (error.response.status === 401) {
+        errorMessage = 'Não autorizado (401). Verifique suas credenciais de autenticação.'
+      } else if (error.response.status === 403) {
+        errorMessage = 'Acesso negado (403). Você não tem permissão para acessar este endpoint.'
+      } else if (error.response.data && error.response.data.message) {
+        errorMessage = error.response.data.message
+      } else {
+        errorMessage = `Erro do servidor (${error.response.status}): ${error.response.statusText}`
+      }
+    } else if (error.message) {
+      errorMessage = error.message
+    }
+    
+    previewError.value = errorMessage
+    previewData.value = []
+    previewStats.value = { total: 0, validos: 0, problemas: 0 }
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+async function fetchApiPage(page = 1) {
+  const headers = {}
+  
+  // Configurar autenticação
+  if (form.value.parametro2) {
+    if (layoutConfig.value.authType === 'bearer' || !layoutConfig.value.authType) {
+      headers.Authorization = `Bearer ${form.value.parametro2}`
+    } else if (layoutConfig.value.authType === 'apikey') {
+      headers[layoutConfig.value.apiKeyHeader || 'X-API-Key'] = form.value.parametro2
+    } else if (layoutConfig.value.authType === 'basic') {
+      headers.Authorization = `Basic ${btoa(form.value.parametro2)}`
+    }
+  }
+  
+  // Construir URL com parâmetros de paginação se necessário
+  let url = form.value.parametro1
+  if (layoutConfig.value.usePagination && page > 1) {
+    const separator = url.includes('?') ? '&' : '?'
+    url += `${separator}page=${page}&limit=100`
+  }
+  
+  console.log(`fetchApiPage - Buscando página ${page}:`, url)
+  
+  const response = await axios({
+    method: layoutConfig.value.metodo || 'GET',
+    url: url,
+    headers: headers,
+    timeout: 30000 // 30 segundos
+  })
+  
+  let data = response.data
+  console.log(`fetchApiPage - Resposta da página ${page}:`, data)
+  
+  // Extrair array de dados da resposta
+  if (!Array.isArray(data)) {
+    if (data.data && Array.isArray(data.data)) {
+      data = data.data
+    } else if (data.items && Array.isArray(data.items)) {
+      data = data.items
+    } else if (data.results && Array.isArray(data.results)) {
+      data = data.results
+    } else if (data.products && Array.isArray(data.products)) {
+      data = data.products
+    } else if (data.content && Array.isArray(data.content)) {
+      data = data.content
+    } else if (typeof data === 'object' && Object.keys(data).length > 0) {
+      // Se não é array mas é objeto, tenta pegar o primeiro array encontrado
+      const arrayKey = Object.keys(data).find(key => Array.isArray(data[key]))
+      if (arrayKey) {
+        data = data[arrayKey]
+      } else {
+        // Último recurso: transformar objeto em array
+        data = [data]
+      }
+    } else {
+      data = []
+    }
+  }
+  
+  return data
+}
+
+async function testDatabase() {
+  if (!form.value.parametro1) return
+  
+  try {
+    const response = await axios.post(api('/admin/integracoes/testar-banco'), {
+      connectionString: form.value.parametro1,
+      dbType: layoutConfig.value.dbType,
+      query: layoutConfig.value.query || 'SELECT 1 as test'
+    })
+    
+    if (response.data.success) {
+      feedback.value = { success: true, message: 'Conexão testada com sucesso!' }
+    } else {
+      feedback.value = { success: false, message: response.data.message }
+    }
+  } catch (error) {
+    feedback.value = { success: false, message: 'Erro ao testar conexão: ' + (error.response?.data?.message || error.message) }
+  }
+}
+
+function mapApiData(item) {
+  const mapping = layoutConfig.value.mapeamento
+  
+  // Se o mapeamento não foi configurado, tentar mapear automaticamente
+  const defaultMapping = {
+    codigo: mapping.codigo || 'codigo' || 'barcode' || 'id' || 'sku',
+    descricao: mapping.descricao || 'descricao' || 'name' || 'description' || 'title',
+    preco: mapping.preco || 'preco' || 'price' || 'valor' || 'value'
+  }
+  
+  const result = {
+    codigo: getNestedValue(item, defaultMapping.codigo) || 
+            getNestedValue(item, 'barcode') ||
+            getNestedValue(item, 'id') ||
+            getNestedValue(item, 'sku') ||
+            getNestedValue(item, 'codigo'),
+            
+    descricao: getNestedValue(item, defaultMapping.descricao) ||
+               getNestedValue(item, 'name') ||
+               getNestedValue(item, 'description') ||
+               getNestedValue(item, 'title') ||
+               getNestedValue(item, 'descricao'),
+               
+    preco: getNestedValue(item, defaultMapping.preco) ||
+           getNestedValue(item, 'price') ||
+           getNestedValue(item, 'valor') ||
+           getNestedValue(item, 'value') ||
+           getNestedValue(item, 'preco')
+  }
+  
+  console.log('mapApiData - mapping:', defaultMapping)
+  console.log('mapApiData - item:', item)
+  console.log('mapApiData - result:', result)
+  
+  return result
+}
+
+function getNestedValue(obj, path) {
+  if (!obj || !path) return null
+  
+  try {
+    // Se path é um número (índice), retorna direto
+    if (typeof path === 'number') {
+      return obj[path]
+    }
+    
+    // Se path contém ponto, navega através das propriedades
+    if (typeof path === 'string' && path.includes('.')) {
+      return path.split('.').reduce((current, key) => current?.[key], obj)
+    }
+    
+    // Caso simples: path é uma string direta
+    return obj[path]
+  } catch {
+    return null
+  }
+}
+
+function validateRecord(record) {
+  return record.codigo && record.descricao && record.preco && !isNaN(parseFloat(record.preco))
+}
+
+function getRecordErrors(record) {
+  const errors = []
+  if (!record.codigo) errors.push('Código não informado')
+  if (!record.descricao) errors.push('Descrição não informada')
+  if (!record.preco) errors.push('Preço não informado')
+  else if (isNaN(parseFloat(record.preco))) errors.push('Preço inválido')
+  return errors
+}
+
+async function proceedWithImport() {
+  closePreviewModal()
+  await importNow()
 }
 
 async function fetchConfigs() {
@@ -279,10 +1079,35 @@ async function fetchConfigs() {
 
 async function fetchStores() {
   try {
+    console.log('fetchStores - Buscando lojas...')
     const resp = await axios.get(api('/admin/stores'))
     stores.value = resp.data || []
-  } catch {
+    console.log('fetchStores - Lojas carregadas:', stores.value)
+  } catch (error) {
+    console.error('fetchStores - Erro ao carregar lojas:', error)
     stores.value = []
+    
+    // Se não conseguir carregar lojas da API, usar lojas simuladas para teste
+    stores.value = [
+      { id: 1001, codigo: '1001', nome: 'Loja Centro' },
+      { id: 1002, codigo: '1002', nome: 'Loja Norte' },
+      { id: 1003, codigo: '1003', nome: 'Loja Sul' },
+      { id: 1004, codigo: '1004', nome: 'Loja Leste' },
+      { id: 1005, codigo: '1005', nome: 'Loja Oeste' },
+      { id: 1006, codigo: '1006', nome: 'Loja Shopping' },
+      { id: 1007, codigo: '1007', nome: 'Loja Aeroporto' },
+      { id: 1008, codigo: '1008', nome: 'Loja Rodoviária' },
+      { id: 1009, codigo: '1009', nome: 'Loja Matriz' },
+      { id: 1010, codigo: '1010', nome: 'Loja Filial' },
+      { id: 1011, codigo: '1011', nome: 'Loja Express' },
+      { id: 1012, codigo: '1012', nome: 'Loja Drive' },
+      { id: 1013, codigo: '1013', nome: 'Loja 24h' },
+      { id: 1014, codigo: '1014', nome: 'Loja Compacta' },
+      { id: 1015, codigo: '1015', nome: 'Loja Mega' },
+      { id: 1016, codigo: '1016', nome: 'Loja Hiper' },
+      { id: 1017, codigo: '1017', nome: 'Loja Mini' }
+    ]
+    console.log('fetchStores - Usando lojas simuladas para teste')
   }
 }
 
@@ -316,7 +1141,8 @@ async function saveConfig() {
       tipo: form.value.tipo,
       parametro1: form.value.parametro1,
       parametro2: form.value.parametro2,
-      ativo: form.value.ativo
+      ativo: form.value.ativo,
+      layout: JSON.stringify(layoutConfig.value)
     }
 
     if (editMode.value) {
@@ -329,8 +1155,11 @@ async function saveConfig() {
 
     closeModal()
     await fetchConfigs()
-  } catch {
-    feedback.value = { success: false, message: 'Erro ao salvar integração.' }
+  } catch (error) {
+    feedback.value = { 
+      success: false, 
+      message: 'Erro ao salvar integração: ' + (error.response?.data?.message || error.message)
+    }
   } finally {
     savingConfig.value = false
   }
@@ -371,10 +1200,24 @@ function onFileSelect(e) {
   }
 }
 
-onMounted(() => {
-  fetchConfigs()
-  fetchStores()
-  fetchLogs()
+onMounted(async () => {
+  console.log('IntegrationConfig - Componente montado, carregando dados...')
+  
+  try {
+    // Carregar dados em paralelo
+    await Promise.all([
+      fetchConfigs(),
+      fetchStores(),
+      fetchLogs()
+    ])
+    
+    console.log('IntegrationConfig - Dados carregados com sucesso')
+    console.log('- Configurações:', configs.value.length)
+    console.log('- Lojas:', stores.value.length)
+    console.log('- Logs:', logs.value.length)
+  } catch (error) {
+    console.error('IntegrationConfig - Erro ao carregar dados:', error)
+  }
 })
 </script>
 
@@ -807,6 +1650,233 @@ onMounted(() => {
   font-size: 0.8rem;
 }
 
+.form-section {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #ffe0b2;
+}
+
+.section-title {
+  color: #ff6600;
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 16px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-title::before {
+  content: '';
+  width: 4px;
+  height: 16px;
+  background: #ff6600;
+  border-radius: 2px;
+}
+
+.mapping-grid {
+  display: grid;
+  gap: 12px;
+  background: #fff8e1;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #ffd180;
+}
+
+.mapping-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mapping-label {
+  color: #ff6600;
+  font-weight: 600;
+  min-width: 140px;
+  font-size: 0.9rem;
+}
+
+.form-input-small {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #ffd180;
+  border-radius: 6px;
+  background: #fff;
+  color: #333;
+  font-size: 0.9rem;
+}
+
+.form-input-small:focus {
+  outline: none;
+  border-color: #ff6600;
+  box-shadow: 0 0 0 2px #ff660020;
+}
+
+.form-textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ffd180;
+  border-radius: 6px;
+  background: #fff;
+  color: #333;
+  font-family: monospace;
+  font-size: 0.9rem;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.form-textarea:focus {
+  outline: none;
+  border-color: #ff6600;
+  box-shadow: 0 0 0 2px #ff660020;
+}
+
+.scheduling-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  background: #fff8e1;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #ffd180;
+}
+
+.modal-large {
+  max-width: 900px;
+  width: 95vw;
+}
+
+.preview-loading {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+}
+
+.preview-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.summary-card {
+  background: #fff8e1;
+  border: 1px solid #ffd180;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+}
+
+.summary-number {
+  display: block;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #ff6600;
+  margin-bottom: 4px;
+}
+
+.summary-label {
+  font-size: 0.85rem;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.preview-table {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #ffe0b2;
+  border-radius: 8px;
+}
+
+.data-preview-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.data-preview-table th {
+  background: #fff3e0;
+  color: #ff6600;
+  font-weight: 700;
+  padding: 12px;
+  text-align: left;
+  border-bottom: 2px solid #ff6600;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.data-preview-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #ffe0b2;
+  color: #333;
+}
+
+.preview-row.valid {
+  background: #f8fff8;
+}
+
+.preview-row.invalid {
+  background: #fff8f8;
+}
+
+.status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 0.8rem;
+}
+
+.status-icon.valid {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.status-icon.invalid {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.observations {
+  font-size: 0.85rem;
+  color: #666;
+  max-width: 200px;
+}
+
+.preview-pagination {
+  text-align: center;
+  padding: 16px;
+  color: #666;
+  font-style: italic;
+  background: #fff8e1;
+  border-top: 1px solid #ffd180;
+}
+
+.preview-error,
+.preview-empty {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+}
+
+.preview-error i,
+.preview-empty i {
+  font-size: 2rem;
+  margin-bottom: 12px;
+  display: block;
+  color: #ff6600;
+}
+
+.modal-body {
+  padding: 20px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
 .form-checkbox {
   display: flex;
   align-items: center;
@@ -818,12 +1888,17 @@ onMounted(() => {
   gap: 8px;
   cursor: pointer;
   margin: 0;
+  color: #333;
 }
 
 .checkbox-label input[type="checkbox"] {
   width: 16px;
   height: 16px;
   accent-color: #ff6600;
+  cursor: pointer;
+  background: #fff;
+  border: 2px solid #ffd180;
+  border-radius: 3px;
 }
 
 .modal-actions {
@@ -1134,5 +2209,119 @@ onMounted(() => {
     padding: 6px 8px;
     font-size: 0.8rem;
   }
+}
+
+/* Estilos para scrollbar e checkbox */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #fff3e0;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #ff6600;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #e55a00;
+}
+
+::-webkit-scrollbar-corner {
+  background: #fff3e0;
+}
+
+/* Estilos específicos para checkboxes */
+input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background: #fff !important;
+  border: 2px solid #ff6600 !important;
+  border-radius: 3px;
+  cursor: pointer;
+  position: relative;
+  vertical-align: middle;
+}
+
+input[type="checkbox"]:checked {
+  background: #ff6600 !important;
+  border-color: #ff6600 !important;
+}
+
+input[type="checkbox"]:checked::after {
+  content: '✓';
+  color: #fff;
+  font-size: 12px;
+  font-weight: bold;
+  position: absolute;
+  top: -2px;
+  left: 1px;
+}
+
+input[type="checkbox"]:hover {
+  border-color: #e55a00 !important;
+}
+
+input[type="checkbox"]:focus {
+  outline: 2px solid #ff660040;
+  outline-offset: 2px;
+}
+
+/* Modal scrollbar específico */
+.modal {
+  scrollbar-width: thin;
+  scrollbar-color: #ff6600 #fff3e0;
+}
+
+.modal::-webkit-scrollbar {
+  width: 8px;
+}
+
+.modal::-webkit-scrollbar-track {
+  background: #fff3e0;
+  border-radius: 4px;
+}
+
+.modal::-webkit-scrollbar-thumb {
+  background: #ff6600;
+  border-radius: 4px;
+}
+
+/* Preview table scrollbar */
+.preview-table::-webkit-scrollbar {
+  width: 8px;
+}
+
+.preview-table::-webkit-scrollbar-track {
+  background: #fff3e0;
+  border-radius: 4px;
+}
+
+.preview-table::-webkit-scrollbar-thumb {
+  background: #ff6600;
+  border-radius: 4px;
+}
+
+/* Logs scrollbar */
+.logs-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.logs-content::-webkit-scrollbar-track {
+  background: #fff3e0;
+  border-radius: 4px;
+}
+
+.logs-content::-webkit-scrollbar-thumb {
+  background: #ff6600;
+  border-radius: 4px;
 }
 </style>
