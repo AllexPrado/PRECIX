@@ -45,7 +45,10 @@
                 </td>
                 <td :data-label="'Última atualização'">
                   <template v-if="agent.last_update">
-                    {{ formatTS(agent.last_update) }} <span class="muted">({{ fromNow(agent.last_update) }})</span>
+                    <div class="update-info">
+                      <span class="update-time">{{ formatTSClean(agent.last_update) }}</span>
+                      <span class="update-relative">{{ fromNow(agent.last_update) }}</span>
+                    </div>
                   </template>
                   <template v-else>-</template>
                 </td>
@@ -60,13 +63,23 @@
                 <td colspan="6">
                   <div class="devices-inline" v-if="(agent.devices||[]).length">
                     <div class="device-row" v-for="d in agent.devices" :key="d.identifier">
-                      <span class="dev-name">{{ d.name || d.identifier }}</span>
-                      <span class="dev-id">ID: {{ d.identifier }}</span>
-                      <span class="dev-status" :class="{ online: devStatus(d)==='online', offline: devStatus(d)!=='online' }">{{ devStatus(d) }}</span>
-                      <span class="dev-store" v-if="d.store_code || d.store_name">Loja: {{ (d.store_code || '') + (d.store_name ? ' - ' + d.store_name : '') }}</span>
-                      <span class="dev-cat" v-if="d.last_catalog_sync">Catálogo: {{ formatTS(d.last_catalog_sync) }} <span class="muted">({{ fromNow(d.last_catalog_sync) }})</span> ({{ d.catalog_count || 0 }})</span>
-                      <button class="btn" @click="openDeviceEvents(d.identifier)">Eventos</button>
-                      <button class="btn danger" @click="removeAgentDevice(agent.id, d.identifier)">Remover</button>
+                      <div class="device-main-info">
+                        <span class="dev-name">{{ d.name || d.identifier }}</span>
+                        <span class="dev-id">ID: {{ d.identifier }}</span>
+                        <span class="dev-status" :class="{ online: devStatus(d)==='online', offline: devStatus(d)!=='online' }">{{ devStatus(d) }}</span>
+                        <span class="dev-store" v-if="d.store_code || d.store_name">Loja: {{ (d.store_code || '') + (d.store_name ? ' - ' + d.store_name : '') }}</span>
+                      </div>
+                      <div class="device-details">
+                        <span class="dev-cat" v-if="d.last_catalog_sync">
+                          Catálogo: <span class="cat-time">{{ formatTSClean(d.last_catalog_sync) }}</span> 
+                          <span class="cat-relative">({{ fromNow(d.last_catalog_sync) }})</span> 
+                          <span class="cat-count">({{ d.catalog_count || 0 }})</span>
+                        </span>
+                      </div>
+                      <div class="device-actions">
+                        <button class="btn" @click="openDeviceEvents(d.identifier)">Eventos</button>
+                        <button class="btn danger" @click="removeAgentDevice(agent.id, d.identifier)">Remover</button>
+                      </div>
                     </div>
                   </div>
                   <div class="empty" v-else>Nenhum dispositivo legado reportado.</div>
@@ -241,6 +254,9 @@ async function removeAgentDevice(agentId, identifier) {
 function formatTS(ts) {
   return dayjs(ts).format('DD/MM/YYYY HH:mm:ss')
 }
+function formatTSClean(ts) {
+  return dayjs(ts).format('DD/MM/YY HH:mm')
+}
 function fromNow(ts) {
   return dayjs(ts).fromNow()
 }
@@ -393,21 +409,413 @@ table.agents-table tr:last-child {
 .form-row label { font-weight: 600; color: #444; }
 .actions-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
 
-.devices-inline { background: #fffdf6; border: 1px dashed #ffd180; border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
-.device-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.dev-name { font-weight: 700; color: #333 }
-.dev-id { background: #e6f7ff; color: #0077b6; border-radius: 6px; padding: 2px 8px; font-size: 0.85em; }
-.dev-status.online { color: #2e7d32; font-weight: 600; }
-.dev-status.offline { color: #c62828; font-weight: 600; }
-.dev-cat { color: #555; font-size: 0.9em; }
+.devices-inline { 
+  background: #fffdf6; 
+  border: 1px dashed #ffd180; 
+  border-radius: 8px; 
+  padding: 16px; 
+  display: flex; 
+  flex-direction: column; 
+  gap: 12px; 
+  width: 100%;
+}
+.device-row { 
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 8px 16px; 
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #ffe0b2;
+  border-radius: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.device-main-info {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  grid-column: 1;
+  grid-row: 1;
+}
+.device-details {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  grid-column: 1;
+  grid-row: 2;
+  margin-left: 0;
+}
+.device-actions {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  flex-direction: column;
+  justify-self: end;
+}
+.dev-name { 
+  font-weight: 700; 
+  color: #333; 
+  font-size: 1rem;
+  min-width: 120px;
+}
+.dev-id { 
+  background: #e6f7ff; 
+  color: #0077b6; 
+  border-radius: 6px; 
+  padding: 3px 8px; 
+  font-size: 0.85em; 
+  font-weight: 600;
+  min-width: 100px;
+  text-align: center;
+}
+.dev-status {
+  font-weight: 700;
+  font-size: 0.9em;
+  padding: 3px 8px;
+  border-radius: 6px;
+  min-width: 60px;
+  text-align: center;
+}
+.dev-status.online { 
+  color: #2e7d32; 
+  background: #e0ffe0;
+}
+.dev-status.offline { 
+  color: #c62828; 
+  background: #ffe0e0;
+}
+.dev-store { 
+  color: #00695c; 
+  background: #e0f2f1; 
+  padding: 3px 8px; 
+  border-radius: 6px; 
+  font-size: 0.85em;
+  font-weight: 600;
+}
+.dev-cat { 
+  color: #555; 
+  font-size: 0.9em; 
+  display: flex; 
+  align-items: center; 
+  gap: 4px; 
+  flex-wrap: wrap; 
+}
+.cat-time { font-weight: 600; color: #333; }
+.cat-relative { color: #888; font-size: 0.85em; }
+.cat-count { color: #ff6600; font-weight: 600; }
 .store-chip { display:inline-block; margin-right:6px; margin-bottom:2px; padding:2px 6px; background:#eef6ff; color:#0d47a1; border-radius:6px; font-size:0.85em }
-.dev-store { color:#00695c; background:#e0f2f1; padding:2px 6px; border-radius:6px; font-size:0.85em }
+.update-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.update-time {
+  font-weight: 600;
+  color: #333;
+}
+.update-relative {
+  color: #888;
+  font-size: 0.85em;
+}
 .muted { color:#888; font-size:0.86em }
 
+@media (max-width: 1080px) {
+  .title-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .summary {
+    align-self: stretch;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .summary .chip {
+    margin-left: 0;
+    flex: 1;
+    text-align: center;
+    min-width: 80px;
+  }
+}
+
 @media (max-width: 900px) {
+  .agent-manager-card {
+    padding: 16px 12px;
+  }
+  .title {
+    font-size: 1.4rem;
+    margin-bottom: 12px;
+  }
+  .toolbar {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .toolbar .search {
+    width: 100%;
+  }
+  .toolbar .refresh {
+    width: 100%;
+    padding: 10px;
+  }
+  
   .agents-table thead { display: none; }
-  .agents-table tr { display: block; border-bottom: 1px solid #ffe0b2; margin-bottom: 8px; }
-  .agents-table td { display: flex; justify-content: space-between; gap: 8px; }
-  .agents-table td::before { content: attr(data-label); color: #ff6600; font-weight: 700; }
+  .agents-table, .agents-table tbody, .agents-table tr, .agents-table td {
+    display: block;
+    width: 100%;
+  }
+  .agents-table tr {
+    border: 1px solid #ffe0b2;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    padding: 12px;
+    background: #fff;
+    box-shadow: 0 2px 4px #ff66001a;
+  }
+  .agents-table td {
+    padding: 6px 0;
+    border: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    min-height: 32px;
+  }
+  .agents-table td::before {
+    content: attr(data-label) ": ";
+    color: #ff6600;
+    font-weight: 700;
+    min-width: 100px;
+    flex-shrink: 0;
+  }
+  .agents-table td[data-label="Ações"] {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .agents-table td[data-label="Ações"]::before {
+    width: 100%;
+    margin-bottom: 6px;
+  }
+  .actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .actions .btn {
+    flex: 1;
+    min-width: 80px;
+  }
+}
+
+@media (max-width: 768px) {
+  .agent-manager-card {
+    padding: 12px 8px;
+  }
+  .title {
+    font-size: 1.2rem;
+  }
+  .summary .chip {
+    font-size: 0.85rem;
+    padding: 4px 8px;
+  }
+  .agents-table tr {
+    padding: 10px;
+    margin-bottom: 10px;
+  }
+  .agents-table td {
+    font-size: 0.9rem;
+  }
+  .agents-table td::before {
+    font-size: 0.85rem;
+    min-width: 90px;
+  }
+  
+  .devices-inline {
+    padding: 12px;
+  }
+  .device-row {
+    gap: 6px 12px;
+    padding: 12px;
+  }
+  .device-main-info {
+    gap: 12px;
+  }
+  .device-details {
+    gap: 8px;
+  }
+  .device-actions {
+    flex-direction: row;
+    justify-content: flex-start;
+    width: 100%;
+    margin-left: 0;
+    grid-column: 1 / span 2;
+    grid-row: 3;
+  }
+  .device-actions .btn {
+    flex: 1;
+    min-width: 80px;
+  }
+  .dev-name {
+    min-width: 100px;
+    font-size: 0.95rem;
+  }
+  .dev-id {
+    min-width: 80px;
+    font-size: 0.8em;
+  }
+}
+
+@media (max-width: 600px) {
+  .agent-manager-card {
+    padding: 10px 6px;
+  }
+  .title {
+    font-size: 1.1rem;
+  }
+  .summary {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .summary .chip {
+    text-align: left;
+    padding: 6px 10px;
+  }
+  .agents-table tr {
+    padding: 8px;
+  }
+  .agents-table td {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 4px 0;
+  }
+  .agents-table td::before {
+    min-width: auto;
+    width: 100%;
+    margin-bottom: 2px;
+  }
+  .actions {
+    flex-direction: column;
+    width: 100%;
+    gap: 4px;
+  }
+  .actions .btn {
+    width: 100%;
+    padding: 8px;
+  }
+  
+  .devices-inline {
+    padding: 10px;
+  }
+  .device-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+  }
+  .device-main-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .device-details {
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .device-actions {
+    flex-direction: row;
+    width: 100%;
+    gap: 6px;
+  }
+  .device-actions .btn {
+    padding: 6px 8px;
+    font-size: 0.85rem;
+  }
+  .dev-name {
+    min-width: auto;
+    font-size: 0.9rem;
+  }
+  .dev-id {
+    min-width: auto;
+  }
+  .update-info {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .agent-manager-bg {
+    padding: 8px;
+  }
+  .agent-manager-card {
+    padding: 8px 4px;
+    border-radius: 10px;
+  }
+  .title {
+    font-size: 1rem;
+    margin-bottom: 8px;
+  }
+  .toolbar {
+    margin: 6px 0 10px 0;
+  }
+  .toolbar .search {
+    padding: 6px 8px;
+    font-size: 0.9rem;
+  }
+  .toolbar .refresh {
+    padding: 8px;
+    font-size: 0.9rem;
+  }
+  .agents-table tr {
+    padding: 6px;
+    margin-bottom: 8px;
+  }
+  .agents-table td {
+    font-size: 0.85rem;
+  }
+  .summary .chip {
+    font-size: 0.8rem;
+    padding: 4px 6px;
+  }
+  .modal {
+    width: 95vw;
+    padding: 12px;
+  }
+  
+  .devices-inline {
+    padding: 8px;
+  }
+  .device-row {
+    padding: 8px;
+    gap: 6px;
+  }
+  .device-main-info {
+    gap: 4px;
+  }
+  .device-details {
+    gap: 4px;
+  }
+  .device-actions {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .device-actions .btn {
+    width: 100%;
+    padding: 6px;
+    font-size: 0.8rem;
+  }
+  .dev-name {
+    font-size: 0.9rem;
+  }
+  .dev-id {
+    font-size: 0.8rem;
+  }
+  .dev-cat {
+    font-size: 0.8rem;
+  }
 }
 </style>
