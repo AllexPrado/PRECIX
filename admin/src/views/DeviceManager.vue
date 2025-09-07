@@ -34,10 +34,12 @@
 
   <div class="device-manager-bg">
     <div class="device-manager-card">
-      <header>
-        <h2>Gerenciar Equipamentos</h2>
-        <button @click="$router.back()">&larr; Voltar</button>
-      </header>
+      <div class="page-header">
+        <div class="header-content">
+          <h2>Gerenciar Equipamentos</h2>
+          <button class="back-btn" @click="$router.back()">← Voltar</button>
+        </div>
+      </div>
       <div class="summary-row" v-if="deviceSummary">
         <span class="chip total">Total: {{ deviceSummary.total }}</span>
         <span class="chip online">Online: {{ deviceSummary.online }}</span>
@@ -95,15 +97,18 @@
               </div>
             </div>
             <div class="device-col lastsync">
-              <div class="kv-row">
-                <span class="device-label">Último sinal:</span>
-                <span v-if="device.last_sync">{{ formatLastHeartbeat(device.last_sync) }} <span class="muted">({{ fromNow(device.last_sync) }})</span></span>
-                <span v-else>Nunca conectado</span>
-              </div>
-              <div class="kv-row">
-                <span class="device-label">Catálogo:</span>
-                <span v-if="device.last_catalog_sync">{{ formatLastHeartbeat(device.last_catalog_sync) }} <span class="muted">({{ fromNow(device.last_catalog_sync) }})</span> ({{ device.catalog_count || 0 }} itens)</span>
-                <span v-else>Sem sync</span>
+              <div class="sync-info">
+                <div class="sync-row">
+                  <span class="sync-label">Último sinal:</span>
+                  <span v-if="device.last_sync" class="sync-value">{{ formatLastHeartbeatClean(device.last_sync) }}</span>
+                  <span v-else class="sync-no-data">Nunca conectado</span>
+                </div>
+                <div class="sync-row">
+                  <span class="sync-label">Catálogo:</span>
+                  <span v-if="device.last_catalog_sync" class="sync-value">{{ formatLastHeartbeatClean(device.last_catalog_sync) }}</span>
+                  <span v-if="device.last_catalog_sync" class="catalog-count">({{ device.catalog_count || 0 }} itens)</span>
+                  <span v-else class="sync-no-data">Sem sync</span>
+                </div>
               </div>
             </div>
             <div class="device-col actions">
@@ -293,6 +298,12 @@ async function deleteDevice(id) {
   await fetchDevices()
 }
 
+function formatLastHeartbeatClean(ts) {
+  // Formato limpo para exibição: DD/MM HH:mm
+  if (!ts) return '---'
+  const d = dayjs.utc(ts).tz('America/Sao_Paulo')
+  return d.isValid() ? d.format('DD/MM HH:mm') : '---'
+}
 function formatLastHeartbeat(ts) {
   // Sempre interpreta como UTC e converte para GMT-3 na exibição
   if (!ts) return '---'
@@ -369,23 +380,50 @@ onMounted(() => {
   max-width: 100%;
   width: 100%;
 }
-header {
+.page-header {
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.header-content {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 18px;
+  max-width: 100%;
+}
+.header-content h2 {
+  margin: 0;
+  color: #333;
+  font-size: 1.5em;
+  font-weight: 600;
+}
+.back-btn {
+  background: #FF6600;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.9em;
+  transition: background-color 0.2s;
+}
+.back-btn:hover {
+  background: #e65c00;
 }
 form {
   display: flex;
   gap: 8px;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
 }
 .filters {
   background: #f8f9fa;
   border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 32px; /* margem maior para separar do bloco de equipamentos */
+  padding: 14px;
+  margin-bottom: 32px;
   border: 1px solid #e0e0e0;
 }
 .filters h3 {
@@ -437,24 +475,89 @@ ul {
 .device-list {
   list-style: none;
   padding: 0;
-  margin: 0;
+  margin: 20px 0 0 0;
 }
 .device-item {
   display: grid;
-  grid-template-columns: 2fr 1.4fr 1.2fr 2fr 0.9fr;
-  align-items: center;
-  gap: 8px;
+  grid-template-columns: 2.2fr 1.6fr 1.3fr 2.4fr 1fr;
+  align-items: start;
+  gap: 14px;
   margin-bottom: 10px;
   background: #f8f9fa;
   border-radius: 8px;
-  padding: 10px 8px;
+  padding: 12px 10px;
   box-shadow: 0 2px 8px #ff66001a;
-  color: #111827; /* cor padrão de texto dentro do card */
+  color: #111827;
 }
 .device-col {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
+}
+/* Novo layout compacto para sync */
+.sync-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sync-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.sync-label {
+  color: #6b7280;
+  font-size: 0.85em;
+  font-weight: 500;
+  min-width: 70px;
+}
+.sync-value {
+  font-weight: 600;
+  font-size: 0.9em;
+  color: #1f2937;
+}
+.sync-no-data {
+  color: #9ca3af;
+  font-size: 0.85em;
+  font-style: italic;
+}
+.catalog-count {
+  color: #6b7280;
+  font-size: 0.8em;
+  margin-left: 4px;
+}
+/* Manter layouts antigos para outras seções */
+.info-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 4px;
+}
+.info-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.main-time {
+  font-weight: 600;
+  font-size: 0.95em;
+  color: #1f2937;
+}
+.relative-time {
+  color: #6b7280;
+  font-size: 0.82em;
+  font-style: italic;
+}
+.catalog-info {
+  color: #374151;
+  font-size: 0.85em;
+  font-weight: 500;
+}
+.no-data {
+  color: #9ca3af;
+  font-size: 0.9em;
+  font-style: italic;
 }
 /* Linhas chave:valor para melhorar leitura */
 .kv-row { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
@@ -490,15 +593,140 @@ ul {
   margin-left: 6px;
 }
 @media (max-width: 1080px) {
-  .device-item { grid-template-columns: 1.8fr 1.1fr 1.1fr 1.8fr 1fr; }
+  .device-item { 
+    grid-template-columns: 2fr 1.4fr 1.2fr 2.2fr 1fr; 
+    gap: 10px;
+  }
+  .header-content {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .header-content h2 {
+    font-size: 1.3em;
+  }
+  .filter-row input, .filter-row select {
+    min-width: 120px;
+  }
 }
 @media (max-width: 900px) {
-  .device-item { grid-template-columns: 1.8fr 1fr; }
-  .device-col.actions { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; }
-  .device-col.lastsync { grid-column: 1 / -1; }
+  .device-manager-card {
+    padding: 16px 14px;
+  }
+  .device-item { 
+    grid-template-columns: 1.8fr 1fr; 
+    gap: 12px;
+    padding: 14px 10px;
+  }
+  .device-col.actions { 
+    grid-column: 1 / -1; 
+    display: flex; 
+    gap: 6px; 
+    flex-wrap: wrap; 
+    margin-top: 8px;
+  }
+  .device-col.lastsync { 
+    grid-column: 1 / -1; 
+    margin-top: 6px;
+  }
+  .sync-row {
+    flex-wrap: nowrap;
+    align-items: flex-start;
+  }
+  .sync-label {
+    min-width: 60px;
+    font-size: 0.8em;
+  }
+}
+@media (max-width: 768px) {
+  .filter-row {
+    gap: 6px;
+  }
+  .filter-row input, .filter-row select {
+    min-width: 100px;
+    flex: 1;
+  }
+  .clear-btn {
+    width: 100%;
+    margin-top: 8px;
+  }
+  form {
+    gap: 6px;
+  }
+  form input, form select {
+    font-size: 14px;
+  }
 }
 @media (max-width: 600px) {
-  .device-item { grid-template-columns: 1fr; }
+  .device-manager-card {
+    padding: 12px 10px;
+    margin: 10px;
+  }
+  .device-item { 
+    grid-template-columns: 1fr; 
+    padding: 12px 8px;
+    gap: 8px;
+  }
+  .page-header {
+    padding: 10px;
+    margin-bottom: 12px;
+  }
+  .header-content h2 {
+    font-size: 1.1em;
+  }
+  .back-btn {
+    padding: 5px 10px;
+    font-size: 0.85em;
+  }
+  .device-col {
+    gap: 4px;
+  }
+  .sync-info {
+    gap: 3px;
+  }
+  .device-col.actions {
+    margin-top: 6px;
+  }
+  .device-col.actions button {
+    font-size: 0.85em;
+    padding: 6px 10px;
+  }
+}
+@media (max-width: 480px) {
+  .device-manager-bg {
+    padding: 5px;
+  }
+  .device-manager-card {
+    padding: 10px 8px;
+    border-radius: 10px;
+  }
+  .summary-row {
+    gap: 8px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .chip {
+    text-align: center;
+    padding: 6px 8px;
+  }
+  .filter-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .filter-row input, .filter-row select {
+    width: 100%;
+    min-width: unset;
+  }
+  .device-item {
+    padding: 10px 6px;
+  }
+  .device-title {
+    font-size: 1em;
+  }
+  .badge-id {
+    margin-left: 0;
+    margin-top: 2px;
+  }
 }
 .modal-bg {
   position: fixed;

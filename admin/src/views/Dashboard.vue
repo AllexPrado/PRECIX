@@ -8,10 +8,7 @@
         </div>
         <div class="summary-item">
           <span class="summary-title">Última sincronização</span>
-          <span class="summary-value nowrap">
-            <span>{{ formatTS(status.last_sync) }}</span>
-            <small v-if="status.last_sync" class="muted"> ({{ fromNow(status.last_sync) }})</small>
-          </span>
+          <span class="summary-value">{{ formatTSClean(status.last_sync) }}</span>
         </div>
         <div class="summary-item">
           <span class="summary-title">Status do Sistema</span>
@@ -19,10 +16,7 @@
         </div>
         <div class="summary-item">
           <span class="summary-title">Último backup</span>
-          <span class="summary-value nowrap">
-            <span>{{ formatTS(status.last_backup) }}</span>
-            <small v-if="status.last_backup" class="muted"> ({{ fromNow(status.last_backup) }})</small>
-          </span>
+          <span class="summary-value">{{ formatTSClean(status.last_backup) }}</span>
         </div>
       </div>
     </div>
@@ -46,6 +40,11 @@ dayjs.locale('pt-br')
 
 const status = ref({})
 
+function formatTSClean(ts) {
+  if (!ts) return '---'
+  const d = dayjs.utc(ts).tz('America/Sao_Paulo')
+  return d.isValid() ? d.format('DD/MM/YYYY HH:mm') : '---'
+}
 function formatTS(ts) {
   if (!ts) return '---'
   const d = dayjs.utc(ts).tz('America/Sao_Paulo')
@@ -85,7 +84,7 @@ html, body {
   background: #fff;
   border-radius: 10px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  padding: 6px 0;
+  padding: 16px 0;
   margin: 0;
   width: 94vw;
   max-width: 980px;
@@ -93,7 +92,6 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* Garantir contraste de texto em fundo claro */
   color: #212121;
 }
 .dashboard-summary-row {
@@ -101,9 +99,9 @@ html, body {
   flex-direction: row;
   justify-content: center;
   align-items: stretch;
-  gap: 20px;
+  gap: 24px;
   width: 100%;
-  margin-top: 12px;
+  margin-top: 8px;
   flex-wrap: wrap;
 }
 .summary-item {
@@ -114,23 +112,23 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 120px;
+  min-width: 140px;
   max-width: 260px;
-  padding: 8px;
+  padding: 16px 12px;
   margin: 0;
-  min-height: 56px;
+  min-height: 64px;
 }
 .summary-title {
   color: #ff6600;
   font-size: 0.92rem;
-  margin-bottom: 2px;
+  margin-bottom: 6px;
   font-weight: 500;
   text-align: center;
 }
 .summary-value {
-  font-size: 1.06rem;
+  font-size: 1.1rem;
   font-weight: 700;
-  margin-top: 1px;
+  margin-top: 0;
   letter-spacing: 0.2px;
   text-align: center;
   word-break: keep-all;
@@ -138,6 +136,13 @@ html, body {
 }
 .nowrap { white-space: nowrap; }
 .muted { color: #6b7280; font-weight: 500; }
+.summary-relative { 
+  color: #6b7280; 
+  font-weight: 400; 
+  font-size: 0.82rem;
+  margin-top: 2px;
+  display: block;
+}
 .online-status { font-size: 1.06rem; }
 .online { color: #1a7f37; }
 .offline { color: #b91c1c; }
@@ -145,19 +150,47 @@ html, body {
   .dashboard-card-light {
     width: 98vw;
     min-width: 0;
-    padding: 6px 0;
+    padding: 12px 0;
+    margin: 10px;
   }
   .dashboard-summary-row {
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
     align-items: stretch;
-    margin-top: 6px;
+    margin-top: 8px;
   }
   .summary-item {
     min-width: 0;
     max-width: 100%;
     width: 100%;
     height: auto;
+    padding: 14px 12px;
+  }
+}
+@media (max-width: 480px) {
+  .dashboard-bg {
+    padding: 10px;
+  }
+  .dashboard-card-light {
+    width: 100%;
+    padding: 8px 0;
+    margin: 0;
+    border-radius: 8px;
+  }
+  .dashboard-summary-row {
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .summary-item {
+    padding: 12px 10px;
+    min-height: 50px;
+  }
+  .summary-title {
+    font-size: 0.85rem;
+    margin-bottom: 4px;
+  }
+  .summary-value {
+    font-size: 1rem;
   }
 }
 </style>
