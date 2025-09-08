@@ -441,20 +441,45 @@
             <div v-else-if="previewData.length" class="preview-content">
               <div class="preview-summary">
                 <div class="summary-card">
+                  <span class="summary-number">
+                    {{ previewHitSafetyLimit ? '≥ ' : '' }}{{ previewStats.total || previewData.length }}
+                  </span>
+                  <span class="summary-label">
+                    {{ previewHitSafetyLimit ? 'Total estimado na API' : 'Total encontrado na API' }}
+                  </span>
+                </div>
+                <div class="summary-card">
                   <span class="summary-number">{{ previewData.length }}</span>
-                  <span class="summary-label">Registros encontrados</span>
+                  <span class="summary-label">Amostra no preview</span>
                 </div>
                 <div class="summary-card">
                   <span class="summary-number">{{ validRecords }}</span>
-                  <span class="summary-label">Registros válidos</span>
+                  <span class="summary-label">Válidos na amostra</span>
                 </div>
                 <div class="summary-card">
-                  <span class="summary-number">{{ previewData.length - validRecords }}</span>
-                  <span class="summary-label">Com problemas</span>
+                  <span class="summary-number">{{ previewStats.problemas ?? (previewData.length - validRecords) }}</span>
+                  <span class="summary-label">Com problemas na amostra</span>
                 </div>
+              </div>
+              
+              <!-- Nota explicativa sobre cobertura -->
+              <div v-if="previewStats.total && previewStats.total > previewData.length" class="preview-coverage">
+                <i class="pi pi-info-circle"></i>
+                <span>Visualizando {{ previewData.length }} de {{ previewHitSafetyLimit ? 'pelo menos ' : '' }}{{ previewStats.total }} registros 
+                  ({{ Math.round((previewData.length / previewStats.total) * 100) }}% {{ previewHitSafetyLimit ? 'ou menos ' : '' }}da base)</span>
+              </div>
+              
+              <!-- Aviso sobre limite de segurança -->
+              <div v-if="previewHitSafetyLimit" class="preview-safety-warning">
+                <i class="pi pi-exclamation-triangle"></i>
+                <span><strong>Atenção:</strong> O total exato pode ser maior. A visualização foi limitada pelo limite de segurança do preview para preservar a performance.</span>
               </div>
 
               <div class="preview-table">
+                <!-- Título da amostra -->
+                <div class="preview-table-header">
+                  <h4>Amostra dos dados (primeiros {{ Math.min(previewData.length, 50) }} registros)</h4>
+                </div>
                 <table class="data-preview-table">
                   <thead>
                     <tr>
@@ -483,7 +508,14 @@
               </div>
 
               <div v-if="previewData.length > 50" class="preview-pagination">
-                <small>Mostrando apenas os primeiros 50 registros de {{ previewData.length }}</small>
+                <small>Mostrando apenas os primeiros 50 registros da amostra de {{ previewData.length }}</small>
+              </div>
+              
+              <!-- Nota explicativa sobre o preview -->
+              <div class="preview-disclaimer">
+                <i class="pi pi-info-circle"></i>
+                <p><strong>Importante:</strong> Este preview mostra apenas uma amostra dos dados para preservar a performance. 
+                A validação completa e importação será feita em {{ previewHitSafetyLimit ? 'pelo menos ' : 'todos os ' }}{{ previewStats.total || previewData.length }} registros encontrados na API.</p>
               </div>
             </div>
 
@@ -503,9 +535,10 @@
               Fechar
             </button>
             <button v-if="previewData.length && validRecords > 0" 
-                    type="button" class="btn btn-save" @click="proceedWithImport">
+                    type="button" class="btn btn-save" @click="proceedWithImport"
+                    :title="`Importar ${previewHitSafetyLimit ? 'pelo menos ' : 'todos os '}${previewStats.total || previewData.length} registros encontrados na API`">
               <i class="pi pi-upload"></i>
-              Prosseguir com Importação ({{ validRecords }} registros)
+              Importar {{ previewHitSafetyLimit ? 'pelo menos ' : 'todos os ' }}{{ previewStats.total || previewData.length }} registros
             </button>
           </div>
         </div>
@@ -536,6 +569,7 @@ const previewData = ref([])
 const previewStats = ref({ total: 0, validos: 0, problemas: 0 })
 const previewLoading = ref(false)
 const previewError = ref(null)
+const previewHitSafetyLimit = ref(false) // Flag para indicar se atingiu limite de segurança
 
 // Paginação
 const currentPage = ref(1)
@@ -562,8 +596,13 @@ const layoutConfig = ref({
   metodo: 'GET',
   authType: '',
   apiKeyHeader: 'X-API-Key',
+  // Paginação/Preview
   paginacao: false,
   paginacaoParam: 'page',
+  limiteParam: 'limit',
+  tamanhoPagina: 100,
+  limitePreview: 500,
+  limiteSeguranca: 10000,
   
   // Para banco
   dbType: 'postgresql',
@@ -620,11 +659,15 @@ function resetLayoutConfig() {
     separador: ';',
     encoding: 'utf-8',
     temCabecalho: true,
-    metodo: 'GET',
-    authType: '',
-    apiKeyHeader: 'X-API-Key',
-    paginacao: false,
-    paginacaoParam: 'page',
+  metodo: 'GET',
+  authType: '',
+  apiKeyHeader: 'X-API-Key',
+  paginacao: false,
+  paginacaoParam: 'page',
+  limiteParam: 'limit',
+  tamanhoPagina: 100,
+  limitePreview: 500,
+  limiteSeguranca: 10000,
     dbType: 'postgresql',
     query: '',
     mapeamento: {
@@ -651,6 +694,7 @@ function closePreviewModal() {
   showPreviewModal.value = false
   previewData.value = []
   previewError.value = null
+  previewHitSafetyLimit.value = false
 }
 
 function editConfig(config) {
@@ -821,15 +865,18 @@ async function previewApi() {
   try {
     console.log('Preview API - Iniciando preview da API:', form.value.parametro1)
     
-    let allData = []
-    let currentPage = 1
-    let hasMoreData = true
+  let allData = []
+  let currentPage = 1
+  let hasMoreData = true
     
     // Se a API usa paginação, buscar todas as páginas
-    if (layoutConfig.value.usePagination) {
+    // usar "paginacao" como flag canônica
+    if (layoutConfig.value.paginacao === true || layoutConfig.value.usePagination === true) {
       console.log('Preview API - API usa paginação, buscando todas as páginas...')
       
-      while (hasMoreData && allData.length < 10000) { // Limite de segurança
+      const pageSize = Number(layoutConfig.value.tamanhoPagina) || 100
+      const safetyCap = Number(layoutConfig.value.limiteSeguranca) || 10000
+      while (hasMoreData && allData.length < safetyCap) { // Limite de segurança
         const data = await fetchApiPage(currentPage)
         
         if (data && data.length > 0) {
@@ -838,12 +885,18 @@ async function previewApi() {
           console.log(`Preview API - Página ${currentPage - 1}: ${data.length} registros, total: ${allData.length}`)
           
           // Se retornou menos registros que o esperado, provavelmente é a última página
-          if (data.length < 100) {
+          if (data.length < pageSize) {
             hasMoreData = false
           }
         } else {
           hasMoreData = false
         }
+      }
+      
+      // Verificar se atingiu o limite de segurança
+      if (allData.length >= safetyCap && hasMoreData) {
+        previewHitSafetyLimit.value = true
+        console.log('Preview API - Atingiu limite de segurança, pode haver mais registros')
       }
     } else {
       // API sem paginação, buscar tudo de uma vez
@@ -853,8 +906,9 @@ async function previewApi() {
     
     console.log(`Preview API - Total de registros encontrados: ${allData.length}`)
     
-    // Processar dados com mapeamento (limitando o preview a 500 registros para performance)
-    const previewLimit = Math.min(allData.length, 500)
+  // Processar dados com mapeamento (limitando o preview para performance)
+  const previewCap = Number(layoutConfig.value.limitePreview) || 500
+  const previewLimit = Math.min(allData.length, previewCap)
     previewData.value = allData.slice(0, previewLimit).map((item, index) => {
       const mapped = mapApiData(item)
       return {
@@ -926,9 +980,14 @@ async function fetchApiPage(page = 1) {
   
   // Construir URL com parâmetros de paginação se necessário
   let url = form.value.parametro1
-  if (layoutConfig.value.usePagination && page > 1) {
+  const pageParam = layoutConfig.value.paginacaoParam || 'page'
+  const limitParam = layoutConfig.value.limiteParam || 'limit'
+  const pageSize = Number(layoutConfig.value.tamanhoPagina) || 100
+  // Se a API usa paginação, sempre incluir página e limite (até na página 1)
+  if (layoutConfig.value.paginacao === true || layoutConfig.value.usePagination === true) {
     const separator = url.includes('?') ? '&' : '?'
-    url += `${separator}page=${page}&limit=100`
+    const pageValue = page || 1
+    url += `${separator}${pageParam}=${pageValue}&${limitParam}=${pageSize}`
   }
   
   console.log(`fetchApiPage - Buscando página ${page}:`, url)
@@ -1854,6 +1913,90 @@ onMounted(async () => {
   font-style: italic;
   background: #fff8e1;
   border-top: 1px solid #ffd180;
+}
+
+/* Novos estilos para os elementos de clareza */
+.preview-coverage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #e3f2fd;
+  border: 1px solid #bbdefb;
+  border-radius: 6px;
+  margin: 16px 0;
+  color: #1565c0;
+  font-size: 0.9rem;
+}
+
+.preview-coverage i {
+  color: #1976d2;
+  font-size: 1rem;
+}
+
+.preview-safety-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #fff3e0;
+  border: 1px solid #ffcc80;
+  border-radius: 6px;
+  margin: 8px 0 16px 0;
+  color: #e65100;
+  font-size: 0.9rem;
+}
+
+.preview-safety-warning i {
+  color: #ff8f00;
+  font-size: 1rem;
+}
+
+.preview-safety-warning strong {
+  color: #bf360c;
+}
+
+.preview-table-header {
+  padding: 12px 16px;
+  background: #fff3e0;
+  border-bottom: 2px solid #ff6600;
+  margin-bottom: 0;
+}
+
+.preview-table-header h4 {
+  margin: 0;
+  color: #ff6600;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.preview-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: #fff8e1;
+  border: 1px solid #ffcc80;
+  border-radius: 6px;
+  margin-top: 16px;
+}
+
+.preview-disclaimer i {
+  color: #ff8f00;
+  font-size: 1.1rem;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.preview-disclaimer p {
+  margin: 0;
+  color: #e65100;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.preview-disclaimer strong {
+  color: #bf360c;
 }
 
 .preview-error,
