@@ -15,6 +15,10 @@
             <i class="pi pi-download"></i>
             {{ importLoading ? 'Importando...' : 'Importar agora' }}
           </button>
+          <button v-if="configs.length === 0" class="btn btn-seed" @click="createSampleConfigs">
+            <i class="pi pi-cog"></i>
+            Criar Exemplos
+          </button>
         </div>
       </div>
 
@@ -74,7 +78,22 @@
         </div>
         <div class="logs-content">
           <template v-if="logs && logs.length">
-            <pre class="logs-pre">{{ logs.join('\n').trim() }}</pre>
+            <div v-for="(log, index) in logs" :key="index" class="log-entry">
+              <div class="log-header">
+                <span class="log-timestamp">{{ formatLogTimestamp(log.timestamp) }}</span>
+                <span class="log-action" :class="getLogActionClass(log.action)">
+                  <i :class="getLogActionIcon(log.action)"></i>
+                  {{ getLogActionLabel(log.action) }}
+                </span>
+              </div>
+              <div class="log-summary" v-if="log.details">
+                {{ getLogSummary(log.details) }}
+              </div>
+              <div class="log-device" v-if="log.device_name">
+                <i class="pi pi-desktop"></i>
+                {{ log.device_name }}
+              </div>
+            </div>
           </template>
           <template v-else>
             <div class="logs-empty">Sem eventos recentes.</div>
@@ -929,6 +948,24 @@ async function previewApi() {
     console.log('Preview API - Estatísticas:', previewStats.value)
     console.log('Preview API - Primeiros 3 registros processados:', previewData.value.slice(0, 3))
     
+    // Registrar log do preview
+    try {
+      await axios.post(api('/admin/integracoes/log'), {
+        action: 'INTEGRATION_PREVIEW',
+        details: {
+          tipo: 'API',
+          url: form.value.parametro1,
+          total_encontrados: allData.length,
+          amostra_preview: previewLimit,
+          validos_amostra: previewData.value.filter(item => item.valid).length,
+          usa_paginacao: layoutConfig.value.paginacao || layoutConfig.value.usePagination
+        },
+        store_name: getStoreName(form.value.loja_id)
+      })
+    } catch (error) {
+      console.log('Erro ao registrar log de preview:', error)
+    }
+    
     if (allData.length > previewLimit) {
       feedback.value = { 
         success: true, 
@@ -1123,15 +1160,69 @@ function getRecordErrors(record) {
 }
 
 async function proceedWithImport() {
+  try {
+    // Simular importação via API bulk upsert com os dados do preview
+    const payload = previewData.value.filter(item => item.valid).map(item => ({
+      codigo: item.codigo,
+      descricao: item.descricao,
+      preco: parseFloat(item.preco) || 0
+    }))
+    
+    if (payload.length === 0) {
+      feedback.value = { success: false, message: 'Nenhum registro válido para importar.' }
+      closePreviewModal()
+      return
+    }
+    
+    const response = await axios.post(api('/admin/products/bulk'), {
+      products: payload
+    })
+    
+    // Registrar log da importação
+    try {
+      await axios.post(api('/admin/integracoes/log'), {
+        action: 'INTEGRATION_IMPORT',
+        details: {
+          tipo: form.value.tipo,
+          source: form.value.parametro1,
+          registros_importados: payload.length,
+          total_disponivel: previewStats.value.total || previewData.value.length,
+          resultado: response.data
+        },
+        store_name: getStoreName(form.value.loja_id)
+      })
+    } catch (error) {
+      console.log('Erro ao registrar log de importação:', error)
+    }
+    
+    feedback.value = { 
+      success: true, 
+      message: `Importação concluída! ${payload.length} registros processados.` 
+    }
+    
+    // Atualizar logs após importação
+    await fetchLogs()
+    
+  } catch (error) {
+    console.error('Erro na importação:', error)
+    feedback.value = { 
+      success: false, 
+      message: 'Erro ao importar dados: ' + (error.response?.data?.detail || error.message) 
+    }
+  }
+  
   closePreviewModal()
-  await importNow()
 }
 
 async function fetchConfigs() {
   try {
+    console.log('fetchConfigs - Buscando configurações de integração...')
     const resp = await axios.get(api('/admin/integracoes'))
+    console.log('fetchConfigs - Resposta do servidor:', resp.data)
     configs.value = resp.data || []
-  } catch {
+    console.log('fetchConfigs - Configurações carregadas:', configs.value.length)
+  } catch (error) {
+    console.error('fetchConfigs - Erro ao carregar configurações:', error)
     configs.value = []
   }
 }
@@ -1172,9 +1263,12 @@ async function fetchStores() {
 
 async function fetchLogs() {
   try {
-    const resp = await axios.get(api('/admin/importar-precos/logs'))
+    // Buscar logs de auditoria que incluem PRODUCTS_BULK_UPSERT e outras operações
+    const resp = await axios.get(api('/admin/audit-logs?limit=20'))
+    console.log('Audit logs response:', resp.data)
     logs.value = resp.data || []
-  } catch {
+  } catch (error) {
+    console.error('Erro ao buscar logs de auditoria:', error)
     logs.value = []
   }
 }
@@ -1259,6 +1353,21 @@ function onFileSelect(e) {
   }
 }
 
+async function createSampleConfigs() {
+  try {
+    const response = await axios.post(api('/admin/integracoes/seed'))
+    if (response.data.success) {
+      feedback.value = { success: true, message: response.data.message }
+      await fetchConfigs() // Recarregar lista
+    } else {
+      feedback.value = { success: false, message: response.data.message }
+    }
+  } catch (error) {
+    console.error('Erro ao criar configurações de exemplo:', error)
+    feedback.value = { success: false, message: 'Erro ao criar configurações de exemplo' }
+  }
+}
+
 onMounted(async () => {
   console.log('IntegrationConfig - Componente montado, carregando dados...')
   
@@ -1278,6 +1387,115 @@ onMounted(async () => {
     console.error('IntegrationConfig - Erro ao carregar dados:', error)
   }
 })
+
+// Funções de formatação de logs
+function formatLogTimestamp(timestamp) {
+  if (!timestamp) return ''
+  try {
+    return new Date(timestamp).toLocaleString('pt-BR')
+  } catch {
+    return timestamp
+  }
+}
+
+function getLogSummary(details) {
+  if (!details) return 'Sem detalhes disponíveis'
+  
+  try {
+    const parsed = JSON.parse(details)
+    
+    // Para PRODUCTS_BULK_UPSERT
+    if (parsed.result) {
+      const result = parsed.result
+      let message = ''
+      
+      if (result.inserted > 0) {
+        message += `${result.inserted} produtos inseridos`
+      }
+      if (result.updated > 0) {
+        if (message) message += ', '
+        message += `${result.updated} produtos atualizados`
+      }
+      if (result.ignored > 0) {
+        if (message) message += ', '
+        message += `${result.ignored} produtos ignorados`
+      }
+      
+      if (parsed.user) {
+        message += ` • Executado por: ${parsed.user}`
+      }
+      
+      return message || 'Operação realizada'
+    }
+    
+    // Para outros tipos de log
+    if (typeof parsed === 'object') {
+      if (parsed.message) return parsed.message
+      if (parsed.error) return `❌ Erro: ${parsed.error}`
+      if (parsed.status) return `Status: ${parsed.status}`
+    }
+    
+    return 'Operação registrada'
+  } catch {
+    // Se não for JSON, tentar extrair informações do texto
+    if (details.includes('preços atualizados')) {
+      const match = details.match(/(\d+)\s+preços?\s+atualizados?/)
+      if (match) {
+        return `${match[1]} preços atualizados`
+      }
+    }
+    
+    return details.length > 100 ? details.substring(0, 100) + '...' : details
+  }
+}
+
+function getLogActionLabel(action) {
+  const labels = {
+    'PRODUCTS_BULK_UPSERT': 'Importação de Produtos',
+    'INTEGRATION_PREVIEW': 'Preview de Integração',
+    'INTEGRATION_IMPORT': 'Importação de Dados',
+    'IMPORT_OK': 'Importação Concluída',
+    'IMPORT_ERROR': 'Erro na Importação',
+    'DEVICE_UPDATE': 'Atualização de Dispositivo',
+    'DEVICE_CONNECT': 'Dispositivo Conectado',
+    'DEVICE_DISCONNECT': 'Dispositivo Desconectado'
+  }
+  
+  return labels[action] || action
+}
+
+function getLogActionIcon(action) {
+  const icons = {
+    'PRODUCTS_BULK_UPSERT': 'pi pi-upload',
+    'INTEGRATION_PREVIEW': 'pi pi-eye',
+    'INTEGRATION_IMPORT': 'pi pi-download',
+    'IMPORT_OK': 'pi pi-check-circle',
+    'IMPORT_ERROR': 'pi pi-times-circle',
+    'DEVICE_UPDATE': 'pi pi-sync',
+    'DEVICE_CONNECT': 'pi pi-wifi',
+    'DEVICE_DISCONNECT': 'pi pi-wifi text-red'
+  }
+  
+  return icons[action] || 'pi pi-info-circle'
+}
+
+function formatLogDetails(details) {
+  if (!details) return ''
+  try {
+    const parsed = JSON.parse(details)
+    return JSON.stringify(parsed, null, 2)
+  } catch {
+    return details
+  }
+}
+
+function getLogActionClass(action) {
+  if (!action) return ''
+  if (action.includes('BULK_UPSERT') || action.includes('IMPORT')) return 'log-action-import'
+  if (action.includes('ERROR') || action.includes('FAIL')) return 'log-action-error'
+  if (action.includes('DEVICE')) return 'log-action-device'
+  return 'log-action-info'
+}
 </script>
 
 <style scoped>
@@ -1365,6 +1583,19 @@ onMounted(async () => {
 .btn-secondary:hover:not(:disabled) {
   background: #fff8e1;
   border-color: #ff6600;
+}
+
+.btn-seed {
+  background: #f5f5f5;
+  color: #666;
+  border-color: #ddd;
+  font-size: 0.85rem;
+}
+
+.btn-seed:hover:not(:disabled) {
+  background: #eeeeee;
+  border-color: #bbb;
+  color: #333;
 }
 
 .btn-edit {
@@ -1569,10 +1800,127 @@ onMounted(async () => {
 }
 
 .logs-content {
+  background: #fafbfc;
+  border: 1px solid #e9ecef;
+  border-radius: 12px;
+  padding: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.06);
+}
+
+.log-entry {
   background: #fff;
-  border: 1px dashed #ffd180;
+  border: 1px solid #e9ecef;
   border-radius: 8px;
-  padding: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.log-entry:last-child {
+  margin-bottom: 0;
+}
+
+.log-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.log-timestamp {
+  font-size: 0.8rem;
+  color: #666 !important;
+  font-family: monospace;
+  background: #f8f9fa;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.log-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 6px 12px;
+  border-radius: 6px;
+}
+
+.log-device {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #666 !important;
+  margin-left: auto;
+}
+
+.log-summary {
+  background: #f8f9fa;
+  border-left: 3px solid #ff6600;
+  padding: 12px 16px;
+  margin: 8px 0;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  color: #2c3e50 !important;
+  line-height: 1.4;
+}
+
+.log-action {
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.log-action-import {
+  background: #e8f5e9;
+  color: #2e7d32 !important;
+  border: 1px solid #a5d6a7;
+}
+
+.log-action-error {
+  background: #ffebee;
+  color: #c62828 !important;
+  border: 1px solid #ef9a9a;
+}
+
+.log-action-device {
+  background: #e3f2fd;
+  color: #1565c0 !important;
+  border: 1px solid #90caf9;
+}
+
+.log-action-info {
+  background: #fff3e0;
+  color: #ff6600 !important;
+  border: 1px solid #ffcc02;
+}
+
+.log-details {
+  background: #f8f9fa;
+  border-left: 3px solid #ff6600;
+  padding: 8px 12px;
+  margin: 8px 0;
+  font-family: monospace;
+  font-size: 0.8rem;
+  border-radius: 4px;
+}
+
+.log-details pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #2c3e50 !important;
+}
+
+.log-device {
+  font-size: 0.8rem;
+  color: #777;
+  font-style: italic;
 }
 
 .logs-pre {
@@ -1581,7 +1929,7 @@ onMounted(async () => {
   font-family: monospace;
   font-size: 0.85rem;
   line-height: 1.4;
-  color: #333;
+  color: #2c3e50 !important;
   white-space: pre-wrap;
   margin: 0;
 }
@@ -1591,6 +1939,23 @@ onMounted(async () => {
   font-style: italic;
   text-align: center;
   padding: 20px;
+}
+
+/* Forçar cor dos textos dos logs para garantir visibilidade */
+.log-entry * {
+  color: #2c3e50 !important;
+}
+
+.log-timestamp {
+  color: #666 !important;
+}
+
+.log-device {
+  color: #777 !important;
+}
+
+.log-action {
+  /* Cores específicas das ações são definidas acima */
 }
 
 .modal-backdrop {

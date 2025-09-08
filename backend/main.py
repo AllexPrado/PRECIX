@@ -475,7 +475,13 @@ def get_import_logs():
 # Integrações de preço
 @app.get('/admin/integracoes')
 def listar_integracoes(loja_id: int = Query(None)):
-    return get_integrations(loja_id)
+    try:
+        result = get_integrations(loja_id)
+        print(f"[DEBUG] Listando integrações: loja_id={loja_id}, resultado={len(result)} registros")
+        return result
+    except Exception as e:
+        print(f"[ERROR] Erro ao listar integrações: {e}")
+        return []
 
 
 @app.post('/admin/integracoes')
@@ -1073,6 +1079,66 @@ def export_txt():
 @app.get('/admin/audit-logs')
 def api_get_audit_logs(limit: int = 50):
     return get_audit_logs(limit)
+
+
+@app.post('/admin/integracoes/log')
+def log_integration_event(data: dict = Body(...)):
+    """Registra eventos de integração na auditoria."""
+    try:
+        action = data.get('action', 'INTEGRATION_EVENT')
+        details = data.get('details', {})
+        store_name = data.get('store_name', 'Global')
+        
+        # Adicionar log de auditoria
+        add_audit_log(None, store_name, action, json.dumps(details, ensure_ascii=False))
+        
+        return {"success": True, "message": "Log registrado com sucesso"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+@app.post('/admin/integracoes/seed')
+def criar_integracoes_exemplo():
+    """Cria integrações de exemplo para teste."""
+    try:
+        # Verificar se já existem integrações
+        existing = get_integrations()
+        if len(existing) > 0:
+            return {"success": False, "message": f"Já existem {len(existing)} integrações configuradas"}
+        
+        # Criar exemplos
+        exemplos = [
+            {
+                "loja_id": None,
+                "tipo": "api",
+                "parametro1": "http://192.168.18.7:8000/product/all",
+                "parametro2": "",
+                "ativo": 1,
+                "layout": '{"paginacao": false, "authType": "", "mapeamento": {"codigo": "codigo", "descricao": "descricao", "preco": "preco"}}'
+            },
+            {
+                "loja_id": None,
+                "tipo": "arquivo",
+                "parametro1": "C:\\precos\\produtos.csv",
+                "parametro2": "",
+                "ativo": 1,
+                "layout": '{"separador": ";", "encoding": "utf-8", "temCabecalho": true, "mapeamento": {"codigo": "codigo", "descricao": "descricao", "preco": "preco"}}'
+            }
+        ]
+        
+        for exemplo in exemplos:
+            upsert_integration(
+                exemplo["loja_id"],
+                exemplo["tipo"],
+                exemplo["parametro1"],
+                exemplo["parametro2"],
+                exemplo["ativo"],
+                exemplo["layout"]
+            )
+        
+        return {"success": True, "message": f"Criadas {len(exemplos)} integrações de exemplo"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 
 
 @app.get('/admin/devices/{device_id}/audit-logs')
