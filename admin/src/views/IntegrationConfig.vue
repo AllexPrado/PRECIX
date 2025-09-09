@@ -511,16 +511,16 @@
                   </thead>
                   <tbody>
                     <tr v-for="(item, index) in previewData.slice(0, 50)" :key="index"
-                        :class="['preview-row', item.valid ? 'valid' : 'invalid']">
+                        :class="['preview-row', getStatusClass(item.status)]">
                       <td>
-                        <span :class="['status-icon', item.valid ? 'valid' : 'invalid']">
-                          <i :class="item.valid ? 'pi pi-check' : 'pi pi-times'"></i>
+                        <span :class="['status-icon', getStatusClass(item.status)]">
+                          <i :class="getStatusIcon(item.status)"></i>
                         </span>
                       </td>
                       <td>{{ item.codigo || '-' }}</td>
                       <td>{{ item.descricao || '-' }}</td>
                       <td>{{ formatPrice(item.preco) }}</td>
-                      <td class="observations">{{ item.errors?.join(', ') || 'OK' }}</td>
+                      <td class="observations">{{ item.observacoes || 'OK' }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -570,6 +570,17 @@
 import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import { api } from '../apiBase.js'
+import dayjs from 'dayjs'
+import relativeTime from 'dayjs/plugin/relativeTime'
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
+import 'dayjs/locale/pt-br'
+
+dayjs.extend(relativeTime)
+dayjs.extend(timezone)
+dayjs.extend(utc)
+dayjs.locale('pt-br')
+dayjs.tz.setDefault('America/Sao_Paulo')
 
 // Estado reativo
 const configs = ref([])
@@ -787,6 +798,33 @@ function formatPrice(price) {
   const num = parseFloat(price)
   if (isNaN(num)) return price
   return `R$ ${num.toFixed(2).replace('.', ',')}`
+}
+
+// Funções para interpretar status do preview
+function getStatusClass(status) {
+  switch (status) {
+    case 'existente':
+      return 'valid'
+    case 'novo':
+      return 'new'
+    case 'erro':
+      return 'invalid'
+    default:
+      return 'invalid'
+  }
+}
+
+function getStatusIcon(status) {
+  switch (status) {
+    case 'existente':
+      return 'pi pi-check'
+    case 'novo':
+      return 'pi pi-plus'
+    case 'erro':
+      return 'pi pi-times'
+    default:
+      return 'pi pi-times'
+  }
 }
 
 // Funções de preview e validação
@@ -1392,8 +1430,28 @@ onMounted(async () => {
 function formatLogTimestamp(timestamp) {
   if (!timestamp) return ''
   try {
-    return new Date(timestamp).toLocaleString('pt-BR')
-  } catch {
+    // Converter para timezone do Brasil (Brasília)
+    const date = dayjs.utc(timestamp).tz('America/Sao_Paulo')
+    const now = dayjs().tz('America/Sao_Paulo')
+    
+    // Verificar se é hoje para mostrar apenas a hora
+    if (date.isSame(now, 'day')) {
+      return `Hoje às ${date.format('HH:mm:ss')}`
+    }
+    // Se foi ontem
+    else if (date.isSame(now.subtract(1, 'day'), 'day')) {
+      return `Ontem às ${date.format('HH:mm:ss')}`
+    }
+    // Se foi esta semana
+    else if (date.isSame(now, 'week')) {
+      return `${date.format('dddd')} às ${date.format('HH:mm:ss')}`
+    }
+    // Formato completo para datas mais antigas
+    else {
+      return date.format('DD/MM/YYYY às HH:mm:ss')
+    }
+  } catch (error) {
+    console.error('Erro ao formatar timestamp:', error)
     return timestamp
   }
 }
@@ -1810,12 +1868,21 @@ function getLogActionClass(action) {
 }
 
 .log-entry {
-  background: #fff;
-  border: 1px solid #e9ecef;
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  background: linear-gradient(135deg, #fff 0%, #fafcfe 100%);
+  border: 1px solid #e3f2fd;
+  border-left: 4px solid #ff6600;
+  border-radius: 12px;
+  padding: 18px;
+  margin-bottom: 16px;
+  box-shadow: 0 3px 10px rgba(255, 102, 0, 0.08);
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.log-entry:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 20px rgba(255, 102, 0, 0.15);
+  border-left-color: #e55a00;
 }
 
 .log-entry:last-child {
@@ -1825,27 +1892,43 @@ function getLogActionClass(action) {
 .log-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
   gap: 12px;
-  margin-bottom: 8px;
 }
 
 .log-timestamp {
-  font-size: 0.8rem;
-  color: #666 !important;
-  font-family: monospace;
-  background: #f8f9fa;
-  padding: 4px 8px;
-  border-radius: 4px;
+  font-size: 0.85rem;
+  color: #28a745 !important;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-weight: 600;
+  background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%);
+  padding: 6px 12px;
+  border-radius: 16px;
+  border: 1px solid #c8e6c9;
+  box-shadow: 0 2px 4px rgba(40, 167, 69, 0.1);
+  min-width: 140px;
+  text-align: center;
+  display: inline-block;
 }
 
 .log-action {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-weight: 600;
-  font-size: 0.85rem;
-  padding: 6px 12px;
-  border-radius: 6px;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 8px 16px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 2px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.log-action i {
+  font-size: 1.1rem;
 }
 
 .log-device {
@@ -1858,14 +1941,17 @@ function getLogActionClass(action) {
 }
 
 .log-summary {
-  background: #f8f9fa;
-  border-left: 3px solid #ff6600;
-  padding: 12px 16px;
-  margin: 8px 0;
-  border-radius: 4px;
-  font-size: 0.9rem;
+  background: linear-gradient(135deg, #f8fffe 0%, #e8f7f5 100%);
+  border-left: 4px solid #ff6600;
+  border-radius: 8px;
+  padding: 14px 18px 14px 24px;
+  margin: 12px 0;
+  font-size: 0.95rem;
   color: #2c3e50 !important;
-  line-height: 1.4;
+  line-height: 1.5;
+  box-shadow: 0 2px 8px rgba(255, 102, 0, 0.08);
+  position: relative;
+  font-weight: 500;
 }
 
 .log-action {
@@ -1877,27 +1963,51 @@ function getLogActionClass(action) {
 }
 
 .log-action-import {
-  background: #e8f5e9;
-  color: #2e7d32 !important;
-  border: 1px solid #a5d6a7;
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  color: #1b5e20 !important;
+  border-color: #4caf50;
+  box-shadow: 0 3px 6px rgba(76, 175, 80, 0.2);
+}
+
+.log-action-import:hover {
+  background: linear-gradient(135deg, #c8e6c9 0%, #a5d6a7 100%);
+  transform: translateY(-1px);
 }
 
 .log-action-error {
-  background: #ffebee;
-  color: #c62828 !important;
-  border: 1px solid #ef9a9a;
+  background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+  color: #b71c1c !important;
+  border-color: #f44336;
+  box-shadow: 0 3px 6px rgba(244, 67, 54, 0.2);
+}
+
+.log-action-error:hover {
+  background: linear-gradient(135deg, #ffcdd2 0%, #ef9a9a 100%);
+  transform: translateY(-1px);
 }
 
 .log-action-device {
-  background: #e3f2fd;
-  color: #1565c0 !important;
-  border: 1px solid #90caf9;
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  color: #0d47a1 !important;
+  border-color: #2196f3;
+  box-shadow: 0 3px 6px rgba(33, 150, 243, 0.2);
+}
+
+.log-action-device:hover {
+  background: linear-gradient(135deg, #bbdefb 0%, #90caf9 100%);
+  transform: translateY(-1px);
 }
 
 .log-action-info {
-  background: #fff3e0;
-  color: #ff6600 !important;
-  border: 1px solid #ffcc02;
+  background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+  color: #e65100 !important;
+  border-color: #ff9800;
+  box-shadow: 0 3px 6px rgba(255, 152, 0, 0.2);
+}
+
+.log-action-info:hover {
+  background: linear-gradient(135deg, #ffe0b2 0%, #ffcc80 100%);
+  transform: translateY(-1px);
 }
 
 .log-details {
@@ -2258,6 +2368,11 @@ function getLogActionClass(action) {
 .status-icon.valid {
   background: #e8f5e9;
   color: #2e7d32;
+}
+
+.status-icon.new {
+  background: #e3f2fd;
+  color: #1565c0;
 }
 
 .status-icon.invalid {

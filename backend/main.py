@@ -104,22 +104,6 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     return username
 
 
-@app.get('/admin/status')
-def admin_status():
-    status = get_system_status()
-    devices = get_all_devices()
-    online = any([d.get('online') for d in devices])
-    try:
-        from backup_restore import get_last_backup
-        backup = get_last_backup()
-        last_backup = backup['timestamp'] if backup and 'timestamp' in backup else None
-    except Exception:
-        last_backup = None
-    status['online'] = online
-    status['last_backup'] = last_backup
-    return JSONResponse(content=status)
-
-
 @app.get('/favicon.ico')
 def favicon():
     file_path = os.path.join(FRONTEND_PUBLIC_DIR, 'favicon.ico')
@@ -530,6 +514,34 @@ def testar_integracao_api(data: dict = Body(...)):
         return {"success": True, "status": r.status_code, "count": int(count), "sample": sample if isinstance(sample, dict) else None}
     except Exception as e:
         return {"success": False, "message": str(e)}
+
+
+@app.put('/admin/integracoes/{integracao_id}')
+async def atualizar_integracao(integracao_id: int, request: Request):
+    """Atualizar uma integração existente."""
+    try:
+        data = await request.json()
+        
+        # Converter ativo para int
+        ativo = data.get('ativo', True)
+        ativo_int = 1 if ativo else 0
+        
+        update_integration_by_id(
+            integracao_id,
+            data.get('loja_id'),
+            data.get('tipo'),
+            data.get('parametro1'),
+            data.get('parametro2'),
+            ativo_int,
+            data.get('layout', '{}')
+        )
+        
+        return {"success": True, "message": "Integração atualizada com sucesso"}
+    except Exception as e:
+        import traceback
+        logging.error(f"Erro ao atualizar integração {integracao_id}: {str(e)}")
+        logging.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.delete('/admin/integracoes/{integracao_id}')
@@ -1141,6 +1153,191 @@ def criar_integracoes_exemplo():
         return {"success": False, "message": str(e)}
 
 
+@app.post('/admin/integracoes/preview-arquivo')
+async def preview_arquivo_integracao(request: Request):
+    """Preview de arquivo para integração."""
+    try:
+        data = await request.json()
+        caminho = data.get('caminho')
+        layout = data.get('layout', {})
+        loja_id = data.get('loja_id')
+        
+        if not caminho:
+            raise HTTPException(status_code=400, detail="Caminho do arquivo é obrigatório")
+        
+        # Tentar ler o arquivo
+        try:
+            # Usar encoding configurado ou padrão
+            encoding = layout.get('encoding', 'utf-8')
+            separador = layout.get('separador', ';')
+            tem_cabecalho = layout.get('temCabecalho', True)
+            
+            import os
+            import csv
+            import codecs
+            
+            # Resolver caminho absoluto
+            # Se o caminho não for absoluto, tentar alguns locais padrão
+            if not os.path.isabs(caminho):
+                # Diretório base do projeto
+                base_dir = os.path.dirname(os.path.dirname(__file__))
+                
+                # Tentar vários locais possíveis
+                possible_paths = [
+                    os.path.join(base_dir, caminho),                    # raiz do projeto
+                    os.path.join(base_dir, 'agente_local', 'dist', caminho),  # agente_local/dist
+                    os.path.join(base_dir, 'backend', caminho),         # backend
+                    os.path.join(base_dir, 'frontend', caminho),        # frontend
+                    caminho  # caminho original como última tentativa
+                ]
+                
+                caminho_final = None
+                for possible_path in possible_paths:
+                    if os.path.exists(possible_path):
+                        caminho_final = possible_path
+                        break
+                
+                if not caminho_final:
+                    raise HTTPException(status_code=404, detail=f"Arquivo não encontrado em nenhum dos locais possíveis. Arquivo: {caminho}. Locais verificados: {possible_paths}")
+                
+                caminho = caminho_final
+            
+            if not os.path.exists(caminho):
+                raise HTTPException(status_code=404, detail=f"Arquivo não encontrado: {caminho}")
+            
+            # Informações do arquivo
+            arquivo_info = {
+                'caminho': caminho,
+                'tamanho': os.path.getsize(caminho),
+                'modificado': os.path.getmtime(caminho)
+            }
+            
+            dados = []
+            with codecs.open(caminho, 'r', encoding=encoding) as arquivo:
+                # Detectar separador automaticamente se necessário
+                primeira_linha = arquivo.readline()
+                arquivo.seek(0)
+                
+                if separador == 'auto':
+                    # Tentar detectar separador
+                    if ';' in primeira_linha:
+                        separador = ';'
+                    elif ',' in primeira_linha:
+                        separador = ','
+                    elif '\t' in primeira_linha:
+                        separador = '\t'
+                    elif '|' in primeira_linha:
+                        separador = '|'
+                    else:
+                        separador = ';'  # padrão
+                
+                reader = csv.reader(arquivo, delimiter=separador)
+                
+                # Pular cabeçalho se configurado
+                if tem_cabecalho:
+                    next(reader, None)
+                
+                # Ler até 100 linhas para preview
+                count = 0
+                for linha in reader:
+                    if count >= 100:  # Limite para preview
+                        break
+                    
+                    if len(linha) >= 2:  # Pelo menos código e preço
+                        # Mapear campos baseado na configuração
+                        mapeamento = layout.get('mapeamento', {})
+                        
+                        try:
+                            # Usar mapeamento ou posições padrão
+                            codigo_idx = int(mapeamento.get('codigo', 0)) if str(mapeamento.get('codigo', '0')).isdigit() else 0
+                            descricao_idx = int(mapeamento.get('descricao', 1)) if str(mapeamento.get('descricao', '1')).isdigit() else 1
+                            preco_idx = int(mapeamento.get('preco', 2)) if str(mapeamento.get('preco', '2')).isdigit() else 2
+                            
+                            # Extrair dados
+                            codigo = linha[codigo_idx] if len(linha) > codigo_idx else ''
+                            descricao = linha[descricao_idx] if len(linha) > descricao_idx else ''
+                            preco_str = linha[preco_idx] if len(linha) > preco_idx else ''
+                            
+                            # Converter preço
+                            try:
+                                preco = float(preco_str.replace(',', '.').replace('R$', '').strip())
+                            except:
+                                preco = 0.0
+                            
+                            # Verificar se o produto existe no banco
+                            produto_existente = None
+                            status = 'novo'  # padrão: produto novo
+                            observacoes = 'OK'
+                            
+                            try:
+                                from database import get_product_by_barcode
+                                produto_existente = get_product_by_barcode(codigo.strip())
+                                if produto_existente:
+                                    status = 'existente'
+                                    # Comparar preços se possível
+                                    if 'preco' in produto_existente:
+                                        preco_atual = float(produto_existente['preco'])
+                                        diferenca = abs(preco - preco_atual)
+                                        if diferenca > 0.01:  # diferença significativa
+                                            observacoes = f'Preço atual: R$ {preco_atual:.2f}'
+                                        else:
+                                            observacoes = 'Preço igual'
+                                else:
+                                    status = 'novo'
+                                    observacoes = 'Produto não encontrado no banco'
+                            except Exception as e:
+                                status = 'erro'
+                                observacoes = f'Erro ao verificar: {str(e)}'
+                            
+                            dados.append({
+                                'codigo': codigo.strip(),
+                                'descricao': descricao.strip(),
+                                'preco': preco,
+                                'status': status,
+                                'observacoes': observacoes,
+                                'linha_original': linha
+                            })
+                        except (IndexError, ValueError) as e:
+                            # Linha com problema, adicionar mesmo assim para debug
+                            dados.append({
+                                'codigo': linha[0] if len(linha) > 0 else '',
+                                'descricao': linha[1] if len(linha) > 1 else '',
+                                'preco': 0.0,
+                                'status': 'erro',
+                                'observacoes': f'Erro na linha: {str(e)}',
+                                'erro': str(e),
+                                'linha_original': linha
+                            })
+                    
+                    count += 1
+            
+            return {
+                "success": True,
+                "arquivo_info": arquivo_info,
+                "dados": dados,
+                "total_preview": len(dados),
+                "configuracao": {
+                    "encoding": encoding,
+                    "separador": separador,
+                    "tem_cabecalho": tem_cabecalho,
+                    "mapeamento": layout.get('mapeamento', {})
+                }
+            }
+            
+        except UnicodeDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"Erro de encoding do arquivo. Tente outro encoding. Erro: {str(e)}")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Erro ao processar arquivo: {str(e)}")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        logging.error(f"Erro no preview de arquivo: {str(e)}")
+        logging.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
+
+
 @app.get('/admin/devices/{device_id}/audit-logs')
 def api_get_device_audit_logs(device_id: int, limit: int = 20):
     return get_device_audit_logs(device_id, limit)
@@ -1236,86 +1433,6 @@ import json
 import io
 import sys
 import shutil
-# ==== INÍCIO DOS IMPORTS ÚNICOS ====
-import os
-import json
-import io
-import sys
-import shutil
-import threading
-import time
-import requests
-from datetime import datetime
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Body, Depends, Query
-from typing import List, Dict, Union
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-try:
-    from database import (
-        get_product_by_barcode, init_db, populate_example_data, get_db_connection, authenticate_admin,
-        get_system_status, export_products_to_txt, get_all_stores, add_store, update_store, delete_store,
-        get_all_devices, add_device, update_device, delete_device, set_device_online, set_device_offline,
-        add_audit_log, get_audit_logs, get_device_audit_logs, upsert_agent_status, get_all_agents_status,
-        upsert_products, delete_agent_status, update_agent_status, update_device_catalog_sync,
-    get_device_by_identifier, bulk_upsert_agent_devices, get_agent_devices, delete_agent_device,
-    replace_agent_stores, get_agent_stores, dedupe_agents, dedupe_agents_by_ip, get_latest_agent_by_ip,
-    reassign_orphan_agent_devices_by_ip
-    )
-    from static_middleware import mount_frontend
-    from ai_agent_integration import notify_ai_agent
-    from ia_event_log import router as ia_event_router
-    from auth_jwt import create_access_token, verify_access_token
-    from backup_restore import router as backup_restore_router
-    from device_store_router import router as device_store_router
-    from importador_precos import importar_todos_precos
-    from integration_config import create_integration_table, upsert_integration, get_integrations, update_integration_by_id, delete_integration
-except ImportError:
-    from database import (
-        get_product_by_barcode, init_db, populate_example_data, get_db_connection, authenticate_admin,
-        get_system_status, export_products_to_txt, get_all_stores, add_store, update_store, delete_store,
-        get_all_devices, add_device, update_device, delete_device, set_device_online, set_device_offline,
-        add_audit_log, get_audit_logs, get_device_audit_logs, upsert_agent_status, get_all_agents_status,
-        upsert_products, delete_agent_status, update_agent_status, update_device_catalog_sync,
-    get_device_by_identifier, bulk_upsert_agent_devices, get_agent_devices, delete_agent_device,
-    replace_agent_stores, get_agent_stores, dedupe_agents, dedupe_agents_by_ip, get_latest_agent_by_ip,
-    reassign_orphan_agent_devices_by_ip
-    )
-    from static_middleware import mount_frontend
-    from ai_agent_integration import notify_ai_agent
-    from ia_event_log import router as ia_event_router
-    from auth_jwt import create_access_token, verify_access_token
-    from backup_restore import router as backup_restore_router
-    from device_store_router import router as device_store_router
-    from importador_precos import importar_todos_precos
-    from integration_config import create_integration_table, upsert_integration, get_integrations, update_integration_by_id, delete_integration
-# ==== FIM DOS IMPORTS ÚNICOS ====
-
-# Inicializa tabela de integrações ao iniciar o backend
-create_integration_table()
-
-# Logs de importação
-_import_logs = []
-class ImportLogCatcher(io.StringIO):
-    def write(self, txt):
-        super().write(txt)
-        _import_logs.append(txt)
-        if len(_import_logs) > 100:
-            _import_logs.pop(0)
-_old_stdout = sys.stdout
-sys.stdout = ImportLogCatcher()
-
-# Diretório público do frontend
-FRONTEND_PUBLIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend', 'public'))
-
-
-# Criação única do app
-app = FastAPI()
-app.include_router(ia_event_router)
-app.include_router(backup_restore_router)
-app.include_router(device_store_router)
-security = HTTPBearer()
-
 # Deduplicação defensiva na inicialização (id canônico e por IP)
 try:
     dedupe_agents()
@@ -1784,7 +1901,6 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     return username
 
 @app.get('/admin/status')
-@app.get('/admin/status')
 def admin_status():
     import datetime
     status = get_system_status()
@@ -1800,11 +1916,19 @@ def admin_status():
         last_backup = None
     status['online'] = online
     status['last_backup'] = last_backup
-    # Serializa datetime para string
-    for k, v in status.items():
-        if isinstance(v, datetime.datetime):
-            status[k] = v.isoformat()
-    return JSONResponse(content=status)
+    
+    # Serializa datetime para string recursivamente
+    def serialize_datetime(obj):
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
+        elif isinstance(obj, dict):
+            return {k: serialize_datetime(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [serialize_datetime(item) for item in obj]
+        return obj
+    
+    serialized_status = serialize_datetime(status)
+    return JSONResponse(content=serialized_status)
 
 # Endpoint para servir favicon.ico
 @app.get('/favicon.ico')
