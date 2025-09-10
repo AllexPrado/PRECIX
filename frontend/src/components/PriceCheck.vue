@@ -6,13 +6,34 @@
     </button>
     <div v-if="showUUIDModal" class="uuid-modal-bg" @click.self="showUUIDModal = false">
       <div class="uuid-modal">
-        <h3>Identificador do Dispositivo</h3>
-        <div class="uuid-box">
-          <template v-if="uuidLocal && uuidLocal.length > 0">{{ uuidLocal }}</template>
-          <template v-else><span style="color:#aaa;">UUID não gerado</span></template>
+        <h3>Configurações do Dispositivo</h3>
+        
+        <!-- Status do Scanner integrado no modal -->
+        <div class="scanner-info-section">
+          <div class="scanner-indicator" :class="{ connected: scannerConnected }">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="16" rx="2"/>
+              <path d="M7 8h10"/>
+              <path d="M7 12h4"/>
+              <path d="M7 16h2"/>
+            </svg>
+            <span v-if="scannerConnected">Scanner Bluetooth Conectado</span>
+            <span v-else>Scanner Aguardando Conexão</span>
+          </div>
         </div>
-        <button class="copy-btn" @click="copyUUID" :disabled="!uuidLocal">{{ copied ? 'Copiado!' : 'Copiar UUID' }}</button>
-        <button class="close-btn" @click="showUUIDModal = false">Fechar</button>
+
+        <div class="uuid-section">
+          <label>Identificador Único:</label>
+          <div class="uuid-box">
+            <template v-if="uuidLocal && uuidLocal.length > 0">{{ uuidLocal }}</template>
+            <template v-else><span style="color:#aaa;">UUID não gerado</span></template>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="copy-btn" @click="copyUUID" :disabled="!uuidLocal">{{ copied ? 'Copiado!' : 'Copiar UUID' }}</button>
+          <button class="close-btn" @click="showUUIDModal = false">Fechar</button>
+        </div>
       </div>
     </div>
 
@@ -20,19 +41,6 @@
     <div class="connection-status-top" :class="{ online: isOnline, offline: !isOnline }">
       <span v-if="isOnline">● Online</span>
       <span v-else>● Offline</span>
-    </div>
-
-    <!-- Indicador de Scanner Bluetooth -->
-    <div class="scanner-status" :class="{ connected: scannerConnected }">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M9 12l2 2 4-4"/>
-        <path d="M21 12c.552 0 1-.448 1-1s-.448-1-1-1-1 .448-1 1 .448 1 1 1z"/>
-        <path d="M17 8l4-4-4-4"/>
-        <path d="M3 12c.552 0 1-.448 1-1s-.448-1-1-1-1 .448-1 1 .448 1 1 1z"/>
-        <path d="M7 16l-4-4 4-4"/>
-      </svg>
-      <span v-if="scannerConnected">Scanner Conectado</span>
-      <span v-else>Aguardando Scanner</span>
     </div>
 
     <!-- Conteúdo principal centralizado -->
@@ -73,6 +81,48 @@
       </div>
     </main>
 
+    <!-- Modal para resultado do produto - Experiência tecnológica e profissional -->
+    <transition name="modal-fade">
+      <div v-if="product && showProductModal" class="product-modal-overlay" @click="closeProductModal">
+        <div class="product-modal" @click.stop>
+          <!-- Barra de progresso de fechamento automático -->
+          <div class="auto-close-progress"></div>
+          
+          <!-- Ícone de produto digitalizado -->
+          <div class="product-scan-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#FF6600" stroke-width="2">
+              <path d="M9 12l2 2 4-4"/>
+              <circle cx="12" cy="12" r="10"/>
+            </svg>
+          </div>
+          
+          <div class="modal-product-info">
+            <div class="product-found-label">Produto Encontrado</div>
+            <div class="modal-product-name">{{ product.name }}</div>
+            <div class="modal-product-price">
+              <span class="currency">R$</span>
+              <span class="price-value">{{ formatPrice(product.price) }}</span>
+            </div>
+            <div v-if="product.promo" class="modal-promo-badge">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 15.09 8.26 22 9 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9 8.91 8.26 12 2"/>
+              </svg>
+              {{ product.promo }}
+            </div>
+          </div>
+          
+          <!-- Timer visual de fechamento -->
+          <div class="auto-close-timer">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12,6 12,12 16,14"/>
+            </svg>
+            <span>Fechando automaticamente...</span>
+          </div>
+        </div>
+      </div>
+    </transition>
+
     <!-- Rodapé fixo -->
     <footer class="footer">
       <p>© {{ new Date().getFullYear() }} Sonda Supermercados</p>
@@ -89,6 +139,8 @@ const deviceUUID = inject('deviceUUID')
 const showUUIDModal = ref(false)
 const copied = ref(false)
 const uuidLocal = ref('')
+const showProductModal = ref(false)
+const autoCloseTimeout = ref(null)
 
 watch(deviceUUID, (val) => {
   uuidLocal.value = val
@@ -350,6 +402,15 @@ async function checkPrice() {
   const localProduct = await getProduct(code)
   if (localProduct && localProduct.name) {
     product.value = localProduct
+    // Abre modal automaticamente (otimização tablet kiosk)
+    showProductModal.value = true
+    // Fecha automaticamente após 5 segundos
+    if (autoCloseTimeout.value) {
+      clearTimeout(autoCloseTimeout.value)
+    }
+    autoCloseTimeout.value = setTimeout(() => {
+      closeProductModal()
+    }, 5000)
     // Emite evento de consulta OK (offline/local)
     try {
       const identifier = deviceUUID?.value || ''
@@ -386,6 +447,15 @@ async function checkPrice() {
     const response = await axios.get(url)
     if (response.data && response.data.name) {
       product.value = response.data
+      // Abre modal automaticamente (otimização tablet kiosk)
+      showProductModal.value = true
+      // Fecha automaticamente após 5 segundos
+      if (autoCloseTimeout.value) {
+        clearTimeout(autoCloseTimeout.value)
+      }
+      autoCloseTimeout.value = setTimeout(() => {
+        closeProductModal()
+      }, 5000)
       await saveProduct(response.data)
       // Emite evento OK (API)
       try {
@@ -426,6 +496,29 @@ async function checkPrice() {
       }
     } catch {}
   }
+}
+
+function closeProductModal() {
+  // Limpa o timeout se ainda estiver ativo
+  if (autoCloseTimeout.value) {
+    clearTimeout(autoCloseTimeout.value)
+    autoCloseTimeout.value = null
+  }
+  showProductModal.value = false
+  // Auto-reset após fechar modal para operação hands-free
+  setTimeout(() => {
+    resetScreen()
+  }, 500)
+}
+
+function startNewConsultation() {
+  // Limpa o timeout se ainda estiver ativo
+  if (autoCloseTimeout.value) {
+    clearTimeout(autoCloseTimeout.value)
+    autoCloseTimeout.value = null
+  }
+  showProductModal.value = false
+  resetScreen()
 }
 </script>
 
@@ -478,40 +571,6 @@ async function checkPrice() {
 .connection-status-top.offline {
   color: #d00000;
   background: #ffeaea;
-}
-
-.scanner-status {
-  position: fixed;
-  top: 20px;
-  left: 20px;
-  font-size: 0.9em;
-  font-weight: 500;
-  padding: 6px 12px;
-  border-radius: 12px;
-  z-index: 100;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 2px 12px rgba(0,0,0,0.1);
-  color: #666;
-  transition: all 0.3s ease;
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid rgba(0,0,0,0.1);
-}
-
-.scanner-status.connected {
-  color: #008000;
-  background: rgba(0, 255, 0, 0.1);
-  border-color: #008000;
-  box-shadow: 0 2px 12px rgba(0,128,0,0.2);
-}
-
-.scanner-status svg {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
 }
 
 .glass-card {
@@ -826,48 +885,82 @@ input:focus::placeholder {
 /* Tablet portrait */
 @media (min-width: 769px) and (max-width: 1024px) {
   .connection-status-top {
-    top: 25px;
-    right: 25px;
-    font-size: 1em;
-    padding: 7px 15px;
-  }
-
-  .scanner-status {
-    top: 25px;
-    left: 25px;
-    font-size: 1em;
-    padding: 8px 14px;
+    top: clamp(20px, 3vw, 30px);
+    right: clamp(20px, 3vw, 30px);
+    font-size: clamp(0.9rem, 2vw, 1.1rem);
+    padding: clamp(6px, 1.5vw, 10px) clamp(12px, 2.5vw, 16px);
   }
 
   .main-content {
-    padding: 32px;
-    gap: 24px;
+    padding: clamp(24px, 4vw, 40px);
+    gap: clamp(20px, 3vw, 32px);
   }
 
   .glass-card {
-    padding: 40px 36px 32px;
-    border-radius: 28px;
-    max-width: 520px;
+    padding: clamp(32px, 5vw, 48px) clamp(28px, 4.5vw, 40px) clamp(24px, 4vw, 36px);
+    border-radius: clamp(20px, 4vw, 32px);
+    max-width: min(580px, 85vw);
+    box-shadow: 
+      0 12px 48px 0 rgba(255, 102, 0, 0.18),
+      0 4px 16px rgba(255, 102, 0, 0.12),
+      0 0 0 1px rgba(255, 255, 255, 0.25) inset;
   }
   
   .input-row {
-    gap: 16px;
+    gap: clamp(12px, 2.5vw, 20px);
     flex-direction: row;
-    max-width: 500px;
+    max-width: min(520px, 90vw);
   }
 
   .input-row input {
-    font-size: 1.1rem;
-    padding: 14px 18px;
+    font-size: clamp(1.1rem, 2.5vw, 1.3rem);
+    padding: clamp(14px, 2.5vw, 18px) clamp(16px, 3vw, 20px);
+    min-height: clamp(52px, 10vw, 64px);
     text-align: left;
   }
 
   .input-row button {
-    font-size: 1.1rem;
-    padding: 14px 24px;
-    min-width: 120px;
+    font-size: clamp(1.1rem, 2.5vw, 1.3rem);
+    padding: clamp(14px, 2.5vw, 18px) clamp(20px, 4vw, 28px);
+    min-width: clamp(110px, 20vw, 140px);
+    min-height: clamp(52px, 10vw, 64px);
     width: auto;
     max-width: none;
+  }
+
+  .logo-mascot-row {
+    gap: clamp(16px, 3vw, 24px);
+    margin-bottom: clamp(20px, 4vw, 32px);
+  }
+
+  .main-logo {
+    width: clamp(160px, 30vw, 220px);
+  }
+
+  .mascot {
+    width: clamp(48px, 9vw, 72px);
+    height: clamp(48px, 9vw, 72px);
+  }
+
+  .settings-btn {
+    width: clamp(52px, 10vw, 64px);
+    height: clamp(52px, 10vw, 64px);
+    bottom: clamp(20px, 3vw, 32px);
+    right: clamp(20px, 3vw, 32px);
+  }
+
+  /* Modal específico para tablets */
+  .product-modal {
+    max-width: min(650px, 90vw);
+    padding: clamp(36px, 6vw, 56px);
+  }
+
+  .modal-product-name {
+    font-size: clamp(1.6rem, 4.5vw, 2.4rem);
+  }
+
+  .modal-product-price .price-value {
+    font-size: clamp(2.8rem, 7vw, 4.2rem);
   }
 }
 
@@ -879,13 +972,6 @@ input:focus::placeholder {
     font-size: 1.1em;
     padding: 8px 16px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-  }
-
-  .scanner-status {
-    top: 30px;
-    left: 30px;
-    font-size: 1.1em;
-    padding: 8px 16px;
   }
 
   .main-content {
@@ -959,19 +1045,201 @@ input:focus::placeholder {
   }
 }
 
+/* Tablet kiosk specific - Portrait mode optimizations */
+@media (min-width: 768px) and (max-width: 1024px) and (orientation: portrait) and (min-height: 900px) {
+  .main-content {
+    padding: clamp(32px, 5vw, 56px);
+    gap: clamp(24px, 4vw, 40px);
+    justify-content: flex-start;
+    padding-top: clamp(80px, 12vw, 120px);
+  }
+
+  .glass-card {
+    padding: clamp(40px, 6vw, 64px) clamp(32px, 5vw, 48px) clamp(32px, 5vw, 48px);
+    max-width: min(640px, 85vw);
+    border-radius: clamp(24px, 4vw, 36px);
+    box-shadow: 
+      0 16px 64px 0 rgba(255, 102, 0, 0.2),
+      0 6px 24px rgba(255, 102, 0, 0.15),
+      0 0 0 1px rgba(255, 255, 255, 0.3) inset;
+  }
+
+  .logo-mascot-row {
+    margin-bottom: clamp(28px, 5vw, 44px);
+    gap: clamp(20px, 4vw, 32px);
+  }
+
+  .main-logo {
+    width: clamp(180px, 32vw, 260px);
+  }
+
+  .mascot {
+    width: clamp(56px, 10vw, 80px);
+    height: clamp(56px, 10vw, 80px);
+  }
+
+  .input-row {
+    margin-bottom: clamp(20px, 4vw, 32px);
+    gap: clamp(16px, 3vw, 24px);
+    max-width: min(560px, 90vw);
+  }
+
+  .input-row input {
+    font-size: clamp(1.2rem, 3vw, 1.5rem);
+    padding: clamp(16px, 3vw, 22px) clamp(20px, 4vw, 28px);
+    min-height: clamp(60px, 12vw, 76px);
+    border-radius: clamp(12px, 2.5vw, 18px);
+  }
+
+  .input-row button {
+    font-size: clamp(1.2rem, 3vw, 1.5rem);
+    padding: clamp(16px, 3vw, 22px) clamp(24px, 5vw, 36px);
+    min-height: clamp(60px, 12vw, 76px);
+    min-width: clamp(140px, 25vw, 180px);
+    border-radius: clamp(12px, 2.5vw, 18px);
+  }
+
+  .scanner-status {
+    top: clamp(24px, 4vw, 36px);
+    font-size: clamp(1rem, 2.2vw, 1.2rem);
+    padding: clamp(8px, 1.8vw, 12px) clamp(16px, 3vw, 20px);
+    border-radius: clamp(10px, 2vw, 16px);
+  }
+
+  .connection-status-top {
+    top: clamp(24px, 4vw, 36px);
+    right: clamp(24px, 4vw, 36px);
+    font-size: clamp(1rem, 2.2vw, 1.2rem);
+    padding: clamp(8px, 1.8vw, 12px) clamp(16px, 3vw, 20px);
+    border-radius: clamp(10px, 2vw, 16px);
+  }
+
+  .settings-btn {
+    width: clamp(60px, 12vw, 76px);
+    height: clamp(60px, 12vw, 76px);
+    bottom: clamp(32px, 5vw, 48px);
+    right: clamp(32px, 5vw, 48px);
+  }
+
+  /* Modal otimizado para tablet kiosk portrait */
+  .product-modal {
+    max-width: min(700px, 88vw);
+    padding: clamp(48px, 8vw, 72px);
+    border-radius: clamp(20px, 3vw, 32px);
+  }
+
+  .modal-product-name {
+    font-size: clamp(1.8rem, 5vw, 2.6rem);
+    margin-bottom: clamp(20px, 4vw, 32px);
+  }
+
+  .modal-product-price .currency {
+    font-size: clamp(1.4rem, 3.5vw, 2rem);
+  }
+
+  .modal-product-price .price-value {
+    font-size: clamp(3.2rem, 8vw, 4.8rem);
+  }
+
+  .modal-promo-badge {
+    font-size: clamp(1.1rem, 2.8vw, 1.4rem);
+    padding: clamp(10px, 2.5vw, 16px) clamp(20px, 4vw, 32px);
+    margin: clamp(16px, 3vw, 24px) auto;
+  }
+
+  .new-consultation-btn {
+    padding: clamp(18px, 3.5vw, 26px) clamp(32px, 6vw, 48px);
+    font-size: clamp(1.2rem, 3vw, 1.5rem);
+    min-width: clamp(200px, 38vw, 260px);
+    border-radius: clamp(12px, 2.5vw, 20px);
+  }
+
+  .modal-close-btn {
+    width: clamp(44px, 9vw, 56px);
+    height: clamp(44px, 9vw, 56px);
+    top: clamp(16px, 3vw, 24px);
+    right: clamp(16px, 3vw, 24px);
+  }
+}
+
 /* Landscape orientation adjustments */
 @media (orientation: landscape) and (max-height: 600px) {
   .main-content {
-    padding: 16px;
-    gap: 16px;
+    padding: clamp(12px, 2vw, 20px);
+    gap: clamp(12px, 2vw, 20px);
   }
   
   .glass-card {
-    padding: 24px 32px 20px;
+    padding: clamp(20px, 3vw, 32px) clamp(24px, 4vw, 40px) clamp(16px, 2.5vw, 28px);
+    max-width: min(500px, 85vw);
   }
   
   .logo-mascot-row {
-    margin-bottom: 16px;
+    margin-bottom: clamp(12px, 2vw, 20px);
+    gap: clamp(12px, 2vw, 18px);
+  }
+
+  .main-logo {
+    width: clamp(100px, 18vw, 160px);
+  }
+
+  .mascot {
+    width: clamp(32px, 6vw, 48px);
+    height: clamp(32px, 6vw, 48px);
+  }
+
+  .input-row {
+    margin-bottom: clamp(8px, 1.5vw, 16px);
+    gap: clamp(8px, 1.5vw, 16px);
+  }
+
+  .input-row input {
+    font-size: clamp(1rem, 2vw, 1.2rem);
+    padding: clamp(10px, 2vw, 16px) clamp(14px, 2.5vw, 18px);
+    min-height: clamp(40px, 8vw, 52px);
+  }
+
+  .input-row button {
+    font-size: clamp(1rem, 2vw, 1.2rem);
+    padding: clamp(10px, 2vw, 16px) clamp(16px, 3vw, 24px);
+    min-height: clamp(40px, 8vw, 52px);
+    min-width: clamp(90px, 16vw, 120px);
+  }
+
+  .scanner-status {
+    top: clamp(8px, 1.5vw, 16px);
+    font-size: clamp(0.8rem, 1.8vw, 0.9rem);
+    padding: clamp(4px, 1vw, 8px) clamp(8px, 1.8vw, 12px);
+  }
+
+  .connection-status-top {
+    top: clamp(8px, 1.5vw, 16px);
+    right: clamp(8px, 1.5vw, 16px);
+    font-size: clamp(0.8rem, 1.8vw, 0.9rem);
+    padding: clamp(4px, 1vw, 8px) clamp(8px, 1.8vw, 12px);
+  }
+
+  .settings-btn {
+    width: clamp(40px, 8vw, 52px);
+    height: clamp(40px, 8vw, 52px);
+    bottom: clamp(12px, 2vw, 20px);
+    right: clamp(12px, 2vw, 20px);
+  }
+
+  /* Modal em landscape para tablets */
+  .product-modal {
+    max-width: min(600px, 90vw);
+    max-height: 85vh;
+    padding: clamp(20px, 3vw, 36px);
+  }
+
+  .modal-product-name {
+    font-size: clamp(1.2rem, 3vw, 1.8rem);
+    margin-bottom: clamp(10px, 2vw, 16px);
+  }
+
+  .modal-product-price .price-value {
+    font-size: clamp(2rem, 5vw, 3rem);
   }
 }
 
@@ -1072,13 +1340,64 @@ input:focus::placeholder {
 }
 .uuid-modal {
   background: #fff;
-  border-radius: 18px;
-  box-shadow: 0 8px 40px #ff66002a;
-  padding: 32px 24px 24px 24px;
+  border-radius: 20px;
+  box-shadow: 0 12px 48px rgba(255, 102, 0, 0.2);
+  padding: 32px 28px 28px 28px;
   width: 100%;
-  max-width: 480px;
+  max-width: 520px;
   text-align: center;
   animation: fadeIn 0.3s;
+  border: 1px solid rgba(255, 102, 0, 0.1);
+}
+
+/* Scanner integrado no modal UUID */
+.scanner-info-section {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: rgba(255, 102, 0, 0.05);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 102, 0, 0.15);
+}
+
+.scanner-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #666;
+  transition: all 0.3s ease;
+}
+
+.scanner-indicator.connected {
+  color: #008000;
+}
+
+.scanner-indicator svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+}
+
+.uuid-section {
+  margin-bottom: 24px;
+}
+
+.uuid-section label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+  text-align: left;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 .uuid-box {
   font-family: monospace;
@@ -1130,5 +1449,286 @@ input:focus::placeholder {
 .close-btn:hover {
   background: #fff3e0;
   box-shadow: 0 4px 16px #ff66002a;
+}
+
+/* Modal do produto - Experiência tecnológica e profissional */
+.product-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 4vw, 24px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.product-modal {
+  background: linear-gradient(135deg, #fff 0%, #f8fafc 100%);
+  border-radius: clamp(20px, 5vw, 28px);
+  box-shadow: 
+    0 25px 80px rgba(0, 0, 0, 0.4),
+    0 12px 40px rgba(255, 102, 0, 0.25),
+    0 0 0 1px rgba(255, 255, 255, 0.4) inset;
+  padding: clamp(36px, 7vw, 56px);
+  width: 100%;
+  max-width: min(500px, 90vw);
+  text-align: center;
+  position: relative;
+  border: 1px solid rgba(255, 102, 0, 0.2);
+  overflow: hidden;
+}
+
+/* Barra de progresso de fechamento automático */
+.auto-close-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #FF6600, #FF9900);
+  border-radius: 0 0 2px 2px;
+  animation: progressBar 5s linear forwards;
+  z-index: 1;
+}
+
+@keyframes progressBar {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+/* Ícone de produto digitalizado */
+.product-scan-icon {
+  margin-bottom: clamp(20px, 4vw, 28px);
+  animation: scanPulse 2s ease-in-out infinite;
+}
+
+@keyframes scanPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.8; }
+}
+
+.product-found-label {
+  font-size: clamp(0.9rem, 2.2vw, 1rem);
+  font-weight: 600;
+  color: #22c55e;
+  margin-bottom: clamp(12px, 2.5vw, 16px);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.9;
+}
+
+.modal-product-name {
+  font-size: clamp(1.6rem, 5.5vw, 2.4rem);
+  font-weight: 800;
+  color: #1e293b;
+  margin-bottom: clamp(20px, 4vw, 28px);
+  line-height: 1.1;
+  text-align: center;
+  background: linear-gradient(135deg, #1e293b 0%, #475569 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.modal-product-price {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: clamp(6px, 1.5vw, 10px);
+  margin-bottom: clamp(20px, 4vw, 28px);
+  padding: clamp(16px, 3vw, 24px);
+  background: linear-gradient(135deg, rgba(255, 102, 0, 0.08) 0%, rgba(255, 153, 0, 0.05) 100%);
+  border-radius: clamp(12px, 3vw, 16px);
+  border: 1px solid rgba(255, 102, 0, 0.15);
+}
+
+.modal-product-price .currency {
+  font-size: clamp(1.4rem, 4vw, 2rem);
+  font-weight: 700;
+  color: #FF6600;
+}
+
+.modal-product-price .price-value {
+  font-size: clamp(3rem, 9vw, 5rem);
+  font-weight: 900;
+  color: #FF6600;
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  text-shadow: 0 2px 4px rgba(255, 102, 0, 0.2);
+}
+
+.modal-promo-badge {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: white;
+  padding: clamp(10px, 2.5vw, 14px) clamp(20px, 4vw, 28px);
+  border-radius: clamp(20px, 4vw, 25px);
+  font-weight: 700;
+  font-size: clamp(0.9rem, 2.2vw, 1.1rem);
+  margin: clamp(16px, 3vw, 20px) auto;
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(6px, 1.5vw, 8px);
+  box-shadow: 0 6px 20px rgba(34, 197, 94, 0.3);
+  animation: promoPulse 3s ease-in-out infinite;
+}
+
+@keyframes promoPulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 6px 20px rgba(34, 197, 94, 0.3); }
+  50% { transform: scale(1.02); box-shadow: 0 8px 25px rgba(34, 197, 94, 0.4); }
+}
+
+/* Timer visual de fechamento */
+.auto-close-timer {
+  position: absolute;
+  bottom: clamp(16px, 3vw, 20px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 1.5vw, 8px);
+  font-size: clamp(0.8rem, 1.8vw, 0.9rem);
+  color: #64748b;
+  opacity: 0.7;
+  font-weight: 500;
+}
+
+.auto-close-timer svg {
+  width: clamp(16px, 3vw, 18px);
+  height: clamp(16px, 3vw, 18px);
+  animation: timerRotate 5s linear forwards;
+}
+
+@keyframes timerRotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.modal-close-btn {
+  position: absolute;
+  top: clamp(12px, 2vw, 16px);
+  right: clamp(12px, 2vw, 16px);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  width: clamp(36px, 8vw, 44px);
+  height: clamp(36px, 8vw, 44px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #666;
+  transition: all 0.2s ease;
+  z-index: 1;
+}
+
+.modal-close-btn:hover {
+  background: #fff3e0;
+  color: #FF6600;
+  box-shadow: 0 4px 12px rgba(255, 102, 0, 0.2);
+}
+
+.modal-product-info {
+  margin-bottom: clamp(24px, 5vw, 32px);
+}
+
+.modal-product-name {
+  font-size: clamp(1.4rem, 5vw, 2.2rem);
+  font-weight: 700;
+  color: #333;
+  margin-bottom: clamp(16px, 3vw, 20px);
+  line-height: 1.2;
+  text-align: center;
+}
+
+.modal-product-price {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: clamp(4px, 1vw, 8px);
+  margin-bottom: clamp(16px, 3vw, 20px);
+}
+
+.modal-product-price .currency {
+  font-size: clamp(1.2rem, 4vw, 1.8rem);
+  font-weight: 600;
+  color: #FF6600;
+}
+
+.modal-product-price .price-value {
+  font-size: clamp(2.5rem, 8vw, 4rem);
+  font-weight: 800;
+  color: #FF6600;
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+.modal-promo-badge {
+  background: linear-gradient(135deg, #FF6600, #FF9900);
+  color: white;
+  padding: clamp(8px, 2vw, 12px) clamp(16px, 4vw, 24px);
+  border-radius: clamp(12px, 3vw, 16px);
+  font-weight: 700;
+  font-size: clamp(0.9rem, 2.5vw, 1.1rem);
+  margin: clamp(12px, 3vw, 16px) auto;
+  display: inline-block;
+  box-shadow: 0 4px 16px rgba(255, 102, 0, 0.3);
+}
+
+.modal-product-description {
+  font-size: clamp(1rem, 2.5vw, 1.1rem);
+  color: #666;
+  margin: clamp(16px, 3vw, 20px) 0;
+  line-height: 1.5;
+}
+
+.modal-barcode-info {
+  font-size: clamp(0.9rem, 2vw, 1rem);
+  color: #888;
+  margin: clamp(16px, 3vw, 20px) 0;
+  font-family: monospace;
+  background: rgba(255, 102, 0, 0.05);
+  padding: clamp(8px, 2vw, 12px);
+  border-radius: clamp(6px, 1.5vw, 8px);
+  border: 1px solid rgba(255, 102, 0, 0.15);
+}
+
+/* Animações do modal aprimoradas */
+.modal-fade-enter-active, .modal-fade-leave-active {
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modal-fade-enter-from, .modal-fade-leave-to {
+  opacity: 0;
+  backdrop-filter: blur(0px);
+  -webkit-backdrop-filter: blur(0px);
+}
+
+.modal-fade-enter-from .product-modal,
+.modal-fade-leave-to .product-modal {
+  transform: scale(0.85) translateY(60px);
+  opacity: 0;
+}
+
+.modal-fade-enter-from .product-modal,
+.modal-fade-leave-to .product-modal {
+  transform: scale(0.8) translateY(40px);
+  opacity: 0;
+}
+
+/* Melhorias para tablets em landscape */
+@media (orientation: landscape) and (max-height: 700px) {
+  .product-modal {
+    max-height: 90vh;
+    padding: clamp(20px, 4vw, 32px);
+  }
+  
+  .modal-product-name {
+    font-size: clamp(1.2rem, 4vw, 1.8rem);
+    margin-bottom: clamp(12px, 2vw, 16px);
+  }
+  
+  .modal-product-price .price-value {
+    font-size: clamp(2rem, 6vw, 3rem);
+  }
 }
 </style>
