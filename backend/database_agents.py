@@ -12,8 +12,9 @@ def get_all_agents_status():
                 # Preencher id se não existir
                 if not ag.get('id'):
                     ag['id'] = ag.get('identifier') or ag.get('nome') or ag.get('loja') or str(hash(str(ag)))
-                # Timeout: se última atualização for maior que 30s, status offline
+                # Timeout: se última atualização for maior que 120s, status offline (padronizado)
                 last_update = ag.get('last_update') or ag.get('ultima_atualizacao')
+                TIMEOUT_SECONDS = 120
                 if last_update:
                     try:
                         # Suporta timestamp ou string
@@ -23,7 +24,7 @@ def get_all_agents_status():
                             from datetime import datetime
                             dt = datetime.strptime(last_update, '%d/%m/%Y, %H:%M:%S')
                             diff = (datetime.now() - dt).total_seconds()
-                        if diff > 30:
+                        if diff > TIMEOUT_SECONDS:
                             ag['status'] = 'offline'
                         else:
                             ag['status'] = 'online'

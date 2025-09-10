@@ -22,7 +22,7 @@ try:
         get_product_by_barcode, init_db, populate_example_data, get_db_connection, authenticate_admin,
         get_system_status, export_products_to_txt, get_all_stores, update_store, delete_store,
         get_all_devices, add_device, update_device, delete_device, set_device_online, set_device_offline,
-        add_audit_log, get_audit_logs, get_device_audit_logs, upsert_agent_status, get_all_agents_status,
+        add_audit_log, get_audit_logs, get_device_audit_logs, upsert_agent_status,
         upsert_products, delete_agent_status, update_agent_status, update_device_catalog_sync,
         get_device_by_identifier, bulk_upsert_agent_devices, get_agent_devices, delete_agent_device,
         replace_agent_stores, get_agent_stores, dedupe_agents, dedupe_agents_by_ip, get_latest_agent_by_ip,
@@ -44,7 +44,7 @@ except ImportError:
         get_product_by_barcode, init_db, populate_example_data, get_db_connection, authenticate_admin,
         get_system_status, export_products_to_txt, get_all_stores, update_store, delete_store,
         get_all_devices, add_device, update_device, delete_device, set_device_online, set_device_offline,
-        add_audit_log, get_audit_logs, get_device_audit_logs, upsert_agent_status, get_all_agents_status,
+        add_audit_log, get_audit_logs, get_device_audit_logs, upsert_agent_status,
         upsert_products, delete_agent_status, update_agent_status, update_device_catalog_sync,
         get_device_by_identifier, bulk_upsert_agent_devices, get_agent_devices, delete_agent_device,
         replace_agent_stores, get_agent_stores, dedupe_agents, dedupe_agents_by_ip, get_latest_agent_by_ip,
@@ -149,10 +149,13 @@ def listar_agentes(include_fakes: bool = Query(False)):
         reassign_orphan_agent_devices_by_ip()
     except Exception:
         pass
-    rows = get_all_agents_status()
+    # Usa apenas PostgreSQL, não mais o arquivo JSON
+    from database import get_all_agents_status as get_pg_agents_status
+    rows = get_pg_agents_status()
     out = []
     seen = set()
-    now = datetime.now()
+    from datetime import datetime, timezone
+    now = datetime.utcnow().replace(tzinfo=timezone.utc)
     for r in rows:
         rec = dict(r)
         rec['id'] = (rec.get('agent_id') or rec.get('id') or '').strip().lower()
@@ -166,9 +169,15 @@ def listar_agentes(include_fakes: bool = Query(False)):
             if last:
                 try:
                     dt = datetime.strptime(str(last), '%Y-%m-%d %H:%M:%S')
+                    dt = dt.replace(tzinfo=timezone.utc)
                 except Exception:
-                    from datetime import datetime as _dt
-                    dt = _dt.strptime(str(last), '%d/%m/%Y, %H:%M:%S')
+                    try:
+                        dt = datetime.strptime(str(last), '%d/%m/%Y, %H:%M:%S')
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    except Exception:
+                        dt = datetime.fromisoformat(str(last))
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
                 diff = (now - dt).total_seconds()
                 status_calc = 'online' if diff <= 120 else 'offline'
                 normalized_last = dt.isoformat(timespec='seconds')

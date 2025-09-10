@@ -434,7 +434,7 @@ def get_all_devices():
                         dt = dt.replace(tzinfo=timezone.utc)
                     dt = dt.astimezone(timezone.utc).replace(microsecond=0)
                     diff = (now - dt).total_seconds()
-                    device['online'] = int(diff < 30)
+                    device['online'] = int(diff < 120)  # Padronizado para 120s como agentes
                     logging.debug(f"[ONLINE-CHECK] Device {device.get('identifier')} diff={diff}s now={now.isoformat()} last_sync={dt.isoformat()} online={device['online']}")
                 else:
                     device['online'] = 0
@@ -625,7 +625,25 @@ def debug_list_device_identifiers():
 
 def upsert_agent_status(agent_id: str, loja_codigo: str = None, loja_nome: str = None, status: str = None, last_update: str = None, ip: str = None):
     try:
+        from datetime import datetime, timezone
         agent_id = normalize_agent_id(agent_id)
+        # Força uso de UTC para last_update
+        if not last_update:
+            last_update = datetime.utcnow().replace(tzinfo=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            # Tenta converter para UTC se vier em outro formato
+            try:
+                dt = None
+                for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%d/%m/%Y, %H:%M:%S'):
+                    try:
+                        dt = datetime.strptime(str(last_update), fmt)
+                        break
+                    except Exception:
+                        continue
+                if dt:
+                    last_update = dt.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+            except Exception:
+                pass
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute('''
@@ -639,6 +657,16 @@ def upsert_agent_status(agent_id: str, loja_codigo: str = None, loja_nome: str =
                 ip=EXCLUDED.ip
         ''', (agent_id, loja_codigo, loja_nome, status, last_update, ip))
         conn.commit()
+        # Diagnóstico: verifica múltiplos registros por IP/agent_id
+        cur.execute('SELECT COUNT(*) FROM agents_status WHERE agent_id = %s', (agent_id,))
+        count_id = cur.fetchone()[0]
+        if count_id > 1:
+            logging.warning(f"[DB][upsert_agent_status] Múltiplos registros para agent_id={agent_id}")
+        if ip:
+            cur.execute('SELECT COUNT(*) FROM agents_status WHERE ip = %s', (ip,))
+            count_ip = cur.fetchone()[0]
+            if count_ip > 1:
+                logging.warning(f"[DB][upsert_agent_status] Múltiplos registros para ip={ip}")
         conn.close()
     except Exception as e:
         logging.error(f"[DB][upsert_agent_status] Erro ao inserir/atualizar agente: {e}")
@@ -679,6 +707,7 @@ def get_agent_stores(agent_id: str):
     return [dict(row) for row in rows]
 
 def get_all_agents_status():
+    from datetime import datetime, timezone
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute('SELECT * FROM agents_status')
@@ -686,9 +715,27 @@ def get_all_agents_status():
     conn.close()
     # Normaliza agent_id no retorno para consumo unificado
     out = []
+    now_utc = datetime.utcnow().replace(tzinfo=timezone.utc)
     for row in rows:
         d = dict(row)
         d['agent_id'] = normalize_agent_id(d.get('agent_id'))
+        # Diagnóstico: loga atraso de heartbeat
+        lu = d.get('last_update')
+        try:
+            dt = None
+            for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%d/%m/%Y, %H:%M:%S'):
+                try:
+                    dt = datetime.strptime(str(lu), fmt)
+                    break
+                except Exception:
+                    continue
+            if dt:
+                dt = dt.replace(tzinfo=timezone.utc)
+                diff = (now_utc - dt).total_seconds()
+                if diff > 120:
+                    logging.warning(f"[DB][get_all_agents_status] agent_id={d['agent_id']} atrasado {diff:.1f}s (offline)")
+        except Exception:
+            pass
         out.append(d)
     return out
 

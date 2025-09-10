@@ -18,7 +18,7 @@ import socket
 import os
 import uuid
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 import shutil
 import sys
 from wsgiref.simple_server import make_server
@@ -885,8 +885,26 @@ def update_agent_status(data: dict):
 
 
 def salvar_status_agente():
+    def get_persistent_agent_id():
+        import os, uuid
+        AGENT_ID_PATH = os.path.join(os.path.dirname(AGENTS_STATUS_PATH), 'agent_id.txt')
+        if os.path.exists(AGENT_ID_PATH):
+            try:
+                with open(AGENT_ID_PATH, 'r', encoding='utf-8') as f:
+                    return f.read().strip()
+            except Exception:
+                pass
+        # Gera e salva um novo UUID persistente
+        agent_id = str(uuid.uuid4())
+        try:
+            with open(AGENT_ID_PATH, 'w', encoding='utf-8') as f:
+                f.write(agent_id)
+        except Exception:
+            pass
+        return agent_id
+
     status = {
-        "id": str(uuid.uuid4()),
+        "id": get_persistent_agent_id(),
         "identifier": socket.gethostname(),
         "nome": "Agente Local",
         "loja": "",
@@ -1274,7 +1292,7 @@ def enviar_status_agente():
     status_payload = {
         "agent_id": agent_id,
         "status": "online",
-        "last_update": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        "last_update": datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
     }
     if loja_codigo:
         status_payload["loja_codigo"] = loja_codigo
@@ -1316,7 +1334,7 @@ def enviar_status_agente():
                     'hostname': socket.gethostname(),
                     'loja_codigo': loja_codigo,
                     'status': 'online',
-                    'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'last_update': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
                     'ip': get_local_ip()
                 }
                 r2 = requests.post(agg_url.rstrip('/') + '/api/agents/status', json=agg_payload, headers=headers, timeout=5)
