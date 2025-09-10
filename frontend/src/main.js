@@ -4,6 +4,17 @@ import './assets/global.css'
 import App from './App.vue'
 import { saveDeviceUUID, getDeviceUUID } from './indexeddb.js'
 
+// Remove loading placeholder quando aplicação inicia
+function removeLoadingPlaceholder() {
+  const loadingElement = document.querySelector('.app-loading')
+  if (loadingElement) {
+    loadingElement.style.opacity = '0'
+    loadingElement.style.transition = 'opacity 0.3s ease'
+    setTimeout(() => {
+      loadingElement.remove()
+    }, 300)
+  }
+}
 
 // ID do equipamento: só envia heartbeat se for dispositivo real
 function generateUUID() {
@@ -137,4 +148,9 @@ if (typeof window !== 'undefined' && 'wakeLock' in navigator) {
   });
 }
 
-createApp(App).mount('#app')
+// Monta a aplicação e remove loading placeholder
+const app = createApp(App)
+app.mount('#app')
+
+// Remove loading placeholder após montagem
+setTimeout(removeLoadingPlaceholder, 100)

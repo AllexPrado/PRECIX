@@ -11,6 +11,25 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
+  
+  /* Variáveis CSS para consistência de design */
+  --primary-color: #FF6600;
+  --primary-hover: #FF4500;
+  --secondary-color: #FF9900;
+  --background-gradient: linear-gradient(135deg, #fff 60%, #fff3e0 100%);
+  --glass-background: rgba(255,255,255,0.9);
+  --glass-border: rgba(255, 255, 255, 0.3);
+  --shadow-light: 0 2px 8px rgba(255, 102, 0, 0.1);
+  --shadow-medium: 0 4px 16px rgba(255, 102, 0, 0.2);
+  --shadow-heavy: 0 8px 32px rgba(255, 102, 0, 0.3);
+  --border-radius-sm: clamp(8px, 2vw, 12px);
+  --border-radius-md: clamp(12px, 3vw, 20px);
+  --border-radius-lg: clamp(20px, 5vw, 32px);
+  --spacing-xs: clamp(4px, 1vw, 8px);
+  --spacing-sm: clamp(8px, 2vw, 16px);
+  --spacing-md: clamp(16px, 4vw, 24px);
+  --spacing-lg: clamp(24px, 6vw, 40px);
+  --spacing-xl: clamp(32px, 8vw, 56px);
 }
 
 /* Reseta o box-sizing para um modelo mais previsível */
@@ -23,8 +42,22 @@ body, html, #app {
   margin: 0;
   padding: 0;
   width: 100vw;
+  height: 100vh;
   height: 100dvh; /* Altura dinâmica do viewport */
   overflow: hidden; /* Previne scrollbars indesejadas */
+  position: relative;
+}
+
+/* Otimizações de performance para animações */
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+/* Suporte melhorado para focus e touch */
+*:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 /* Remove estilos de botão padrão para customização completa */
@@ -40,71 +73,119 @@ button {
   line-height: normal;
   -webkit-font-smoothing: inherit;
   -moz-osx-font-smoothing: inherit;
-  appearance: none; /* Adicionado para compatibilidade */
+  appearance: none;
   -webkit-appearance: none;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation; /* Otimização para touch devices */
 }
 
 a {
   font-weight: 500;
-  color: #646cff;
+  color: var(--primary-color);
   text-decoration: inherit;
+  transition: color 0.3s ease;
 }
 a:hover {
-  color: #535bf2;
+  color: var(--primary-hover);
 }
 
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+/* Melhorias de acessibilidade e UX */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-.card {
-  padding: 2em;
-}
-
-#app {
-  max-width: 1280px;
+/* Utilitários responsivos */
+.container {
+  width: 100%;
+  max-width: min(1200px, 95vw);
   margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  padding: 0 var(--spacing-md);
 }
 
-@media (prefers-color-scheme: light) {
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+/* Melhorias para alta densidade de pixels */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  img, svg {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+  }
+}
+
+/* Modo escuro futuro */
+@media (prefers-color-scheme: dark) {
   :root {
-    color: #213547;
-    background-color: #ffffff;
+    --glass-background: rgba(0, 0, 0, 0.8);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    background-color: #1a1a1a;
   }
-  a:hover {
-    color: #747bff;
+}
+
+/* Animações reduzidas para acessibilidade */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
-  button {
-    background-color: #f9f9f9;
+}
+
+/* Alto contraste */
+@media (prefers-contrast: high) {
+  :root {
+    --primary-color: #000000;
+    --primary-hover: #333333;
+    --glass-background: rgba(255, 255, 255, 1);
+    --glass-border: rgba(0, 0, 0, 0.3);
   }
+}
+
+/* Melhorias para dispositivos touch */
+@media (pointer: coarse) {
+  button, input, select, textarea {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Loading states */
+.loading {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Remove loading placeholder quando app carrega */
+.app-loading {
+  display: none;
 }
