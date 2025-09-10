@@ -22,6 +22,19 @@
       <span v-else>● Offline</span>
     </div>
 
+    <!-- Indicador de Scanner Bluetooth -->
+    <div class="scanner-status" :class="{ connected: scannerConnected }">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M9 12l2 2 4-4"/>
+        <path d="M21 12c.552 0 1-.448 1-1s-.448-1-1-1-1 .448-1 1 .448 1 1 1z"/>
+        <path d="M17 8l4-4-4-4"/>
+        <path d="M3 12c.552 0 1-.448 1-1s-.448-1-1-1-1 .448-1 1 .448 1 1 1z"/>
+        <path d="M7 16l-4-4 4-4"/>
+      </svg>
+      <span v-if="scannerConnected">Scanner Conectado</span>
+      <span v-else>Aguardando Scanner</span>
+    </div>
+
     <!-- Conteúdo principal centralizado -->
     <main class="main-content">
       <div class="glass-card">
@@ -111,24 +124,91 @@ const API_BASE = import.meta.env.VITE_API_URL || ''
 const isOnline = ref(navigator.onLine)
 const barcodeInput = ref(null)
 const resetTimeout = ref(null)
+const scannerConnected = ref(false)
+const lastInputTime = ref(0)
+const inputBuffer = ref('')
+
 window.addEventListener('online', () => isOnline.value = true)
 window.addEventListener('offline', () => isOnline.value = false)
 
+// Detecta scanner Bluetooth através do padrão de entrada rápida
+function detectScannerInput(event) {
+  const currentTime = Date.now()
+  const timeDiff = currentTime - lastInputTime.value
+  
+  // Scanner Bluetooth típico: entrada muito rápida (< 50ms entre caracteres)
+  if (timeDiff < 50 && event.data && event.data.length === 1) {
+    scannerConnected.value = true
+    inputBuffer.value += event.data
+  } else if (timeDiff > 100) {
+    // Reset buffer se pausa for muito longa (digitação manual)
+    inputBuffer.value = ''
+    scannerConnected.value = false
+  }
+  
+  lastInputTime.value = currentTime
+}
+
+// Otimizações específicas para tablets e leitores Bluetooth
 function onInputFocus() {
   if (barcodeInput.value) {
     barcodeInput.value.setAttribute('inputmode', 'numeric')
     barcodeInput.value.setAttribute('pattern', '[0-9]*')
+    // Adiciona listener para detectar padrão de scanner
+    barcodeInput.value.addEventListener('input', detectScannerInput)
+    
+    // Otimizações para tablets
+    barcodeInput.value.style.fontSize = '16px' // Evita zoom no iOS
+    barcodeInput.value.style.userSelect = 'none' // Evita seleção acidental
   }
 }
-function onInputBlur() {}
+function onInputBlur() {
+  // Remove listener ao perder foco
+  if (barcodeInput.value) {
+    barcodeInput.value.removeEventListener('input', detectScannerInput)
+  }
+}
 
 function resetScreen() {
   barcode.value = ''
   product.value = null
-  if (barcodeInput.value) barcodeInput.value.focus()
+  inputBuffer.value = ''
+  scannerConnected.value = false
+  if (barcodeInput.value) {
+    barcodeInput.value.focus()
+    // Pequeno delay para garantir foco em tablets
+    setTimeout(() => {
+      if (barcodeInput.value) barcodeInput.value.focus()
+    }, 100)
+  }
 }
 
 function handleConsult() {
+  // Feedback tátil para tablets (vibração)
+  if (navigator.vibrate && scannerConnected.value) {
+    navigator.vibrate([50, 30, 50]) // Padrão de vibração dupla
+  }
+  
+  // Feedback sonoro opcional (pode ser configurado)
+  if (window.AudioContext || window.webkitAudioContext) {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+      const oscillator = audioCtx.createOscillator()
+      const gainNode = audioCtx.createGain()
+      
+      oscillator.connect(gainNode)
+      gainNode.connect(audioCtx.destination)
+      
+      oscillator.frequency.setValueAtTime(800, audioCtx.currentTime) // Frequência do beep
+      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime) // Volume baixo
+      
+      oscillator.start()
+      oscillator.stop(audioCtx.currentTime + 0.1) // Beep curto
+    } catch (e) {
+      // Falha silenciosa se áudio não disponível
+    }
+  }
+  
   checkPrice();
   nextTick(() => {
     if (barcodeInput.value) barcodeInput.value.focus();
@@ -167,10 +247,76 @@ async function syncCatalog() {
 }
 
 let syncInterval = null
+let bluetoothMonitor = null
+
+// Funcionalidade avançada de auto-sensing para scanner Bluetooth
+function initBluetoothMonitoring() {
+  // Monitora eventos de teclado para detectar scanner Bluetooth
+  document.addEventListener('keydown', (event) => {
+    // Scanner Bluetooth típico envia códigos muito rapidamente
+    const now = performance.now()
+    const timeSinceLastKey = now - lastInputTime.value
+    
+    if (timeSinceLastKey < 30) { // Menos de 30ms = provavelmente scanner
+      scannerConnected.value = true
+    }
+    
+    lastInputTime.value = now
+  })
+  
+  // Monitora se há dispositivos Bluetooth conectados (se suportado)
+  if (navigator.bluetooth) {
+    navigator.bluetooth.getAvailability().then(available => {
+      if (available) {
+        console.log('[PRECIX] Bluetooth disponível para scanners')
+        // Tenta detectar dispositivos HID já conectados
+        detectConnectedHIDDevices()
+      }
+    }).catch(err => {
+      console.log('[PRECIX] Bluetooth não disponível:', err.message)
+    })
+  }
+  
+  // Auto-focus inteligente para tablets
+  const focusField = () => {
+    if (barcodeInput.value && document.visibilityState === 'visible') {
+      barcodeInput.value.focus()
+    }
+  }
+  
+  // Reativa foco quando tablet volta do sleep/background
+  document.addEventListener('visibilitychange', focusField)
+  window.addEventListener('focus', focusField)
+  
+  // Foco inicial com delay para tablets
+  setTimeout(focusField, 500)
+}
+
+// Detecta dispositivos HID (scanners) já conectados
+function detectConnectedHIDDevices() {
+  if (navigator.hid) {
+    navigator.hid.getDevices().then(devices => {
+      const scanners = devices.filter(device => 
+        device.productName?.toLowerCase().includes('scanner') ||
+        device.productName?.toLowerCase().includes('barcode') ||
+        device.vendorId === 0x1234 // ID típico de scanners genéricos
+      )
+      
+      if (scanners.length > 0) {
+        console.log('[PRECIX] Scanner HID detectado:', scanners[0].productName)
+        scannerConnected.value = true
+      }
+    }).catch(err => {
+      console.log('[PRECIX] HID API não disponível:', err.message)
+    })
+  }
+}
+
 onMounted(() => {
   barcode.value = ''
   product.value = null
   syncCatalog()
+  initBluetoothMonitoring()
   syncInterval = setInterval(syncCatalog, 12 * 60 * 60 * 1000)
 })
 // Limpa o timer ao desmontar
@@ -332,6 +478,40 @@ async function checkPrice() {
 .connection-status-top.offline {
   color: #d00000;
   background: #ffeaea;
+}
+
+.scanner-status {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  font-size: 0.9em;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 12px;
+  z-index: 100;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+  color: #666;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(0,0,0,0.1);
+}
+
+.scanner-status.connected {
+  color: #008000;
+  background: rgba(0, 255, 0, 0.1);
+  border-color: #008000;
+  box-shadow: 0 2px 12px rgba(0,128,0,0.2);
+}
+
+.scanner-status svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
 .glass-card {
@@ -652,6 +832,13 @@ input:focus::placeholder {
     padding: 7px 15px;
   }
 
+  .scanner-status {
+    top: 25px;
+    left: 25px;
+    font-size: 1em;
+    padding: 8px 14px;
+  }
+
   .main-content {
     padding: 32px;
     gap: 24px;
@@ -692,6 +879,13 @@ input:focus::placeholder {
     font-size: 1.1em;
     padding: 8px 16px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  }
+
+  .scanner-status {
+    top: 30px;
+    left: 30px;
+    font-size: 1.1em;
+    padding: 8px 16px;
   }
 
   .main-content {
