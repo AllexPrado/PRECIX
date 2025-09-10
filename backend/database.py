@@ -6,6 +6,7 @@ import logging
 import bcrypt  # Adicionado para hash de senha
 import tempfile
 from pathlib import Path
+from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
 
@@ -538,15 +539,32 @@ def delete_device(device_id: int):
     # Busca nome do device antes de deletar
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute('SELECT name FROM devices WHERE id = %s', (device_id,))
-    result = cur.fetchone()
-    device_name = result['name'] if result else f'Device {device_id}'
-    logging.info(f"[DB] Deletando device id={device_id} nome={device_name}")
-    cur.execute('DELETE FROM devices WHERE id = %s', (device_id,))
-    conn.commit()
-    conn.close()
-    # Log de auditoria
-    add_audit_log(device_id, device_name, 'DEVICE_DELETED', 'Dispositivo removido do sistema')
+    
+    try:
+        cur.execute('SELECT name FROM devices WHERE id = %s', (device_id,))
+        result = cur.fetchone()
+        device_name = result['name'] if result else f'Device {device_id}'
+        logging.info(f"[DB] Deletando device id={device_id} nome={device_name}")
+        
+        # Primeiro adiciona o log de auditoria antes de deletar o device
+        cur.execute('INSERT INTO audit_log (timestamp, device_id, device_name, action, details) VALUES (%s, %s, %s, %s, %s)', 
+                   (datetime.utcnow(), device_id, device_name, 'DEVICE_DELETED', 'Dispositivo removido do sistema'))
+        
+        # Depois deleta todos os logs de auditoria relacionados ao device
+        cur.execute('DELETE FROM audit_log WHERE device_id = %s', (device_id,))
+        
+        # Finalmente deleta o device
+        cur.execute('DELETE FROM devices WHERE id = %s', (device_id,))
+        
+        conn.commit()
+        logging.info(f"[DB] Device {device_id} ({device_name}) deletado com sucesso")
+        
+    except Exception as e:
+        conn.rollback()
+        logging.error(f"[DB] Erro ao deletar device {device_id}: {e}")
+        raise e
+    finally:
+        conn.close()
 
 
 # Helpers de devices
