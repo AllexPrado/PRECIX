@@ -16,5 +16,29 @@ export default defineConfig({
         secure: false,
       }
     }
+  },
+  build: {
+    // Otimizações para produção
+    target: 'es2015',
+    minify: 'terser',
+    cssMinify: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['vue', 'axios'],
+        }
+      }
+    },
+    chunkSizeWarningLimit: 1000,
+    // PWA otimizations
+    sourcemap: false,
+    assetsInlineLimit: 4096
+  },
+  css: {
+    // Otimizações CSS
+    devSourcemap: false
+  },
+  optimizeDeps: {
+    include: ['vue', 'axios']
   }
 })

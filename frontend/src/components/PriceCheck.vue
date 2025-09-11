@@ -6,7 +6,9 @@
     </button>
     <div v-if="showUUIDModal" class="uuid-modal-bg" @click.self="showUUIDModal = false">
       <div class="uuid-modal">
-        <h3>Configurações do Dispositivo</h3>
+        <div class="modal-header">
+          <h3>Configurações do Dispositivo</h3>
+        </div>
         
         <!-- Status do Scanner integrado no modal -->
         <div class="scanner-info-section">
@@ -88,16 +90,15 @@
           <!-- Barra de progresso de fechamento automático -->
           <div class="auto-close-progress"></div>
           
-          <!-- Ícone de produto digitalizado -->
-          <div class="product-scan-icon">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#FF6600" stroke-width="2">
+          <!-- Ícone de sucesso animado -->
+          <div class="success-icon">
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5">
               <path d="M9 12l2 2 4-4"/>
               <circle cx="12" cy="12" r="10"/>
             </svg>
           </div>
           
           <div class="modal-product-info">
-            <div class="product-found-label">Produto Encontrado</div>
             <div class="modal-product-name">{{ product.name }}</div>
             <div class="modal-product-price">
               <span class="currency">R$</span>
@@ -1270,6 +1271,39 @@ input:focus::placeholder {
   }
 }
 
+/* Foldable devices and dual screens */
+@media (min-width: 768px) and (max-width: 1024px) and (orientation: landscape) and (min-height: 600px) {
+  .main-content {
+    max-width: 800px;
+    padding: clamp(32px, 5vw, 64px);
+  }
+  
+  .glass-card {
+    max-width: 600px;
+    padding: clamp(40px, 6vw, 60px);
+  }
+  
+  .input-row {
+    max-width: 500px;
+  }
+}
+
+/* Large tablets in landscape */
+@media (min-width: 1024px) and (max-width: 1366px) and (orientation: landscape) {
+  .product-modal {
+    max-width: min(700px, 85vw);
+    padding: clamp(48px, 6vw, 64px);
+  }
+  
+  .modal-product-name {
+    font-size: clamp(2rem, 4vw, 2.8rem);
+  }
+  
+  .modal-product-price .price-value {
+    font-size: clamp(3.5rem, 6vw, 5.5rem);
+  }
+}
+
 @keyframes slideUpFade {
   from { 
     opacity: 0; 
@@ -1342,16 +1376,45 @@ input:focus::placeholder {
   background: #fff;
   border-radius: 20px;
   box-shadow: 0 12px 48px rgba(255, 102, 0, 0.2);
-  padding: 32px 28px 28px 28px;
+  padding: 0;
   width: 100%;
   max-width: 520px;
   text-align: center;
   animation: fadeIn 0.3s;
   border: 1px solid rgba(255, 102, 0, 0.1);
+  overflow: hidden;
+}
+
+/* Header do modal UUID com contraste adequado */
+.modal-header {
+  background: linear-gradient(135deg, #FF6600 0%, #FF9900 100%);
+  padding: 20px 28px;
+  margin-bottom: 0;
+}
+
+.modal-header h3 {
+  color: #fff;
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin: 0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* Padding para o conteúdo do modal */
+.scanner-info-section,
+.uuid-section,
+.modal-actions {
+  margin-left: 28px;
+  margin-right: 28px;
+}
+
+.modal-actions {
+  margin-bottom: 28px;
 }
 
 /* Scanner integrado no modal UUID */
 .scanner-info-section {
+  margin-top: 24px;
   margin-bottom: 24px;
   padding: 16px;
   background: rgba(255, 102, 0, 0.05);
@@ -1498,25 +1561,25 @@ input:focus::placeholder {
   to { width: 0%; }
 }
 
-/* Ícone de produto digitalizado */
-.product-scan-icon {
-  margin-bottom: clamp(20px, 4vw, 28px);
-  animation: scanPulse 2s ease-in-out infinite;
+/* Ícone de sucesso animado */
+.success-icon {
+  margin-bottom: clamp(24px, 5vw, 32px);
+  animation: successPulse 1.5s ease-in-out infinite;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
-@keyframes scanPulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.1); opacity: 0.8; }
-}
-
-.product-found-label {
-  font-size: clamp(0.9rem, 2.2vw, 1rem);
-  font-weight: 600;
-  color: #22c55e;
-  margin-bottom: clamp(12px, 2.5vw, 16px);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  opacity: 0.9;
+@keyframes successPulse {
+  0%, 100% { 
+    transform: scale(1); 
+    opacity: 1; 
+  }
+  50% { 
+    transform: scale(1.05); 
+    opacity: 0.9;
+    filter: drop-shadow(0 0 20px rgba(34, 197, 94, 0.3));
+  }
 }
 
 .modal-product-name {
@@ -1530,6 +1593,16 @@ input:focus::placeholder {
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  animation: textSlideUp 0.6s ease-out forwards;
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+@keyframes textSlideUp {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .modal-product-price {
@@ -1542,6 +1615,16 @@ input:focus::placeholder {
   background: linear-gradient(135deg, rgba(255, 102, 0, 0.08) 0%, rgba(255, 153, 0, 0.05) 100%);
   border-radius: clamp(12px, 3vw, 16px);
   border: 1px solid rgba(255, 102, 0, 0.15);
+  animation: priceZoomIn 0.8s ease-out 0.3s forwards;
+  opacity: 0;
+  transform: scale(0.9);
+}
+
+@keyframes priceZoomIn {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .modal-product-price .currency {
